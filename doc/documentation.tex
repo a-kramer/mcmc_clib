@@ -1,0 +1,168 @@
+\documentclass[utf8,english]{scrartcl}
+\usepackage{lmodern}
+\usepackage[sc]{mathpazo}
+\usepackage[T1]{fontenc}
+\usepackage{inputenc}
+\usepackage{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{microtype}
+\usepackage{tikz}
+
+
+\newcommand{\ode}{\textsc{ode}}
+\addtokomafont{title}{\rmfamily}
+\addtokomafont{section}{\rmfamily}
+
+\title{Documentation for the RMHMC Source}
+\author{Andrei Kramer}
+\date{\today}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+  This text provides some documentation and mathematical
+  considerations and definitions for the implementation of the
+  Riemannian Manifold Hamiltonian Monte Carlo (RMHMC) algorithm.
+\end{abstract}
+
+\section{Model Specifications}
+\label{sec:odeModel}
+
+We consider a deterministic \ode{} model and a stochastic measurement
+model. System states are captured by the state variables
+$x(t)\in\mathbb{R}^n$. The model parameters $\theta\in\mathbb{R}^m$
+describe interactions between the model state variables and are
+unknown. A second set of parameters $u\in\mathbb{R}^l$ describes the
+conditions of an experimental setup. These parameters are considered
+inputs and we assume that they can be set by the experimenter. They
+can be external parameters, e.g. the temperature, or describe
+modifications to the system, e.g. inhibitions to some of the
+interactions. The known time derivative of $x(t)$ defines the model:
+\begin{align}
+  \dot x &= f(t,x;\theta,u)\,,\\
+  y(t_j;\theta,u)&=C(\zeta) x(t_j;\theta,u) + \epsilon_i(t_j)\,,
+\end{align}
+where $y(t;\theta,u)\in\mathbb{R}^k$ is the output of the measurement process,
+which is recorded at $T$ time points. The linear transformation
+$C\in\mathbb{R}^{k\times n}$ models the capabilities of the
+measurement setup. The measurements are obscured by the noise process
+$\epsilon_i(t_j)\sim\mathcal{N}(0,\sigma^2_{ij})$ ($i=1,\dots,n;
+j=1,\dots,T$). In addition, the observations might be done in unknown
+units, such that a reference Experiment might be needed to interpret
+any numerical values of $y(t_j)$. To deal with this problem, $C$ may
+contain unknown scaling parameters $\zeta$, to be estimated via MCMC. Another
+approach, which instead eliminates the scaling parameters, is to take
+the ratios:
+\begin{align}
+  \tilde y_i(t_j;\theta,u_b) &= \frac{y_i(t_j,\theta,u_b)}{y_i(t_j;\theta,u_0)}\,,
+\end{align}
+where $u_b\in\mathbb{R}^l (b=1,\dots,n_{\text{E}})$ is any particular
+experimental setup ($n_{\text{E}}$ is the number of experiments) and
+$u_0$ is the reference experiment setup.  In consequence we have to
+recalculate the standard deviation of $\tilde y_i(t_j;\theta,u_b)$
+from the standard deviations\footnote{we append the input indeces
+  $b,0$ to the standard deviation symbol for distinction} of
+${y_i(t_j,\theta,u_b)}$ and ${y_i(t_j;\theta,u_0)}$:
+\begin{align}
+  \label{eq:std_y}
+  \tilde\sigma_{i,j}\approx&\left|\frac{\partial\tilde
+      y_i(t_j;\theta,u_b)}{\partial
+      y_i(t_j;\theta,u_b)}\right|\sigma_{ij,b} +
+  \left|\frac{\partial\tilde y_i(t_j;\theta,u_b)}{\partial
+      y_i(t_j;\theta,u_0)}\right|\sigma_{ij,0}\,,
+\end{align}
+and in this case:
+\begin{align}
+  \label{eq:std_yy}
+  \tilde\sigma_{i,j}\approx&\left|\frac{\tilde
+      y_i(t_j;\theta,u_b)}{y_i(t_j;\theta,u_b)}\right|\sigma_{ij,b} +
+  \left|\frac{\tilde
+      y_i(t_j;\theta,u_b)}{y_i(t_j;\theta,u_0)}\right|\sigma_{ij,0}\,.
+\end{align}
+
+
+\section{Sensitivities}
+\label{sec:sens}
+
+The sensitivity of $\tilde y(t)$ in terms of the (known) $y(t;\theta,u)$ sensitivities $S(t;\theta,u)$ is:
+\begin{align}
+  \partial_{\theta_j} \tilde y_i(t;\theta,u_b) 
+  &= \frac{S_i^{~j}(t;\theta,u_b)y_i(t;\theta,u_0)
+    -y_i(t;\theta,u_b)S_i^{~j}(t;\theta,u_0)}{y_i(t;\theta,u_0)^2}\nonumber\\
+  &= \frac{S_i^{~j}(t;\theta,u_b) 
+    - \tilde y_i(t;\theta,u_b)S_i^{~j}(t;\theta,u_0)}{y_i(t;\theta,u_0)}\,.  \label{eq:fyS}
+\end{align}
+
+The code for this operation is located in the function
+\texttt{Likelihood} and is organized such, that if the data is
+absolute and does not require normalization, then
+$S_i^{~j}(t;\theta,u_0)$ is set to $0$ for all $i,j$ and the reference
+$y_i(t;\theta,u_0)=1$ for all $i$.
+
+\section{Sensitivity Gradient}
+\label{sec:dS}
+
+We take the derivative of~\eqref{eq:fyS} for any $u_b\in\{u_1,\dots,u_{n_{\text{E}}}\}$:
+\begin{multline}
+%  \label{eq:dfyS}
+  \partial_{\theta_k} \tilde S_i^{~j}(t;\theta,u_b)
+  % &=\frac{\left(\frac{\partial S_i^{~j}(t;\theta,u_b)}{\partial
+  %   \theta_k} - \left(\tilde
+  %     S_i^{~j}(t;\theta,u_b)S_i^{~j}(t;\theta,u_0) + \tilde
+  %     y_i(t;\theta,u_b)\frac{\partial
+  %     S_i^{~j}(t;\theta,u_0)}{\partial
+  %     \theta_k}\right)\right)y_i(t;\theta,u_0) -
+  % \left(S_i^{~j}(t;\theta,u_b) - \tilde
+  %   y_i(t;\theta,u_b)S_i^{~j}(t;\theta,u_0)\right)S_i^{~k}(t;\theta,u_0)}{(y_i(t;\theta,u_0))^2}\\[2mm]
+  =\left(\frac{\partial S_i^{~j}(t;\theta,u_b)}{\partial\theta_k} -\right.
+    \tilde S_i^{~k}(t;\theta,u_b)S_i^{~j}(t;\theta,u_0) -\\ 
+    \left.\tilde y_i(t;\theta,u_b)\frac{\partial S_i^{~j}(t;\theta,u_0)}{\partial
+      \theta_k}\right) \frac{1}{y_i(t;\theta,u_0)}\\
+  +\left(\tilde y_i(t;\theta,u_b) S_i^{~j}(t;\theta,u_0) - S_i^{~j}(t;\theta,u_b)\right)\frac{S_i^{~k}(t;\theta,u_0)}{(y_i(t;\theta,u_0))^2}\label{eq:dfyS}\,.
+\end{multline}
+
+\section{Sampling in logarithmic Space}
+\label{sec:rho}
+
+Ode models are often unstable for negative parameters, which is
+definitely the case for biological models.  Sampling in logarithmic
+space $\theta$ and passing $\rho=\exp(\theta)$ to the ode system fixes
+the problem. But it also means that we have to modify the above
+expressions. Because \texttt{vfgen} and \texttt{cvodes} provide
+sensitivity analysis with respect to the nominal model parameters
+$\rho$:
+\begin{align}
+  \dot x&=f(t,x;\rho,w)\,,& \rho_j&=\exp(\theta_j)\,,\nonumber\\
+  y(t;\rho,w)&=C x(t;\rho,w)\,,& b&=1,\dots,l\,,\nonumber\\
+  \tilde y_i(t;\rho,w)&=\frac{y_i(t;\rho,w)}{y_i(t,\rho,u_0)}\,,\label{eq:ode_rho}\\
+  \tilde S_i^{~j}(t;\rho,w)&=\partial_{\rho_j} \tilde y_i(t;\rho,w)\,,\nonumber\\
+  \partial_{\theta_j}\tilde y(t;\rho,w)&=\frac{\partial\tilde y_i(t;\rho,w)}{\partial\rho_j}\frac{\partial \rho_j}{\partial\theta_j}\nonumber\\
+  &=\tilde S_i^{~j}(t;\rho,w)\rho_j\,.\nonumber
+\end{align}
+for any input $w$ and consequently:
+\begin{align}
+  \partial_{\theta_j}\tilde y_i(t;\rho,w)&=\tilde S_i^{~j}(t;\rho,w)\rho_j\,,\nonumber\\
+  \partial_{\theta_k}\tilde S_i^{~j}(t;\rho,w)\rho_j&=\frac{\partial
+    \tilde
+    S_i^{~j}(t;\rho,w)}{\partial\rho_l}\overbrace{\frac{\partial\rho_l}{\partial\theta_k}}^{\rho_l\delta_{lk}}\rho_j
+  + \tilde
+  S_i^{~j}(t;\rho,w)\frac{\partial\rho_j}{\partial\theta_k}\label{eq:dfyS_rho}\\
+  &=\frac{\partial \tilde
+    S_i^{~j}(t;\rho,w)}{\partial\rho_k}\rho_k\rho_j + \tilde
+  S_i^{~j}(t;\rho,w)\rho_k\delta_{jk}\,.\nonumber
+\end{align}
+Note that it is possible to use \texttt{Expression}s in vfgen models:
+\begin{center}
+\begin{verbatim}
+<Parameter Name="\theta_1" DefaultValue="0">
+<Expression Name="rho_1" Formula="exp(theta_1)"/>
+\end{verbatim}
+\end{center}
+to convert the parameters from logspace, then use these expressions to
+define fluxes. But, since \texttt{Expression}s need to be recalculated
+at every step this is very wasteful. On the other hand, \textsc{vfgen}
+will then compute correct sensitivities ($dx_i/d\theta_j$). But, to
+save calls to the exp function, the software does this conversion
+before calling the solver and instead transforms the sensitivities as
+described here.
+\end{document}
