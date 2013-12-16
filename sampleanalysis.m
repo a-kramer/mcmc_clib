@@ -1,9 +1,9 @@
 m=26;
-#filename="sample/ODEmodel11S26P4U_smmala.double"
+filename="sample/ODEmodel11S26P4U_2013-09-12T11h44m.double"
 
-%fid=fopen(filename,"r");
-%D=fread(fid,[m+1,Inf],"double"); % 26 parameters + log posterior
-%fclose(fid);
+fid=fopen(filename,"r");
+D=fread(fid,[m+1,Inf],"double"); % 26 parameters + log posterior
+fclose(fid);
 n=columns(D)
 
 figure(1);
@@ -72,16 +72,11 @@ prior_mu=[
   -2.392459
 ];
 
-# kde=mkde(Theta);
-# P=zeros(n,1);
-# for i=1:n
-#  P(i)=kde(Theta(:,i));
-# endfor
 printf("plotting the sample can take a while (will plot %i lines).\n",length(selection));
 fflush(stdout);
 theta=mean(Theta');
 FH=pcplot(Theta,exp(logP)); hold on
-plot(FH,1:m,theta,"-;mean;","color",[1.0,0.4,0.4],"linewidth",3)
+plot(1:m,theta,"-;mean;","color",[1.0,0.4,0.4],"linewidth",3)
 h_err=errorbar(prior_mu,ones(m,1)/sqrt(0.2));
 set(h_err,"linewidth",4,"color",[0,0,0],"marker",".");
 h_err=errorbar(prior_mu,ones(m,1)/sqrt(0.2));
