@@ -77,10 +77,13 @@ fflush(stdout);
 theta=mean(Theta');
 FH=pcplot(Theta,exp(logP)); hold on
 plot(1:m,theta,"-;mean;","color",[1.0,0.4,0.4],"linewidth",3)
-h_err=errorbar(prior_mu,ones(m,1)/sqrt(0.2));
-set(h_err,"linewidth",4,"color",[0,0,0],"marker",".");
-h_err=errorbar(prior_mu,ones(m,1)/sqrt(0.2));
-set(h_err,"linewidth",2,"color",[0.7,1.0,0.7],"marker","+");
+
+lw={4,2};
+lc={[0,0,0],[0.7,1.0,0.7]};
+for i=1:2
+ h_err=errorbar(prior_mu,ones(m,1)/sqrt(0.2));
+ set(h_err,"linewidth",lw{i},"color",lc{i},"marker",".","linestyle","none");
+endfor
 hold off
 
 axis([0.8,m+0.2,min(min(Theta))*0.9,max(max(Theta))*1.1]);
