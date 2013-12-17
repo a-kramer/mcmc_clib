@@ -86,4 +86,12 @@ for i=1:2
 endfor
 hold off
 
+xlabel('$i$');
+ylabel('$\theta_i$');
+
 axis([0.8,m+0.2,min(min(Theta))*0.9,max(max(Theta))*1.1]);
+set(gcf,'papersize',[16,10]/2.54);
+set(gcf,'paperposition',[0,0,16,10]/2.54);
+set(gcf,'paperorientation','landscape');
+print -depslatex sample.tex
+system("epstopdf sample.eps && rm sample.eps")
