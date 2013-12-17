@@ -7,7 +7,7 @@
 \usepackage{tikz}
 \usepackage{gnuplot-lua-tikz}
 \usepackage{amsmath,amssymb}
-\usepackage{caption}
+\usepackage{capt-of}
 \usepackage{listings}
 \usepackage{booktabs}
 \lstset{language=xml,numbers=left,stepnumber=5,numberstyle=\ttfamily\color{Purple},basicstyle=\small\ttfamily,keywordstyle=\itshape,stringstyle=\color{Bittersweet},morekeywords={Expression,Function,Parameter,VectorField,StateVariable}}
@@ -22,25 +22,48 @@
 
 \begin{document}
 \maketitle
-\begin{center}
+\begin{abstract}
+  This Supplement provides some illustration for the chosen model. It
+  shows, how a parameter sample is related to a model fit. This model
+  has been chosen as an example for a hard problem: the model is large
+  and does not fit all of the observations; the measurements are
+  sparse, uncertain, and are provided in arbitrary units. Note: The
+  reason for the missmatch will not be discussed. The data might have
+  been obtained under erroneous assumptions which are consequently not
+  reflected in the modeling setup or alternatively, the model is
+  incorrect.
+\end{abstract}
+\section{Two different ways to sample the provided model}
+
+\begin{figure}
   \hspace*{-1cm}
   \input{sample}
-  \captionof{figure}{The Posterior Sample of size $N=1\times10^6$, as
-    obtained from the \texttt{MCMC\_CLIB}; thinned out using the
-    integrated autocorrelation length $\tau_{\text{int.},l}=1516(250)$
-    (estimated using the log-posterior $l$ as observable). The red
-    line indicates the maximum posterior estimate, while the green
-    errorbars indicate the used prior distribution
-    (Gaussian).\label{fig:pc-sample}}
-\end{center}
+  \caption{The Posterior Sample of size $N=1\times10^6$, as obtained
+    from the \texttt{MCMC\_CLIB}; thinned out using the integrated
+    autocorrelation length $\tau_{\text{int.},l}=1516(250)$ (estimated
+    using the log-posterior $l$ as observable). The red line indicates
+    the maximum posterior estimate, while the green errorbars indicate
+    the used prior distribution (Gaussian). Here, we have incorporated
+    our prior knowledge about the parameter values in the prior
+    parameter density. Yet, we have chosen to let the prior span
+    several orders of magnitude.\label{fig:pc-sample}}
+\end{figure}
 
 The sample was obtained in $t_{\text{s}}=267385$\,s. Considering the
-auto-correlation, the effective sampling speed is:
+auto-correlation $\tau_{\text{int.},l}=1516(250)$, the effective
+sampling speed is:
 \begin{equation}
   \label{eq:speed}
   v=\frac{N}{2\tau_{\text{int.},l} t_{\text{s}}}=12(2)\times 10^{-4}\,\text{s}^{-1}\,.
 \end{equation}
-\begin{center}
+The properties recorded during sampling are summarised in
+Table~\ref{tab:sp}. The sample is plotted in
+Figure~\ref{fig:pc-sample} using parallel corrdinates (each sampled
+parameter vector is shown component wise, as a
+line). Figure~\ref{fig:osmpl} shows the output trajectories obtained
+from forward simulations using the sampled parameters. There is
+partial agreement between model and data (black errorbars).
+\begin{figure}
   \sffamily\tiny
   \hspace*{-3cm}
   \begin{tikzpicture}
@@ -50,9 +73,9 @@ auto-correlation, the effective sampling speed is:
     \node (Tlabel) at (plot.south) {time $t$ in h};
     \node (Tdescription) [above of=Tlabel] {measurements were taken at $\{0.1,\,8,\,24,\,48,\,72\}$ h};
     \node (Utitle) at (-9,0) [rotate=90]{experiment conditions (inputs)};
-    \foreach \i in {1,...,5} \node (Ulabel\i) at (-8.5,8.4-2.66*\i) {$u_\i$};
+    \foreach \i in {1,...,4} \node (Ulabel\i) at (-8.5,8.4-3.3*\i) {$u_\i$};
   \end{tikzpicture}
-  \captionof{figure}{output trajectories per parameter sample member;
+  \caption{output trajectories per parameter sample member;
     to reduce the number of lines these trajectory lines are once
     again plotted for every 3534th
     ($2(\tau_{\text{int.},l}+\delta_\tau)$) parameter in the parameter
@@ -60,9 +83,10 @@ auto-correlation, the effective sampling speed is:
     measurement error estimation. The data is sparse (not all outputs
     were observed at all measurement instances. The model does not fit
     all data points.)\label{fig:osmpl}}
-\end{center}
+\end{figure}
 
-\begin{center}
+\begin{table}
+  \centering
   \begin{tabular}{rl}
     \toprule
     tuning duration& $1000$ points\\
@@ -72,19 +96,58 @@ auto-correlation, the effective sampling speed is:
     failed Likelihood evaluations \texttt{[CVODES]}&$16$\\
     \bottomrule
   \end{tabular}
-  \captionof{table}{Sample Properties.\label{tab:sp}}
-\end{center}
+  %\captionof{table}{Sample Properties.\label{tab:sp}}
+  \caption{Sample Properties.\label{tab:sp}}
+\end{table}
 
+\begin{figure}
+  \centering
+  \hspace*{-3cm}
+  \sffamily\tiny
+  \begin{tikzpicture}
+    \node (plot) {\input{SampleOutputs}};
+    \node (Ytitle) at (plot.north) {model outputs};
+    \foreach \i in {1,...,6} \node (Ylabel\i) at (-9.25+2.75*\i,7) {$y_\i$};
+    \node (Tlabel) at (plot.south) {time $t$ in h};
+    \node (Tdescription) [above of=Tlabel] {measurements were taken at $\{0.1,\,8,\,24,\,48,\,72\}$ h};
+    \node (Utitle) at (-9,0) [rotate=90]{experiment conditions (inputs)};
+    \foreach \i in {0,...,4} \node (Ulabel\i) at (-8.5,5.6-2.66*\i) {$u_\i$};
+  \end{tikzpicture}
+  \caption{Treating the data as absolute, the fit changes ($u_0$ is
+    the setup for the reference experiment). Some data points get an
+    improved fit, some system behaviour cannot be reproduced. Note
+    that this treatment of the data is incorrect and is done for
+    illustration purposes; we show the difference between fitting
+    absolute and relative data. To obtain these Trajectories, we have
+    used a different, uninformative, iid, Gaussian prior during
+    sampling. The resulting parameter sample is shown in
+    Figure~\ref{fig:AbsoluteSample}}
+  \label{fig:AbsoluteFit}
+\end{figure}
 
-% The sample has the following correlation between the parameters:
-% \begin{equation}
-%   \label{eq:corrcoef}
-%   C=
-%   \begin{pmatrix}
-%     \input{GolgiSMMALAcorrcoef}
-%   \end{pmatrix}\,.
-% \end{equation}
+\begin{figure}
+  \centering 
+  \input{GolgiSMMALAtikz}
+  \caption{The parameters obtained from the assumption that provided
+    data is absolute (molecule numbers or mols). Here an uninformative
+    prior was used.}
+  \label{fig:AbsoluteSample}
+\end{figure}
 
+\subsection{Alternative sampling approach}
+
+Just for demonstration purposes, we could ignore the source of the
+data and pretend, that the measurements are absolute (gauged). The
+reference experiment has been included as input line $u_0$. Although
+this is wrong, the problem size is the same and the model can still
+fit some of the data. Figure~\ref{fig:AbsoluteFit} shows this
+alternative fit. Note that the model cannot fit the dynamic behaviour
+in experiment $(u_3,y_4)$ and $(u_4,y_5)$ while it fits the data very
+well when arbitrary units, i.e. relative data are treated correctly
+(see Figure~\ref{fig:osmpl}).
+
+\subsection{Model Setup}
+\label{sec:model}
 \lstinputlisting[caption={Model},label={xml_model}]{ODEmodel11S26P4U.xml}
 
 \end{document}
