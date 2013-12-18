@@ -26,12 +26,12 @@
   This Supplement provides some illustration for the chosen model. It
   shows, how a parameter sample is related to a model fit. This model
   has been chosen as an example for a hard problem: the model is large
-  and does not fit all of the observations; the measurements are
-  sparse, uncertain, and are provided in arbitrary units. Note: The
-  reason for the missmatch will not be discussed. The data might have
-  been obtained under erroneous assumptions which are consequently not
-  reflected in the modeling setup or alternatively, the model is
-  incorrect.
+  and cannot fit all of the observations simultaneously; the
+  measurements are sparse, uncertain, and are provided in arbitrary
+  units. Note: The reason for the missmatch will not be discussed. The
+  data might have been obtained under erroneous assumptions which are
+  consequently not reflected in the modeling setup or alternatively,
+  the model is incorrect.
 \end{abstract}
 \section{Two different ways to sample the provided model}
 
@@ -40,25 +40,26 @@
   \input{sample}
   \caption{The Posterior Sample of size $N=1\times10^6$, as obtained
     from the \texttt{MCMC\_CLIB}; thinned out using the integrated
-    autocorrelation length $\tau_{\text{int.},l}=1516(250)$ (estimated
+    autocorrelation length $\tau_{\text{int.},l}=1520(250)$ (estimated
     using the log-posterior $l$ as observable). The red line indicates
     the maximum posterior estimate, while the green errorbars indicate
-    the used prior distribution (Gaussian). Here, we have incorporated
-    our prior knowledge about the parameter values in the prior
-    parameter density. Yet, we have chosen to let the prior span
-    several orders of magnitude.\label{fig:pc-sample}}
+    the used prior distribution (Gaussian). The colorpalette reflects
+    the value of the log-posterior for each sampled point.  Here, we
+    have incorporated our prior knowledge about the parameter values
+    in the prior parameter density. Yet, we have chosen to let the
+    prior span several orders of magnitude.\label{fig:pc-sample}}
 \end{figure}
 
-The sample was obtained in $t_{\text{s}}=267385$\,s. Considering the
-auto-correlation $\tau_{\text{int.},l}=1516(250)$, the effective
-sampling speed is:
+The sample was obtained in $t_{\text{s}}=267385$\,s (about
+$74$\,h). Considering the auto-correlation
+$\tau_{\text{int.},l}=1520(250)$, the effective sampling speed is:
 \begin{equation}
   \label{eq:speed}
   v=\frac{N}{2\tau_{\text{int.},l} t_{\text{s}}}=12(2)\times 10^{-4}\,\text{s}^{-1}\,.
 \end{equation}
 The properties recorded during sampling are summarised in
 Table~\ref{tab:sp}. The sample is plotted in
-Figure~\ref{fig:pc-sample} using parallel corrdinates (each sampled
+Figure~\ref{fig:pc-sample} using parallel coordinates (each sampled
 parameter vector is shown component wise, as a
 line). Figure~\ref{fig:osmpl} shows the output trajectories obtained
 from forward simulations using the sampled parameters. There is
@@ -92,7 +93,7 @@ partial agreement between model and data (black errorbars).
     tuning duration& $1000$ points\\
     target acceptance $a_0$&$0.50$\\
     observed acceptance $a$&$0.27$\\
-    auto-correlation length $\tau_{\text{int.},l}$&$1516(250)$\\
+    auto-correlation length $\tau_{\text{int.},l}$&$1520(250)$\\
     failed Likelihood evaluations \texttt{[CVODES]}&$16$\\
     \bottomrule
   \end{tabular}
@@ -129,22 +130,48 @@ partial agreement between model and data (black errorbars).
   \centering 
   \input{GolgiSMMALAtikz}
   \caption{The parameters obtained from the assumption that provided
-    data is absolute (molecule numbers or mols). Here an uninformative
-    prior was used.}
+    data is absolute (molecule numbers or mols). Here, an
+    uninformative prior was used.}
   \label{fig:AbsoluteSample}
 \end{figure}
 
 \subsection{Alternative sampling approach}
 
-Just for demonstration purposes, we could ignore the source of the
-data and pretend, that the measurements are absolute (gauged). The
-reference experiment has been included as input line $u_0$. Although
-this is wrong, the problem size is the same and the model can still
-fit some of the data. Figure~\ref{fig:AbsoluteFit} shows this
-alternative fit. Note that the model cannot fit the dynamic behaviour
-in experiment $(u_3,y_4)$ and $(u_4,y_5)$ while it fits the data very
-well when arbitrary units, i.e. relative data are treated correctly
-(see Figure~\ref{fig:osmpl}).
+As in the given example, it is often the case that observations
+$y_i(t_j,\theta,u_k)$ are reported in arbitrary units. However, we do
+not fit the unknown data scaling constant. We expect this scaling to
+be different when the experiment is repeated. In biological
+experiments this unknown scaling will reflect conditions like dilution
+of bacteria samples, exposure time for western blotting and similar,
+which does change with repetition. Therefore, we are not interested in
+the values of these scaling constants\footnote{see the mathematical
+  documentation for details on this topic}. To deal with this issue,
+we take the ratios between the observations and some reference
+experiment results, which are often called <<\emph{control}>> by
+biologists. This reference measurement is performed under identical
+observation conditions and has the same scaling; thus, the scaling
+cancels in the ratios. But, since the \emph{simulation} of this
+reference value using the model depends on the parameters
+$\rho=\exp(\theta)$, we have a parameter dependant scaling:
+\begin{equation}
+  \tilde y_{ijk}=\frac{y_i(t_j,\theta,u_k)}{y_i(t_j,\theta,u_0)}\,,
+\end{equation}
+where $u_0$ characterises the reference conditions. This results in
+dramatically different fits. This method effectively eliminates all
+observation parameters and results in a smaller MCMC problem than
+trying to estimate the observational scaling.
+
+Just for demonstration purposes, we ignore the source of the data and
+pretend, that the measurements are absolute (gauged). The reference
+experiment has been included as input line $u_0$. Although this is
+wrong, the problem size is the same and the model can still fit some
+of the data, but note that different data entries are fitted well
+compared to the relative data fit. Figure~\ref{fig:AbsoluteFit} shows
+this alternative fit. Specifically the model cannot fit the dynamic
+behaviour in experiment $(u_3,y_4)$ and $(u_4,y_5)$ which it could
+before, see Figure~\ref{fig:osmpl}. Most problematic is the fact that
+the parameter fit cannot be reproduced by repeating the data
+acquisition experiment; the scaling will be different.
 
 \subsection{Model Setup}
 \label{sec:model}

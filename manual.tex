@@ -10,7 +10,7 @@
 \usepackage{varioref}
 \usepackage{array} % for tables with <{} and >{} column modifiers
 \usepackage{booktabs}
-\usepackage{caption}
+\usepackage{capt-of}
 \usepackage{multicol}
 \usepackage{listingsutf8}
 \lstset{language=bash,
@@ -58,10 +58,9 @@
   reference data also depends on the unknown parameters, the ratio has
   to be taken every time the model is used in the likelihood
   function. The example shows how to model unknown but stable initial
-  conditions of perturbation experiments. Note, that this manual does
+  conditions of perturbation experiments. Note that this manual does
   not provide documentation on the mathematical structure of the
-  sampler. This has to be done in the given order. The provided
-  Makefile might be useful when setting up a new model
+  sampler. 
 \end{abstract}
 \tableofcontents
 \section{Setup}
@@ -86,7 +85,7 @@ are the unknown sampling parameters $\theta$, where $m$ is defined
 implicitely by setting a prior density in the \CLIB{} configuration
 file, see Section~\vref{sec:configuration}. The remaining parameters
 will be used as known input parameters. These inputs model the (known)
-experimental conditions, they differ from oen experiment to another.
+experimental conditions, they differ from one experiment to another.
 
 To model output functions, we use the \texttt{Function} element, while
 fluxes can be defined using the \texttt{Expression} element.
@@ -123,11 +122,11 @@ parameters. Most of the mandatory elements can be described as blocks
 of numerical entries or matrices. This type of entry is done using
 tags of the form \texttt{[entry\_type][/entry\_type]}:
 \begin{description}
-\item[\texttt{[time]}] a row of timepoints at which measurements have
+\item[\texttt{[time]}] A row of timepoints at which measurements have
   occured. This array has a meaning for all state variables. If some
   outputs were not observed at some time instance, this is noted in
   the \texttt{data} tag. The closing tag is \texttt{[/time]}.
-\item[\texttt{[reference\_input]}] this block contains a row of known
+\item[\texttt{[reference\_input]}] This block contains a row of known
   input parameters which define the model conditions corresponding to
   the reference experiment. If this block is present, then the
   experiment is considered relative. The closing tag is
@@ -141,10 +140,11 @@ tags of the form \texttt{[entry\_type][/entry\_type]}:
   performed experiments. Each experiment is associated with an input
   vector. Columns represent the output functions defined in the
   \texttt{vf} file. Rows represent measurement time points and
-  experiment conditions (see Table~\ref{tab:datastrcuture}): measurements observed at
-  timepoint $t_i$ ($i=0,\dots,T-1$) for input $u_j$ ($j=0,\dots,N-1$)
-  will be in row $k=jT+i$ ($k=0,\dots,NT-1$). Example, with $T$ time
-  points and $N$ experimental conditions, we get:
+  experiment conditions (see Table~\ref{tab:datastrcuture}):
+  measurements observed at timepoint $t_i$ ($i=0,\dots,T-1$) for input
+  $u_j$ ($j=0,\dots,N-1$) will be in row $k=jT+i$
+  ($k=0,\dots,NT-1$). For example, with $T$ time points and $N$
+  experimental conditions, we get:
   \begin{multicols}{2}
   \begin{tabular}{>{$}c<{$} >{$}r<{$} >{$}l<{$}}
     \toprule
@@ -181,7 +181,7 @@ tags of the form \texttt{[entry\_type][/entry\_type]}:
   it represents $\mu$ and has one row per unknown parameter. It is
   very important to set $\mu$ to values that make sense in
   \emph{logarithmic} space.
-\item[\texttt{[prior\_inverse\_cov]}] this tag contains the $\Sigma$
+\item[\texttt{[prior\_inverse\_cov]}] This tag contains the $\Sigma$
   parameter of the Gaussian prior. It can also be written like this:
   \texttt{[prior\_inverse\_covariance]}.
 \end{description}

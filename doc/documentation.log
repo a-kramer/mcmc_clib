@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.1415926-2.4-1.40.13 (TeX Live 2012) (format=pdflatex 2013.5.21)  18 DEC 2013 21:29
+This is pdfTeX, Version 3.1415926-2.4-1.40.13 (TeX Live 2012) (format=pdflatex 2013.5.21)  18 DEC 2013 21:36
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -702,11 +702,11 @@ File: t1lmtt.fd 2009/10/30 v1.6 Font defs for Latin Modern
 )
 [2] [3] (./documentation.aux) ) 
 Here is how much of TeX's memory you used:
- 14282 strings out of 495011
- 254629 string characters out of 3180541
+ 14278 strings out of 495011
+ 254598 string characters out of 3180541
  340487 words of memory out of 3000000
  16995 multiletter control sequences out of 15000+200000
- 74886 words of font info for 229 fonts, out of 3000000 for 9000
+ 74663 words of font info for 226 fonts, out of 3000000 for 9000
  14 hyphenation exceptions out of 8191
  65i,15n,71p,410b,260s stack positions out of 5000i,500n,10000p,200000b,50000s
 {/usr/share/texmf-dist/fonts/enc/dvips/lm/lm-ec.
@@ -719,7 +719,7 @@ lic/amsfonts/cm/cmr10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm
 m/lmtt10.pfb></usr/share/texmf-dist/fonts/type1/urw/palatino/uplb8a.pfb></usr/s
 hare/texmf-dist/fonts/type1/urw/palatino/uplr8a.pfb></usr/share/texmf-dist/font
 s/type1/urw/palatino/uplri8a.pfb>
-Output written on documentation.pdf (3 pages, 121525 bytes).
+Output written on documentation.pdf (3 pages, 121498 bytes).
 PDF statistics:
  59 PDF objects out of 1000 (max. 8388607)
  43 compressed objects within 1 object stream

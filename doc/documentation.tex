@@ -60,7 +60,7 @@ example of $C$ is:
   \end{pmatrix}\,.
 \end{equation}
 Assuming that $C$ is always scaled columnwise equally in this way,
-i.e.  with unknown coefficients $c_i$, we can eliminate these unknown
+ with unknown coefficients $c_i$, we can eliminate these unknown
 (but uninteresting) elements by taking ratios between experiments:
 \begin{align}
   \tilde y_i(t_j;\theta,u_b) &=
@@ -151,7 +151,7 @@ sensitivity analysis with respect to the nominal model parameters
 $\rho$:
 \begin{align}
   \dot x&=f(t,x;\rho,w)\,,& \rho_j&=\exp(\theta_j)\,,\nonumber\\
-  y(t;\rho,w)&=C x(t;\rho,w)\,,& b&=1,\dots,l\,,\nonumber\\
+  y(t;\rho,w)&=C x(t;\rho,w)\,,\nonumber\\
   \tilde y_i(t;\rho,w)&=\frac{y_i(t;\rho,w)}{y_i(t,\rho,u_0)}\,,\label{eq:ode_rho}\\
   \tilde S_i^{~j}(t;\rho,w)&=\partial_{\rho_j} \tilde y_i(t;\rho,w)\,,\nonumber\\
   \partial_{\theta_j}\tilde y(t;\rho,w)&=\frac{\partial\tilde y_i(t;\rho,w)}{\partial\rho_j}\frac{\partial \rho_j}{\partial\theta_j}\nonumber\\
@@ -169,7 +169,8 @@ for any input $w$ and consequently:
     S_i^{~j}(t;\rho,w)}{\partial\rho_k}\rho_k\rho_j + \tilde
   S_i^{~j}(t;\rho,w)\rho_k\delta_{jk}\,.\nonumber
 \end{align}
-Note that it is possible to use \texttt{Expression}s such as this in vfgen models:
+Note that it is possible to use \texttt{Expression}s such as this in
+\textsc{vfgen} models:
 \begin{center}
 \begin{verbatim}
 <Parameter Name="\theta_1" DefaultValue="0">
