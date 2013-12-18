@@ -40,7 +40,7 @@ modifications to the system, e.g. inhibitions to some of the
 interactions. The known time derivative of $x(t)$ defines the model:
 \begin{align}
   \dot x &= f(t,x;\theta,u)\,,\\
-  y(t_j;\theta,u)&=C x(t_j;\theta,u) + \epsilon_i(t_j)\,,
+  y(t_j;\theta,u)&=C x(t_j;\theta,u) + \epsilon(t_j)\,,
 \end{align}
 where $y(t;\theta,u)\in\mathbb{R}^k$ is the output of the measurement
 process, which is recorded at $T$ time points. The linear output
@@ -59,9 +59,9 @@ example of $C$ is:
     0&c_2&-c_2\\
   \end{pmatrix}\,.
 \end{equation}
-Assuming that $C$ is columnwise equally scaled in this way, with unknown
-coefficients $c_i$, we can eliminate these unknwon elements by taking
-rowwise ratios:
+Assuming that $C$ is always scaled columnwise equally in this way,
+i.e.  with unknown coefficients $c_i$, we can eliminate these unknown
+(but uninteresting) elements by taking ratios between experiments:
 \begin{align}
   \tilde y_i(t_j;\theta,u_b) &=
   \frac{y_i(t_j,\theta,u_b)}{y_i(t_j;\theta,u_0)}\,,
