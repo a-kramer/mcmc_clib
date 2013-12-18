@@ -20,9 +20,9 @@
 \begin{document}
 \maketitle
 \begin{abstract}
-  This text provides some documentation and mathematical
-  considerations and definitions for the implementation of the
-  Riemannian Manifold Hamiltonian Monte Carlo (RMHMC) algorithm.
+  This text provides illuminates the mathematical considerations and
+  definitions for the implementation of the Riemannian Manifold
+  Hamiltonian Monte Carlo (RMHMC) algorithm in the software package.
 \end{abstract}
 
 \section{Model Specifications}
@@ -40,29 +40,39 @@ modifications to the system, e.g. inhibitions to some of the
 interactions. The known time derivative of $x(t)$ defines the model:
 \begin{align}
   \dot x &= f(t,x;\theta,u)\,,\\
-  y(t_j;\theta,u)&=C(\zeta) x(t_j;\theta,u) + \epsilon_i(t_j)\,,
+  y(t_j;\theta,u)&=C x(t_j;\theta,u) + \epsilon_i(t_j)\,,
 \end{align}
-where $y(t;\theta,u)\in\mathbb{R}^k$ is the output of the measurement process,
-which is recorded at $T$ time points. The linear transformation
-$C\in\mathbb{R}^{k\times n}$ models the capabilities of the
-measurement setup. The measurements are obscured by the noise process
-$\epsilon_i(t_j)\sim\mathcal{N}(0,\sigma^2_{ij})$ ($i=1,\dots,n;
-j=1,\dots,T$). In addition, the observations might be done in unknown
-units, such that a reference Experiment might be needed to interpret
-any numerical values of $y(t_j)$. To deal with this problem, $C$ may
-contain unknown scaling parameters $\zeta$, to be estimated via MCMC. Another
-approach, which instead eliminates the scaling parameters, is to take
-the ratios:
+where $y(t;\theta,u)\in\mathbb{R}^k$ is the output of the measurement
+process, which is recorded at $T$ time points. The linear output
+function, characterised by the real matrix $C\in\mathbb{R}^{k\times
+  n}$, models the capabilities of the measurement setup. The elements
+of this matrix are typically unknown. The measurements are obscured by
+the noise process $\epsilon_i(t_j)\sim\mathcal{N}(0,\sigma^2_{ij})$
+($i=1,\dots,n; j=1,\dots,T$). In addition, the observations might be
+done in unknown units, such that a reference Experiment might be
+needed to interpret any numerical values of $y(t_j)$. A typical
+example of $C$ is:
+\begin{equation}
+  C=
+  \begin{pmatrix}
+    c_1&2c_1&0\\
+    0&c_2&-c_2\\
+  \end{pmatrix}\,.
+\end{equation}
+Assuming that $C$ is columnwise equally scaled in this way, with unknown
+coefficients $c_i$, we can eliminate these unknwon elements by taking
+rowwise ratios:
 \begin{align}
-  \tilde y_i(t_j;\theta,u_b) &= \frac{y_i(t_j,\theta,u_b)}{y_i(t_j;\theta,u_0)}\,,
+  \tilde y_i(t_j;\theta,u_b) &=
+  \frac{y_i(t_j,\theta,u_b)}{y_i(t_j;\theta,u_0)}\,,
 \end{align}
 where $u_b\in\mathbb{R}^l (b=1,\dots,n_{\text{E}})$ is any particular
 experimental setup ($n_{\text{E}}$ is the number of experiments) and
-$u_0$ is the reference experiment setup.  In consequence we have to
-recalculate the standard deviation of $\tilde y_i(t_j;\theta,u_b)$
-from the standard deviations\footnote{we append the input indeces
-  $b,0$ to the standard deviation symbol for distinction} of
-${y_i(t_j,\theta,u_b)}$ and ${y_i(t_j;\theta,u_0)}$:
+$u_0$ characterises the \emph{reference} experiment setup.  In
+consequence we have to recalculate the standard deviation of $\tilde
+y_i(t_j;\theta,u_b)$ from the standard deviations\footnote{we append
+  the input indeces $b,0$ to the standard deviation symbol for
+  distinction} of ${y_i(t_j,\theta,u_b)}$ and ${y_i(t_j;\theta,u_0)}$:
 \begin{align}
   \label{eq:std_y}
   \tilde\sigma_{i,j}\approx&\left|\frac{\partial\tilde
@@ -124,11 +134,19 @@ We take the derivative of~\eqref{eq:fyS} for any $u_b\in\{u_1,\dots,u_{n_{\text{
 \section{Sampling in logarithmic Space}
 \label{sec:rho}
 
-Ode models are often unstable for negative parameters, which is
-definitely the case for biological models.  Sampling in logarithmic
-space $\theta$ and passing $\rho=\exp(\theta)$ to the ode system fixes
-the problem. But it also means that we have to modify the above
-expressions. Because \texttt{vfgen} and \texttt{cvodes} provide
+Ode models typically have a stable sign structure and so parameters
+usually must retain a fixed sign. In some cases the model becomes
+unstable after certain sign flips, which is definitely the case for
+biological models. But even if not some models will lose their
+validity when the sign structure changes. For this reason we require
+the sign structure to be given explicitely in the model definition and
+pass only positive values as parameters to the model.
+
+Sampling in logarithmic space $\theta$ and passing $\rho=\exp(\theta)$
+to the ode system has the additional benefit of covering several
+orders of magnitude more efficiently. Unfortunately, this choice
+implies that we have to modify the expressions for the model
+sensitivities. \textsc{vfgen} and \textsc{cvodes} provide
 sensitivity analysis with respect to the nominal model parameters
 $\rho$:
 \begin{align}
@@ -151,18 +169,18 @@ for any input $w$ and consequently:
     S_i^{~j}(t;\rho,w)}{\partial\rho_k}\rho_k\rho_j + \tilde
   S_i^{~j}(t;\rho,w)\rho_k\delta_{jk}\,.\nonumber
 \end{align}
-Note that it is possible to use \texttt{Expression}s in vfgen models:
+Note that it is possible to use \texttt{Expression}s such as this in vfgen models:
 \begin{center}
 \begin{verbatim}
 <Parameter Name="\theta_1" DefaultValue="0">
 <Expression Name="rho_1" Formula="exp(theta_1)"/>
 \end{verbatim}
 \end{center}
-to convert the parameters from logspace, then use these expressions to
-define fluxes. But, since \texttt{Expression}s need to be recalculated
-at every step this is very wasteful. On the other hand, \textsc{vfgen}
-will then compute correct sensitivities ($dx_i/d\theta_j$). But, to
-save calls to the exp function, the software does this conversion
-before calling the solver and instead transforms the sensitivities as
-described here.
+They can be used to convert the parameters from logspace, then use
+these expressions to define fluxes. But, since \texttt{Expression}s
+need to be recalculated at every step this is very wasteful. On the
+other hand, \textsc{vfgen} will then compute correct sensitivities
+($dx_i/d\theta_j$). To save calls to the exp function, the software
+does this conversion before calling the solver and transforms the
+sensitivities as described here.
 \end{document}
