@@ -1,4 +1,5 @@
 \documentclass[english]{scrartcl}
+\usepackage{lmodern}
 \usepackage[osf]{mathpazo}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
@@ -16,9 +17,11 @@
 \addtokomafont{captionlabel}{\bfseries}
 \addtokomafont{title}{\rmfamily}
 
-\author{Andrei Kramer}
-\title{Analysis of a large Sample}
-\subject{MCMC\_CLIB}
+\author{Kramer, Andrei and Stathopoulos, Vasileios}
+\title{MCMC\_CLIB -- An
+advanced MCMC sampling package for ode models}
+\subject{Supplement A}
+\date{\today}
 
 \begin{document}
 \maketitle
@@ -33,6 +36,23 @@
   consequently not reflected in the modeling setup or alternatively,
   the model is incorrect.
 \end{abstract}
+\section{Notation of uncertainty}
+Throughout all documentation we use this notation for errors:
+\begin{align}
+  \label{eq:errn}
+  v&=1.71(12):=1.71 \pm 0.12\, & a&=42(3)\times 10^6:=(42 \pm 3)\times 10^6\,,
+\end{align}
+where we write only the significant digits of the error estimate. The
+magnitude of the error is communicated by rounding the reported number
+to the appropriate number of digits, example $a=\alpha \pm \delta$
+\begin{align}
+  \alpha&=3.14159265\,\text{kg}\,,&\delta&=0.00014672\,\text{kg}\,,\\
+  \text{will be reported as}\quad a&=3.14159(15)\,\text{kg}\,,\\
+  \text{as opposed to}\quad a&=(3.14159\pm0.00015)\,\text{kg}\,.
+\end{align}
+This is shorter, better suited for tables and has advantages when
+reporting numbers with units of measurement.
+
 \section{Two different ways to sample the provided model}
 
 \begin{figure}
@@ -40,7 +60,7 @@
   \input{sample}
   \caption{The Posterior Sample of size $N=1\times10^6$, as obtained
     from the \texttt{MCMC\_CLIB}; thinned out using the integrated
-    autocorrelation length $\tau_{\text{int.},l}=1520(250)$ (estimated
+    autocorrelation length $\tau_{\text{int.},l}=340(30)$ (estimated
     using the log-posterior $l$ as observable). The red line indicates
     the maximum posterior estimate, while the green errorbars indicate
     the used prior distribution (Gaussian). The colorpalette reflects
@@ -52,10 +72,10 @@
 
 The sample was obtained in $t_{\text{s}}=267385$\,s (about
 $74$\,h). Considering the auto-correlation
-$\tau_{\text{int.},l}=1520(250)$, the effective sampling speed is:
+$\tau_{\text{int.},l}=340(30)$, the effective sampling speed is:
 \begin{equation}
   \label{eq:speed}
-  v=\frac{N}{2\tau_{\text{int.},l} t_{\text{s}}}=12(2)\times 10^{-4}\,\text{s}^{-1}\,.
+  v=\frac{N}{2\tau_{\text{int.},l} t_{\text{s}}}=5.50(49)\times 10^{-3}\,\text{s}^{-1}\,.
 \end{equation}
 The properties recorded during sampling are summarised in
 Table~\ref{tab:sp}. The sample is plotted in
@@ -91,9 +111,9 @@ partial agreement between model and data (black errorbars).
   \begin{tabular}{rl}
     \toprule
     tuning duration& $1000$ points\\
-    target acceptance $a_0$&$0.50$\\
-    observed acceptance $a$&$0.27$\\
-    auto-correlation length $\tau_{\text{int.},l}$&$1520(250)$\\
+    target acceptance $a_0$&$0.500$\\
+    observed acceptance $a$&$0.498$\\
+    auto-correlation length $\tau_{\text{int.},l}$&$340(30)$\\
     failed Likelihood evaluations \texttt{[CVODES]}&$16$\\
     \bottomrule
   \end{tabular}
