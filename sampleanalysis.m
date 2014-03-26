@@ -1,3 +1,9 @@
+#!/usr/bin/octave -q
+
+# this octave script loads the sample and plots it in parallel
+# coordinates (parameter index versus value). Please replace the
+# filename with the actual sample filename.
+
 m=26;
 filename="sample/ODEmodel11S26P4U_2013-09-12T11h44m.double"
 
@@ -11,15 +17,15 @@ plot(D(m+1,:),"-;log posterior;");
 
 #pause;
 
-LP=zeros(3,1);
-tau=zeros(2,1);
+LP=zeros(3,1); % log posterior
+tau=zeros(2,1); % auto-correlation length
 
 [LP(1),LP(2),LP(3),tau_int(1),tau_int(2)]=UWerr(D(m+1,:)');
 tau_int
 skip=ceil(2*sum(tau_int));
 selection=skip:skip:n; # remove some points at the beginning of the sample
 Theta=D(1:m,selection);  # just in case they are low probability points
-logP=D(m+1,selection);   # i.e. the markov chain did not converge to the posterior yet
+logP=D(m+1,selection);
 clear D;
 
 function [FH]=pcplot(Sample,P,varargin)
