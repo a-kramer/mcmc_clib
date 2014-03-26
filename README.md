@@ -128,5 +128,5 @@ so:
      sample=fread(FID,[n+1,sample_size],"double");
      fclose(FID);
 ```
-should work fine.
+should work fine. In fact, the sources include octave scripts that read and process the sample. 
 
