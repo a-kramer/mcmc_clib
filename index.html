@@ -1,0 +1,199 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>mcmc clib by a-kramer</title>
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+    <script src="javascripts/respond.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <!--[if lt IE 8]>
+    <link rel="stylesheet" href="stylesheets/ie.css">
+    <![endif]-->
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+  </head>
+  <body>
+      <div id="header">
+        <nav>
+          <li class="fork"><a href="https://github.com/a-kramer/mcmc_clib">View On GitHub</a></li>
+          <li class="downloads"><a href="https://github.com/a-kramer/mcmc_clib/zipball/master">ZIP</a></li>
+          <li class="downloads"><a href="https://github.com/a-kramer/mcmc_clib/tarball/master">TAR</a></li>
+          <li class="title">DOWNLOADS</li>
+        </nav>
+      </div><!-- end header -->
+
+    <div class="wrapper">
+
+      <section>
+        <div id="title">
+          <h1>mcmc clib</h1>
+          <p>a c program for simplified manifold MALA sampling of ODE model parameters</p>
+          <hr>
+          <span class="credits left">Project maintained by <a href="https://github.com/a-kramer">a-kramer</a></span>
+          <span class="credits right">Hosted on GitHub Pages &mdash; Theme by <a href="https://twitter.com/michigangraham">mattgraham</a></span>
+        </div>
+
+        <h1>
+<a name="mcmc_clib" class="anchor" href="#mcmc_clib"><span class="octicon octicon-link"></span></a>mcmc_clib</h1>
+
+<p>is a C program for simplified manifold MALA sampling of ODE model parameters.</p>
+
+<h1>
+<a name="installation-instructions" class="anchor" href="#installation-instructions"><span class="octicon octicon-link"></span></a>Installation Instructions</h1>
+
+<p>install the following dependencies (libraries)</p>
+
+<pre><code>External library dependencies
+    For ODE: 
+        Sundials 2.4.0 or later
+    For MCMC:
+        GSL 1.15 or later
+        CBLAS
+
+For VFGEN:
+    CLN 1.3.2 or later
+    GiNaC 1.6.2 or later
+    mini XML 2.6 or later
+</code></pre>
+
+<p>for example, on ubuntu, you can install the following packages:</p>
+
+<pre><code>libmxml-dev 
+libmxml1 
+libatlas-base-dev 
+libatlas3gf-base
+libginac-dev 
+libcln-dev 
+libsundials-serial-dev 
+libsundials-cvode1
+libsundials-cvodes2
+libatlas-dev
+libgsl0-dev
+</code></pre>
+
+<p>to satisfy these dependencies. </p>
+
+<p>inspect the Makefile.</p>
+
+<p>type</p>
+
+<pre><code>make -B
+</code></pre>
+
+<p>note that the option "-B" will compile everything, even if the
+binaries appear up to date. It is not necessary once you have compiled
+the binaries once for your architecture.</p>
+
+<h1>
+<a name="usage" class="anchor" href="#usage"><span class="octicon octicon-link"></span></a>Usage</h1>
+
+<pre><code>./ode_rmhmc_binary -l ./model_esens.so -c ./data.cfg -b -o sampleND.double -s ${sample_size} &gt; ttr.out
+
+-b 
+      switches output mode to binary, otherwise text mode (printf)
+      Burn-In Sample will always be printed to stdout
+
+-c data.cfg
+      configuration (data, reference data, inputs, output function, prior, etc.)
+
+-l ode_model.so
+      shared library file
+
+-s N
+          sample size, Burn-In will be $((sample_size/10))
+
+-h 
+          prints help
+</code></pre>
+
+<p>The configuration file includes the measurement time specifications,
+the data, the standard deviation of observations and the
+hyperparameters \mu and \Sigma^{-1} of the Gaussian prior.  Optionally
+some of the sampling parameters can be set there for convenience.</p>
+
+<p>The following Parameters can be set in the cfg file:</p>
+
+<table>
+<thead><tr>
+<th align="right">Property</th>
+<th align="left">Setting</th>
+</tr></thead>
+<tbody>
+<tr>
+<td align="right">sample size</td>
+<td align="left"><code>sample_size=[integer]</code></td>
+</tr>
+<tr>
+<td align="right">step size</td>
+<td align="left"><code>step_size=[double]</code></td>
+</tr>
+<tr>
+<td align="right">target acceptance</td>
+<td align="left"><code>acceptance=[0, 1]</code></td>
+</tr>
+<tr>
+<td align="right">sample file name</td>
+<td align="left"><code>output=[string]</code></td>
+</tr>
+<tr>
+<td align="right">initial condition time</td>
+<td align="left"><code>t0=[double]</code></td>
+</tr>
+</tbody>
+</table><p>These definitions should not have spaces before the '=' sign since
+everything before = is checked for matches with option names (i.e.<br><code>« t0 »=0.0;</code> is not the same as <code>«t0»=0.0;</code> ).</p>
+
+<h1>
+<a name="hints" class="anchor" href="#hints"><span class="octicon octicon-link"></span></a>Hints</h1>
+
+<p>it might be helpful to specify the sample size like this in bash: </p>
+
+<pre><code>   -s $((2**14))
+   -s $((10**6))
+</code></pre>
+
+<p>because <code>1e6</code> or <code>1E6</code> will not work. (the sample size is an integer).</p>
+
+<h1></h1>
+
+<p>Output of parameters sample {p} will have the following structure (in
+binary and text mode; though, in binary mode there are no newlines):</p>
+
+<p>sampling is done in logarithmic space, so use exp(p[i]) if you want to simulate trajectories</p>
+
+<p>columns: parameters and log-posterior
+   rows: Markov Chain members (i.e. the sample members)</p>
+
+<pre><code>   Line 
+   L1   p[0] p[1] p[2] ... p[n-1] log-Posterior {\n}
+   L2   p[0] p[1] p[2] ... p[n-1] log-Posterior {\n}
+   L3   p[0] p[1] p[2] ... p[n-1] log-Posterior {\n}
+   L4   p[0] p[1] p[2] ... p[n-1] log-Posterior {\n}
+   ...
+   L{sample_size}      ...
+</code></pre>
+
+<p>you can load the binary sample using an fread type function.</p>
+
+<p>e.g. in octave: <code>[VAL, COUNT] = fread (FID, SIZE, PRECISION,SKIP, ARCH)</code></p>
+
+<p>so:</p>
+
+<pre><code>     FID=fopen("MySample.double","r");
+     sample=fread(FID,[n+1,sample_size],"double");
+     fclose(FID);
+</code></pre>
+
+<p>should work fine. In fact, the sources include octave scripts that read and process the sample. </p>
+      </section>
+
+    </div>
+    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
+    
+  </body>
+</html>
