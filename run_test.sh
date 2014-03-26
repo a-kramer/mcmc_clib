@@ -27,4 +27,4 @@ $0
  sampling now ...
 EOF
 
-bin/ode_smmala  -b -o $SampleFile -l $Model.so -c $Model.cfg 1> $Model.out 2> $Model.err
+bin/ode_smmala  -b -o $SampleFile -l ./$Model.so -c ./$Model.cfg 1> $Model.out 2> $Model.err
