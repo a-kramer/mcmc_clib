@@ -74,11 +74,14 @@ hyperparameters \mu and \Sigma^{-1} of the Gaussian prior.  Optionally
 some of the sampling parameters can be set there for convenience.
 
 The following Parameters can be set in the cfg file:
-sample size            : sample_size=[integer]
-step size              : step_size=[double]
-target acceptance      : acceptance=[0, 1]
-sample file name       : output=[string]
-initial condition time : t0=[double]
+
+Property     |  Setting
+-----------: | :------------
+sample size  |  ```sample_size=[integer]```
+step size    |  ```step_size=[double]```
+target acceptance | ```acceptance=[0, 1]```
+sample file name  | ```output=[string]```
+initial condition time | ```t0=[double]```
 
 These definitions should not have spaces before the '=' sign since
 everything before = is checked for matches with option names (i.e.  
