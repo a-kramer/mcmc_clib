@@ -1,5 +1,6 @@
 ---
 title: gentoo
+layout: default
 ---
 
 
