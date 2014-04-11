@@ -1,3 +1,8 @@
+---
+title: gentoo
+---
+
+
 Gentoo Installation Instructions
 ================================
 
