@@ -50,14 +50,16 @@ the binaries once for your architecture.
 Usage
 =====
 
-	./ode_rmhmc_binary -l ./model_esens.so -c ./data.cfg -b -o sampleND.double -s ${sample_size} > ttr.out
+	./ode_rmhmc_binary -l ./model_esens.so -c ./data.cfg -b \
+                           -o sampleND.double -s ${sample_size} > ttr.out
 
 	-b 
 	      switches output mode to binary, otherwise text mode (printf)
 	      Burn-In Sample will always be printed to stdout
 
 	-c data.cfg
-	      configuration (data, reference data, inputs, output function, prior, etc.)
+	      configuration (data, reference data, inputs, output function,
+              prior, etc.)
 
 	-l ode_model.so
 	      shared library file
