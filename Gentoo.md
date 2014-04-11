@@ -9,9 +9,13 @@ Gentoo Installation Instructions
 
 some of the dependencies are available in Portage (though you might
 want to install packages from overlays) 
-``` emerge dev-libs/mini-xml \
-sci-libs/gsl \ sci-libs/cblas-reference \ sci-libs/cln \
-sci-mathematics/ginac ``` 
+``` 
+emerge dev-libs/mini-xml \
+       sci-libs/gsl \
+       sci-libs/cblas-reference \
+       sci-libs/cln \
+       sci-mathematics/ginac 
+``` 
 
 Some of these packages might not have been declared stable in the
 required version yet. In this case you will have to add them to the
