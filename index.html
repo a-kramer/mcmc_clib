@@ -91,6 +91,12 @@ well as the sampler and a shared library for the model.</p>
 binaries appear up to date. This Option is not necessary after this
 one initial run (if it is successful).</p>
 
+To check whether the program works, execute <tt>run_test.sh</tt> in the
+shell. If it terminates immediately, then check the file ending in
+<tt>err</tt>. Otherwise the test run will proceed to reproduce the
+sampling we used in the application note. The results can be found
+in <tt>sample/${modelname}-${date}.double</tt>.
+
 <h1>
 <a name="usage" class="anchor" href="#usage"><span class="octicon octicon-link"></span></a>Usage</h1>
 
