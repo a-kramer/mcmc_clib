@@ -72,18 +72,24 @@ libatlas-dev
 libgsl0-dev
 </code></pre>
 
-<p>to satisfy these dependencies. </p>
+<p>to satisfy these dependencies. This should work for all
+ubuntu <a href="http://www.ubuntu.com/about/about-ubuntu/derivatives">derivatives</a>
+and ubuntu based distributions like <a href="http://linuxmint.com/">linux Mint</a> and <a href="http://elementaryos.org/">elementary OS</a>.</p>
 
-<p>inspect the Makefile.</p>
+Here are some further Hints for Installation on <a href="Gentoo">Gentoo linux</a>, <a href="Arch">Arch linux</a> and <a href="OpenSUSE">OpenSUSE</a>
 
-<p>type</p>
+<p>Next, inspect the Makefile. You can use it as a starting point for
+your own project. The bundled Makefile builds the vfgen executable as
+well as the sampler and a shared library for the model.</p>
+
+<p>Afterwards, use the Makefile by typing</p>
 
 <pre><code>make -B
 </code></pre>
 
-<p>note that the option "-B" will compile everything, even if the
-binaries appear up to date. It is not necessary once you have compiled
-the binaries once for your architecture.</p>
+<p>Note that the option "-B" will compile everything, even if the
+binaries appear up to date. This Option is not necessary after this
+one initial run (if it is successful).</p>
 
 <h1>
 <a name="usage" class="anchor" href="#usage"><span class="octicon octicon-link"></span></a>Usage</h1>
