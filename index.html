@@ -94,8 +94,9 @@ one initial run (if it is successful).</p>
 <h1>
 <a name="usage" class="anchor" href="#usage"><span class="octicon octicon-link"></span></a>Usage</h1>
 
-<pre><code>./ode_rmhmc_binary -l ./model_esens.so -c ./data.cfg -b \
-                              -o sampleND.double -s ${sample_size} &gt; ttr.out
+<pre><code>
+./ode_smmala -l ./model.so -c ./data.cfg -b \
+             -o sample.double -s $((3*10**4)) &gt; logfile.out
 
 -b 
       switches output mode to binary, otherwise text mode (printf)
@@ -105,22 +106,25 @@ one initial run (if it is successful).</p>
       configuration (data, reference data, inputs, output function, 
       prior, etc.)
 
--l ode_model.so
+-l model.so
       shared library file
 
 -s N
-          sample size, Burn-In will be $((sample_size/10))
+      sample size
 
 -h 
-          prints help
+      prints help
 </code></pre>
 
-<p>The configuration file includes the measurement time specifications,
-the data, the standard deviation of observations and the
-hyperparameters \mu and \Sigma^{-1} of the Gaussian prior.  Optionally
-some of the sampling parameters can be set there for convenience.</p>
+<p>The configuration file includes the measurement time
+specifications, the data, the standard deviation of observations and
+the hyperparameters &mu; and &Sigma;^{-1} of the Gaussian prior.
+Optionally some of the sampling parameters can be set there for
+convenience. Edit the bundled configuration file to suit your
+needs. If your data is not relative, delete the reference data block;
+the program will handle this case correctly.</p>
 
-<p>The following Parameters can be set in the cfg file:</p>
+<p>The following Parameters can be set in the configuration file:</p>
 
 <table>
 <thead><tr>
