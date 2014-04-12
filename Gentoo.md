@@ -25,7 +25,7 @@ required version yet. In this case you will have to add them to the
 Unfortunately the sundials ode solvers are not available through
 portage. You can manually install them after downloading
 [CVODES](http://computation.llnl.gov/casc/sundials/download/download.html). Gain
-```root``` priviliges, extract and follow the instructions. It should
+root priviliges, extract and follow the instructions. It should
 be very easy to install cvodes.
 
 You might want to install [ATLAS](http://math-atlas.sourceforge.net/)
