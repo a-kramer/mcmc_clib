@@ -9,6 +9,7 @@ Gentoo Installation Instructions
 
 some of the dependencies are available in Portage (though you might
 want to install packages from overlays) 
+
 ``` 
 emerge dev-libs/mini-xml \
        sci-libs/gsl \
