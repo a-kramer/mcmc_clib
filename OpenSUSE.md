@@ -6,6 +6,7 @@ layout: default
 # Installation Instructions for OpenSUSE
 
 Use either zypper or YaST to install the following packages:
+
 ~~~
 mxml
 mxml-devel

@@ -6,6 +6,7 @@ layout: default
 # Installation Instructions for Arch Linux
 
 You will need to install the following packages:
+
 ~~~
 mxml
 cln
