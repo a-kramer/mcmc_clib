@@ -2,13 +2,14 @@ mcmc_clib
 =========
 
 is a C program for simplified manifold MALA sampling of ODE model parameters.
-
+This project has a gh page: [http://a-kramer.github.io/mcmc_clib/](http://a-kramer.github.io/mcmc_clib/), with more detailed instructions.
 
 Installation Instructions
 =========================
 
 install the following dependencies (libraries)
-```
+
+~~~
 External library dependencies
 	For ODE: 
 		Sundials 2.4.0 or later
@@ -20,7 +21,8 @@ For VFGEN:
 	CLN 1.3.2 or later
 	GiNaC 1.6.2 or later
 	mini XML 2.6 or later
-```
+~~~
+
 for example, on ubuntu, you can install the following packages:
 
     libmxml-dev 
@@ -37,21 +39,19 @@ for example, on ubuntu, you can install the following packages:
 
 to satisfy these dependencies. 
 
-inspect the Makefile.
-
-type
+Then, inspect the Makefile. Once you are satisfied, type
 ```
 make -B
 ```
-note that the option "-B" will compile everything, even if the
-binaries appear up to date. It is not necessary once you have compiled
-the binaries once for your architecture.
+note that the option ```-B``` will compile everything, even if the
+binaries appear up to date. This option is not necessary once you have compiled
+the binaries a first time successfully.
 
 Usage
 =====
 
-	./ode_rmhmc_binary -l ./model_esens.so -c ./data.cfg -b \
-                           -o sampleND.double -s ${sample_size} > ttr.out
+	./ode_smmala -l ./model.so -c ./data.cfg -b \
+                     -o sample.double -s ${sample_size} > ttr.out
 
 	-b 
 	      switches output mode to binary, otherwise text mode (printf)
@@ -61,11 +61,11 @@ Usage
 	      configuration (data, reference data, inputs, output function,
               prior, etc.)
 
-	-l ode_model.so
+	-l model.so
 	      shared library file
 
 	-s N
-              sample size, Burn-In will be $((sample_size/10))
+              sample size
 
 	-h 
               prints help
