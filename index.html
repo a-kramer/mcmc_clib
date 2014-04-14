@@ -38,6 +38,16 @@
           <span class="credits right">Hosted on GitHub Pages &mdash; Theme by <a href="https://twitter.com/michigangraham">mattgraham</a></span>
         </div>
 
+<p>
+The bundle contains a user manual (pdf) and a mathematical documentation (pdf).
+</p>
+This software's characteristics:
+<ul>
+<li> accepts unnormalized data and reference data (arbitrary units)</li>
+<li> command line tool</li>
+<li> samples in logarithmic space</li>
+<li> multivariate Gaussian prior densities only (in logspace)</li>
+</ul>
 <!--        <h1>
 -->
 <h1>
@@ -58,9 +68,13 @@ For VFGEN:
     mini XML 2.6 or later
 </code></pre>
 
-<p>for example, on ubuntu, you can install the following packages:</p>
+If you only have a user account without root priviliges, then ask your
+system administrator for help.
 
-<pre><code>libmxml-dev 
+<p>For example, on ubuntu, you can install the following packages using <code>apt-get</code> or the ubuntu software center:</p>
+
+<pre><code>
+libmxml-dev 
 libmxml1 
 libatlas-base-dev 
 libatlas3gf-base
@@ -73,26 +87,26 @@ libatlas-dev
 libgsl0-dev
 </code></pre>
 
-<p>to satisfy these dependencies. This should work for all
+<p>This should work for all
 ubuntu <a href="http://www.ubuntu.com/about/about-ubuntu/derivatives">derivatives</a>
 and ubuntu based distributions like <a href="http://linuxmint.com/">linux Mint</a> and <a href="http://elementaryos.org/">elementary OS</a>.</p>
 
 Here are some further Hints for Installation on <a href="Gentoo">Gentoo linux</a>, <a href="Arch">Arch linux</a> and <a href="OpenSUSE">OpenSUSE</a>
 
-<p>Next, inspect the Makefile. You can use it as a starting point for
-your own project. The bundled Makefile builds the vfgen executable as
+<p>Next, inspect the <a href="https://www.gnu.org/software/make/">Makefile</a>. You can use it as a starting point for
+your own project. The bundled Makefile builds the <a href="http://www.warrenweckesser.net/vfgen/">vfgen</a> executable as
 well as the sampler and a shared library for the model.</p>
 
 <p>Afterwards, use the Makefile by typing</p>
 
-<pre><code>make -B
-</code></pre>
+<pre><code>make -B</code></pre>
 
-<p>Note that the option "-B" will compile everything, even if the
-binaries appear up to date. This Option is not necessary after this
+<p>Note that the option <code>-B</code> will compile the sampler,
+vfgen, the provided example model (to a shared library); even if the
+binaries appear up to date. This option is not necessary after this
 one initial run (if it is successful).</p>
 
-To check whether the program works, execute <tt>run_test.sh</tt> in the
+To check whether the program works, execute <tt>./run_test.sh</tt> in the
 shell. If it terminates immediately, then check the file ending in
 <tt>err</tt>. Otherwise the test run will proceed to reproduce the
 sampling we used in the application note. The results can be found
@@ -161,25 +175,21 @@ the program will handle this case correctly.</p>
 </tr>
 </tbody>
 </table><p>These definitions should not have spaces before the '=' sign since
-everything before = is checked for matches with option names (i.e.<br><code>« t0 »=0.0;</code> is not the same as <code>«t0»=0.0;</code> ).</p>
+everything before '=' is checked for matches with option names (i.e.<br><code>« t0 »=0.0;</code> is not the same as <code>«t0»=0.0;</code> ).</p>
 
 <h1>
 <a name="hints" class="anchor" href="#hints"><span class="octicon octicon-link"></span></a>Hints</h1>
 
 <p>it might be helpful to specify the sample size like this in bash: </p>
-
-<pre><code>   -s $((2**14))
+<pre><code>   
+   -s $((2**14))
    -s $((10**6))
 </code></pre>
-
 <p>because <code>1e6</code> or <code>1E6</code> will not work. (the sample size is an integer).</p>
-
-<h1></h1>
-
-<p>Output of parameters sample {p} will have the following structure (in
+<p>Output of parameters sample <code>{p}</code> will have the following structure (in
 binary and text mode; though, in binary mode there are no newlines):</p>
 
-<p>sampling is done in logarithmic space, so use exp(p[i]) if you want to simulate trajectories</p>
+<p>sampling is done in logarithmic space, so use <code>exp(p[i])</code> if you want to simulate trajectories</p>
 
 <p>columns: parameters and log-posterior
    rows: Markov Chain members (i.e. the sample members)</p>
