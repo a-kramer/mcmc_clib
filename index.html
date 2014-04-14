@@ -73,8 +73,7 @@ system administrator for help.
 
 <p>For example, on ubuntu, you can install the following packages using <code>apt-get</code> or the ubuntu software center:</p>
 
-<pre><code>
-libmxml-dev 
+<pre><code>libmxml-dev 
 libmxml1 
 libatlas-base-dev 
 libatlas3gf-base
@@ -115,8 +114,7 @@ in <tt>sample/${modelname}-${date}.double</tt>.
 <h1>
 <a name="usage" class="anchor" href="#usage"><span class="octicon octicon-link"></span></a>Usage</h1>
 
-<pre><code>
-./ode_smmala -l ./model.so -c ./data.cfg -b \
+<pre><code>./ode_smmala -l ./model.so -c ./data.cfg -b \
              -o sample.double -s $((3*10**4)) &gt; logfile.out
 
 -b 
@@ -181,8 +179,7 @@ everything before '=' is checked for matches with option names (i.e.<br><code>«
 <a name="hints" class="anchor" href="#hints"><span class="octicon octicon-link"></span></a>Hints</h1>
 
 <p>it might be helpful to specify the sample size like this in bash: </p>
-<pre><code>   
-   -s $((2**14))
+<pre><code>   -s $((2**14))
    -s $((10**6))
 </code></pre>
 <p>because <code>1e6</code> or <code>1E6</code> will not work. (the sample size is an integer).</p>
