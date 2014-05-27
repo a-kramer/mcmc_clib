@@ -1,3 +1,14 @@
+#!/usr/bin/octave -q
+
+# this octave script file illustrates how to obtain the models state
+# trajectories from a Monte Carlo posterior parameter sample
+#
+# the data points are in arbitrary units, so we scale the reported
+# values by the ones from the reference experiment. To do this, we
+# need the mathematical experiment structure. We copy it from the
+# model's .cfg file and translate everything into something that
+# octave understands.
+
 T=[0.1,8,24,48,72];
 
 ref_u=[0  0  0  0];
