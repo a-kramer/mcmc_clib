@@ -11,6 +11,8 @@
 \usepackage{capt-of}
 \usepackage{listings}
 \usepackage{booktabs}
+\usepackage[backend=bibtex8]{biblatex}
+\addbibresource{SampleAnalysisReferences.bib}
 \lstset{language=xml,numbers=left,stepnumber=5,numberstyle=\ttfamily\color{Purple},basicstyle=\small\ttfamily,keywordstyle=\itshape,stringstyle=\color{Bittersweet},morekeywords={Expression,Function,Parameter,VectorField,StateVariable}}
 
 \setcapindent{0em}
@@ -52,6 +54,27 @@ to the appropriate number of digits. For example, given $a=\alpha \pm \delta$
 \end{align}
 This is shorter, better suited for tables and has advantages when
 reporting numbers with units of measurement.
+
+\section{Calculation of uncertainty}
+\label{sec:UWerr}
+
+All analysis of uncertainty was performed in accordance with~\cite{UWerr}
+using the matlab script provided by the author. The used method
+calculates a naïve variance of an estimate $a$ and increases it
+appropriately using the auto-correlation length
+$\tau_{\text{int.},a} \ge 0.5$. This quantity is calculated by the script in a
+numerically stable way using the correlation function $\Gamma$
+(\cite{UWerr}, Eq. 2). A notion of effective sample size and effective
+sampling speed can also be derived from the concepts described in this
+publication. The resulting estimate of uncertainty can be compared to
+a simple standard deviation of an uncorrelated sample with the same
+effective size
+\begin{equation}
+  \label{eq:Neff}
+  N_{\text{eff.}}=\frac{N}{2\tau_{\text{int.},a}}\,,
+\end{equation}
+where $N$ is the actual sample size. For uncorrelated samples, these
+two numbers match.
 
 \section{Two different ways to sample the provided model}
 
@@ -193,7 +216,10 @@ before, see Figure~\ref{fig:osmpl}. Most problematic is the fact that
 the parameter fit cannot be reproduced by repeating the data
 acquisition experiment; the scaling will be different.
 
-\subsection{Model Setup}
+\printbibliography
+
+\appendix
+\section{Model Setup}
 \label{sec:model}
 \lstinputlisting[caption={Model},label={xml_model}]{ODEmodel11S26P4U.xml}
 
