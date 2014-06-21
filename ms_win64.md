@@ -40,7 +40,7 @@ compile [vfgen](http://www.warrenweckesser.net/vfgen/) you will need
 [CLN](http://www.ginac.de/CLN/) and
 [minixml](http://sourceforge.net/projects/minixml/). Since you don't
 have a package manager, you will have to do it manually. To do that,
-follow the instructions on the respective webpages:
+follow the instructions on the respective web pages:
 
 1. [CLN](http://www.ginac.de/CLN/)
 2. [minixml](http://sourceforge.net/projects/minixml/)
@@ -57,7 +57,7 @@ that you read the manual of the shell you are using (most likely
 [bash](http://www.gnu.org/software/bash/)).
 
 When you have compiled those libraries following the instructions in
-the INSTALL files, change into the man folder of our software and run
+the INSTALL files, change into the main folder of our software and run
 the ```make -B``` command to recompile everything.
 
 If the compilation process returns no errors you can now run the test
