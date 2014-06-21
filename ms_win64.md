@@ -41,9 +41,11 @@ compile [vfgen](http://www.warrenweckesser.net/vfgen/) you will need
 [minixml](http://sourceforge.net/projects/minixml/). Since you don't
 have a package manager, you will have to do it manually. To do that,
 follow the instructions on the respective webpages:
+
 1. [CLN](http://www.ginac.de/CLN/)
 2. [minixml](http://sourceforge.net/projects/minixml/)
 3. [ginac](http://www.ginac.de/)
+
 in that order. download the appropriate source archives and extract
 them in your home folder inside the cygwin installation. Then start
 the cygwin terminal and read the instructions in each of the INSTALL
