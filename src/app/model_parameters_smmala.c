@@ -14,12 +14,38 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, int D, int N, int F,  
    * column index: 0,...,T*U-1
    * D=cat(2,Data(u_1),Data(u_2),...,Data(u_U))
    */
-  //int N=omp->solver->odeModel->N;
+  
+  gsl_vector **y,**fy;
+  gsl_matrix **yS,**fyS;
+
   int P=omp->solver->odeModel->P;
   printf("# allocating model parameters with: N=%i,\tP=%i,\tT=%i.\n",N,P,T);
 
+  /* initialise gsl_vectors and matrices these will hold the
+   * differential equation data for each experimental condition c and
+   * time point t_j, like this: y[c*T+j]=gsl_vector(N)
+   */ 
+  
+  omp->y=(gsl_vector*) malloc(sizeof(gsl_vector*)*C*T);
+  omp->fy=(gsl_vector*) malloc(sizeof(gsl_vector*)*C*T);
+  omp->yS=(gsl_matrix*) malloc(sizeof(gsl_matrix*)*C*T);
+  omp->fyS=(gsl_matrix*) malloc(sizeof(gsl_matrix*)*C*T);
+
+    y=omp->y;
+   fy=omp->fy;
+   yS=omp->yS;
+  fyS=omp->fyS;
+
+  for (i=0;i<C*T;i++)   y[i]=gsl_vector_alloc(N);
+  for (i=0;i<C*T;i++)  fy[i]=gsl_vector_alloc(N);
+  for (i=0;i<C*T;i++)  yS[i]=gsl_matrix_alloc(D,N);
+  for (i=0;i<C*T;i++) fyS[i]=gsl_matrix_alloc(D,N);
+
+  
   omp->beta=1.0;
-  omp->y=gsl_vector_alloc(N);
+
+  
+  gsl_vector_alloc(N);
   omp->reference_y=gsl_matrix_alloc(T,N);
   omp->output_C=gsl_matrix_alloc(F,N);
 
@@ -59,7 +85,14 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, int D, int N, int F,  
 }
 
 int ode_model_parameters_free(ode_model_parameters *omp){
-  gsl_vector_free(omp->y);
+  int CT=omp->Data->size1;
+  int i;
+  for (i=0;i<CT;i++) gsl_vector_free(omp->y[i]);
+  for (i=0;i<CT;i++) gsl_vector_free(omp->fy[i]);
+  for (i=0;i<CT;i++) gsl_matrix_free(omp->yS[i]);
+  for (i=0;i<CT;i++) gsl_matrix_free(omp->fyS[i]);
+
+
   gsl_matrix_free(omp->reference_y);
   gsl_matrix_free(omp->output_C);
   gsl_vector_free(omp->exp_x_u);
@@ -72,7 +105,6 @@ int ode_model_parameters_free(ode_model_parameters *omp){
   gsl_matrix_free(omp->sdData);
 
   // outputs
-  gsl_vector_free(omp->fy);
   gsl_matrix_free(omp->reference_fy);
 
   // inputs
@@ -87,9 +119,7 @@ int ode_model_parameters_free(ode_model_parameters *omp){
 
   // sensitivities
   gsl_matrix_free(omp->yS0);
-  gsl_matrix_free(omp->yS);
   gsl_matrix_free(omp->reference_yS);
-  gsl_matrix_free(omp->fyS);
   gsl_matrix_free(omp->reference_fyS);
   gsl_matrix_free(omp->oS);
 

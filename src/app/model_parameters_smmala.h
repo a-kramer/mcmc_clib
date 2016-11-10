@@ -16,11 +16,11 @@ typedef struct {
   gsl_matrix *sdData; // standard deviation of the datapoints
   int data_is_relative; // boolean: measurements are relative to a
 			// reference measurement
-
+  int normalisation_method;
   gsl_vector *dl; // log likelihood gradient
-  gsl_vector *y;
+  gsl_vector **y;
   gsl_matrix *reference_y; // has to be of size T × Y
-  gsl_vector *fy; // measurement model output functions
+  gsl_vector **fy; // measurement model output functions
   gsl_matrix *reference_fy;// has to be of size T × F
   gsl_matrix *input_u; /* inputs applied in the lab: perturbations to
 			*  the model (double precision condition
@@ -33,12 +33,12 @@ typedef struct {
   gsl_vector *prior_tmp_a; // some memory allocation ..
   gsl_vector *prior_tmp_b; // .. for calculation buffers
   gsl_vector *prior_mu; // prior parameter: the medians of log normal distributions;
-  gsl_matrix *prior_inverse_cov; // prior parameter: the inverse covariance in log space;
+  gsl_matrix *prior_inverse_cov; // prior parameter: the inverse covariance in log space (where the prior is a Gaussian distribution);
 
   gsl_matrix *yS0;
-  gsl_matrix *yS;
+  gsl_matrix **yS;
   gsl_matrix *reference_yS; // has to be of size T × N²
-  gsl_matrix *fyS;
+  gsl_matrix **fyS;
   gsl_matrix *reference_fyS;// has to be of size T × F²
   gsl_matrix *oS; // observational sensitivities
 

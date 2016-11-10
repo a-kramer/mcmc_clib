@@ -35,6 +35,18 @@
 #include "../mcmc/smmala.h"
 #include "../ode/ode_model.h"
 
+// sampling actions 
+#define SMPL_RESUME 1
+#define SMPL_FRESH 0
+#define SMPL_RESUME_TUNE 2
+
+// normalisation methods
+#define DATA_NORMALISED_BY_TIMEPOINT 1
+#define DATA_NORMALISED_BY_REFERENCE 2
+#define DATA_NORMALISED_BY_STATE_VAR 3
+
+
+
 /* Auxiliary structure with working storage and aditional parameters for
  * a multivariate normal model with known covariance matrix and zero mean.
  *
@@ -46,7 +58,7 @@ typedef struct {
 	char init;
 } mvNormParams;
  */
-int gsl_printf(char *name, void *gsl_thing, int is_matrix){
+int gsl_printf(const char *name, void *gsl_thing, int is_matrix){
   gsl_matrix *A;
   gsl_vector *x;
   
@@ -64,7 +76,9 @@ int gsl_printf(char *name, void *gsl_thing, int is_matrix){
   return GSL_SUCCESS;
 }
 
+int TimeSeriesNormalisation(){
 
+}
 
 /* Calculates the unormalised posterior fx, the gradient dfx, the Fisher information FI 
  * and the partial derivatives of the Fisher information matrix for a multivariate normal.
@@ -85,6 +99,106 @@ int Posterior(const double* x,  void* model_params, double* fx,
                      double* dfx, double* FI);
 
 
+int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, double *FI){
+
+  /* Here, the ode integration is done
+   * 
+   * «l» is a scalar, the return slot of the log-likelihood
+   * dl is the parameter gradient of the log likelihood (size=D)
+   *
+   * cvode returns functions «fy» of the state variables «y».
+   * fy=C*y;
+   * Note P is the cvode related number of ode parameters
+   * while D is the number of MCMC related parameters
+   * P=D+U
+   * where U is the number of input parameters
+   * y[i]: i=0,...,D-1
+   * u[i]: i=0,...,U-1
+   * cvode sees:
+   * p[i]: i=0,...,D-1,D,...,P-1
+   *         yyyyyyyyy,uuuuuuuuu
+   *
+   * FI has to be initialized with zeros(D,D)
+   */
+  int i,j,k,f,c,u,T,C,F,P,U,N;
+  int D=mp->D;
+  realtype tout;
+  ode_model *model;
+  ode_solver *solver;
+  double diff;
+  gsl_vector *y,*fy;
+  gsl_matrix *yS,*fyS;
+  gsl_vector *t;
+  int iy;
+
+  t=mp->t;
+  solver=mp->solver;
+  model=solver->odeModel;
+  T=t->size;  
+  C=mp->input_u->size1;  
+  U=mp->input_u->size2;
+  P=(mp->D)+U; // P=D+U
+  l[0]=0;
+  N=ode_model_getN(model);
+  F=ode_model_getF(model);
+  //  printf("[L] D=%i\tF=%i\tU=%i\tC=%i\tT=%i\tP=%i\n",D,F,U,C,T,P);
+
+  
+      
+  
+  for (c=0; c<C; c++){// loop over different experimental conditions
+    // write inputs into the ode parameter vector    
+    for (u=0;u<U;u++) gsl_vector_set(mp->exp_x_u,D+u,gsl_matrix_get(mp->input_u,c,u));
+
+    ode_solver_reinit(solver, mp->t0, 0, N,
+		      mp->exp_x_u->data,
+		      mp->exp_x_u->size);
+    
+    ode_solver_reinit_sens(solver, mp->yS0->data, P, N);
+    for (i=0; i < T; i++){
+      y=mp->y[c*T+i];
+      fy=mp->fy[c*T+i];
+      yS=mp->yS[c*T+i];
+      fyS=mp->fyS[c*T+i];
+
+      int CVerror =  ode_solver_solve(solver, gsl_vector_get(t,i), y->data, &tout);
+      if (CVerror) {
+	fprintf(stderr, "ODE solver failed with ERROR = %i.\n",CVerror);
+	// return a rejection message; the Likelihood is not defined for this argument;
+	return GSL_EDOM;
+      }
+      // get sensitivities and output function values for the calculated ODE solutions
+      if (ode_model_has_funcs(model)) {
+	ode_solver_get_func(solver, tout, y->data, fy->data);
+      }
+      else {
+	error("ode model has no functions");
+      }
+      
+      if (ode_model_has_sens(model)){
+	ode_solver_get_sens(solver, tout, yS->data);
+	if (ode_model_has_funcs_sens(model)){
+	  ode_solver_get_func_sens(solver, tout, y->data, yS->data, fyS->data);
+	} // end if has func sens
+      } // end if has sens
+      else{
+	error("ode model has no sensitivities.");
+      }	
+      /* normalise ode solution to reflect data
+       * normalisation. Normalisation will be performed "in place",
+       * i.e. the ODE solution will be overwritten
+       */
+      switch (mp->normalisation_method){
+      case DATA_NORMALISED_BY_TIMEPOINT: break;
+      case DATA_NORMALISED_BY_REFERENCE: break;
+      case DATA_NORMALISED_BY_STATE_VAR: break;
+      default:
+      }
+    } // end for loop for time points
+  } //end for different experimental conditions (i.e. inputs)
+  return GSL_SUCCESS;
+}
+
 int Likelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
 
   /* Here, the ode integration is done
@@ -98,11 +212,11 @@ int Likelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
    * while D is the number of MCMC related parameters
    * P=D+U
    * where U is the number of input parameters
-   * x[i]: i=0,...,D-1
+   * y[i]: i=0,...,D-1
    * u[i]: i=0,...,U-1
    * cvode sees:
    * p[i]: i=0,...,D-1,D,...,P-1
-   *         xxxxxxxxx,uuuuuuuuu
+   *         yyyyyyyyy,uuuuuuuuu
    *
    * FI has to be initialized with zeros(D,D)
    */
@@ -112,7 +226,7 @@ int Likelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
   ode_model *model;
   ode_solver *solver;
   double diff;
-  double *y,*fy,*yS,*fyS;
+  gsl_vector *y,*fy,*yS,*fyS;
   gsl_vector_view ref_fy_ti;
   gsl_vector *rfyi,*t;
   int iy;
@@ -257,6 +371,8 @@ int print_help(){
   printf("\t\t\tode_model.so is a shared library containing the CVODE functions of the model.\n\n");
   printf("-s $N\n");
   printf("\t\t\t$N sample size. default N=10.\n\n");
+  printf("-r, --resume\n");
+  printf("\t\t\tresume from last sampled MCMC point. Only the last MCMC position is read from the file named «resume.double». Everything else can be changed.")
   printf("-o ./output_file\n");
   printf("\t\t\tfile for output. Output can be binary.\n\n");
   printf("-b\n");
@@ -265,6 +381,7 @@ int print_help(){
   printf("\t\t\ttarget acceptance value (markov chain will be tuned for this acceptance).\n\n");
   printf("--seed $seed\n");
   printf("\t\tset the gsl pseudo random number generator seed to $seed.\n\n");
+  
   //  printf("test for 1/Inf=%f\n",1.0/INFINITY);
   return EXIT_SUCCESS;
 }
@@ -282,10 +399,13 @@ int main (int argc, char* argv[]) {
   char *x_sample_file=NULL; // filename for sample output x(t,p)
   char *y_sample_file=NULL; // filename for sample output y(t,p)
   FILE *oFile; // will be the file named «sample_file»
+  FILE *rFile; // last sampled value will be written to this file
+  char resume_filename[128]="resume.double";
   int output_is_binary=0;
   double seed = 1;
   int Tuning = 1;
-
+  int sampling_action=SMPL_FRESH;
+  size_t resume_count;
   gsl_error_handler_t *gsl_error_handler; 
   gsl_error_handler = gsl_set_error_handler_off();
 
@@ -300,6 +420,7 @@ int main (int argc, char* argv[]) {
 
   for (i=0;i<argc;i++){
     if (strcmp(argv[i],"-c")==0) cfilename=argv[i+1];
+    else if (strcmp(argv[i],"--resume")==0 || strcmp(argv[i],"-r")==0) sampling_action=SMPL_RESUME;
     else if (strcmp(argv[i],"-l")==0) strcpy(cnf_options.library_file,argv[i+1]);
     else if (strcmp(argv[i],"-n")==0) Tuning=0;
     else if (strcmp(argv[i],"-s")==0) cnf_options.sample_size=strtol(argv[i+1],NULL,0);
@@ -388,8 +509,20 @@ int main (int argc, char* argv[]) {
   */
   mcmc_kernel* kernel = smmala_kernel_alloc(omp.D, cnf_options.initial_stepsize, model, seed, cnf_options.target_acceptance);
   printf("# initializing MCMC.\n");
+
   /* initialise MCMC */
   for (i=0;i<omp.D;i++) init_x[i]=gsl_vector_get(omp.prior_mu,i);
+  if (sampling_action==SMPL_RESUME){
+    rFile=fopen(resume_filename,"r");
+    if (rFile==NULL) {
+      printf("Could not open resume file. Starting from: ");
+      gsl_printf("prior mean" omp.prior_mu,0);
+    } else {
+      size_t resume_count=fread(init_x, sizof(double), D, rFile);
+      fclose(rFile);
+      if (resume_count!=D) error("Reading from resume file returned a wrong number of values.");
+    }
+  }
   mcmc_init(kernel, init_x);
 
   printf("# test evaluation of Posterior function.\n");
@@ -418,7 +551,7 @@ int main (int argc, char* argv[]) {
 
 
   size_t BurnInSamples = 7 * (int) sqrt(cnf_options.sample_size);
-  if (Tuning == 1){
+  if (sampling_action==SMPL_FRESH){
     fprintf(stdout, "# Burn-in phase.\n");
     /* "find mode" Loop */
     for (it = 0; it < BurnInSamples; it++) {
@@ -430,13 +563,13 @@ int main (int argc, char* argv[]) {
       /* print sample */
       mcmc_print_sample(kernel, stdout);
 		
-      /* Addapt RMHMC parameters every 100 burn-in samples */
+      /* Addapt MCMC parameters every 100 burn-in samples */
       if ( ((it + 1) % 100) == 0 ) {
 	acc_rate = (double)acc_c / (double)100;
 	fprintf(stdout, "# Iteration: %li\tAcceptance rate: %.2g\t",it, acc_rate);
-	/* print RMHM log and statistics */
+	/* print log and statistics */
 	mcmc_print_stats(kernel, stdout);
-	/* adapt RMHMC parameters */
+	/* adapt parameters */
 	mcmc_adapt(kernel, acc_rate);
 	acc_c = 0;
       }
@@ -450,22 +583,20 @@ int main (int argc, char* argv[]) {
       acc_c += acc;
       /* print sample */
       mcmc_print_sample(kernel, stdout);
-		
-      /* Addapt RMHMC parameters every 100 burn-in samples */
       if ( ((it + 1) % 100) == 0 ) {
 	acc_rate = (double)acc_c / (double)100;
 	fprintf(stdout, "# Iteration: %li\tAcceptance rate: %.2g\t",it, acc_rate);
-	/* print RMHM log and statistics */
+	/* print log and statistics */
 	mcmc_print_stats(kernel, stdout);
-	/* adapt RMHMC parameters */
+	/* adapt  parameters */
 	mcmc_adapt(kernel, acc_rate);
 	acc_c = 0;
       }
     }
     fprintf(stdout, "\n# Burn-in complete, sampling from the posterior.\n");
   }
-	
-  /* Posterior loop */
+
+  /* full Posterior loop */
   omp.beta=1.0;
   size_t Samples = cnf_options.sample_size;
   clock_t ct=clock();
@@ -489,6 +620,9 @@ int main (int argc, char* argv[]) {
       acc_c = 0;
     }
   }
+  rFile=fopen(resume_filename,"w");
+  mcmc_write_sample(kernel, rFile);
+  fclose(rFile)
   ct=clock()-ct;
   fclose(oFile);
   printf("# computation time spend sampling: %f s\n",((double) ct)/((double) CLOCKS_PER_SEC));
