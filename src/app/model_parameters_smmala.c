@@ -30,22 +30,22 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, int D, int N, int F,  
   omp->fy=(gsl_vector*) malloc(sizeof(gsl_vector*)*C*T);
   omp->yS=(gsl_matrix*) malloc(sizeof(gsl_matrix*)*C*T);
   omp->fyS=(gsl_matrix*) malloc(sizeof(gsl_matrix*)*C*T);
-
+  omp->oS=(gsl_matrix*) malloc(sizeof(gsl_matrix*)*C*T);
+  
     y=omp->y;
    fy=omp->fy;
    yS=omp->yS;
   fyS=omp->fyS;
 
   for (i=0;i<C*T;i++)   y[i]=gsl_vector_alloc(N);
-  for (i=0;i<C*T;i++)  fy[i]=gsl_vector_alloc(N);
-  for (i=0;i<C*T;i++)  yS[i]=gsl_matrix_alloc(D,N);
-  for (i=0;i<C*T;i++) fyS[i]=gsl_matrix_alloc(D,N);
-
+  for (i=0;i<C*T;i++)  fy[i]=gsl_vector_alloc(F);
+  for (i=0;i<C*T;i++)  yS[i]=gsl_matrix_alloc(P,N);
+  for (i=0;i<C*T;i++) fyS[i]=gsl_matrix_alloc(P,F);
+  for (i=0;i<C*T;i++)  oS[i]=gsl_matrix_alloc(D,F);
   
   omp->beta=1.0;
 
   
-  gsl_vector_alloc(N);
   omp->reference_y=gsl_matrix_alloc(T,N);
   omp->output_C=gsl_matrix_alloc(F,N);
 
@@ -75,23 +75,25 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, int D, int N, int F,  
   // sensitivities
 
   omp->yS0=gsl_matrix_calloc(P,N); //yS0=zeros(P,N);
-  omp->yS=gsl_matrix_alloc(P,N);
+  //omp->yS=gsl_matrix_alloc(P,N);
   omp->reference_yS=gsl_matrix_alloc(T*P,N);
-  omp->fyS=gsl_matrix_alloc(P,F);
+  //omp->fyS=gsl_matrix_alloc(P,F);
   omp->reference_fyS=gsl_matrix_alloc(T*P,F);
-  omp->oS=gsl_matrix_alloc(P,F);
+  //omp->oS=gsl_matrix_alloc(P,F);
 
   return EXIT_SUCCESS;
 }
 
 int ode_model_parameters_free(ode_model_parameters *omp){
-  int CT=omp->Data->size1;
+  int C=omp->input_u->size1;
+  int T=omp->t->size;
+  int CT=C*T;
   int i;
   for (i=0;i<CT;i++) gsl_vector_free(omp->y[i]);
   for (i=0;i<CT;i++) gsl_vector_free(omp->fy[i]);
   for (i=0;i<CT;i++) gsl_matrix_free(omp->yS[i]);
   for (i=0;i<CT;i++) gsl_matrix_free(omp->fyS[i]);
-
+  for (i=0;i<CT;i++) gsl_matrix_free(omp->oS[i]);
 
   gsl_matrix_free(omp->reference_y);
   gsl_matrix_free(omp->output_C);
@@ -121,7 +123,7 @@ int ode_model_parameters_free(ode_model_parameters *omp){
   gsl_matrix_free(omp->yS0);
   gsl_matrix_free(omp->reference_yS);
   gsl_matrix_free(omp->reference_fyS);
-  gsl_matrix_free(omp->oS);
+  //gsl_matrix_free(omp->oS);
 
   return EXIT_SUCCESS;
  

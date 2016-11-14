@@ -1,8 +1,8 @@
 /*
  *  ode_smmala.c
  *
- *  Copyright (C) 2012,2013 Vassilios Stathopoulos stathv@gmail.com, Andrei
- *  Kramer andrei.kramer@ist.uni-stuttgart.de
+ *  Copyright (C) 2012,2013,2015,2016 Vassilios Stathopoulos stathv@gmail.com, Andrei
+ *  Kramer andrei.kramer@scilifelab.se
  *
  *	This program is free software: you can redistribute it and/or modify
  *	it under the terms of the GNU General Public License as published by
@@ -20,6 +20,25 @@
  *
  */
 
+
+/* Nomenclature: some variables are not self-descriptive. Here we
+ * mostly adhere to CVODE's variable names: y is the numerical
+ * solution to an initial value problem (IVP). The IVP has unknown
+ * parameters k=exp(x).  Here, x is the MCMC sampling
+ * variable. Sampling is done in log-space. So, exp(x) is passed to
+ * the IVP as parameters. The model has internal "Expressions" which
+ * remain unnamed here and output functions (measurable quantites),
+ * which are named fy. Both y and fy have sensitivities with respect
+ * to the model parameters (and sampling parameters) yS=dy(t)/dk and
+ * similarly for fyS. Some variables are converted "in place", so
+ * their interpretation might change slightly during intermediate
+ * steps.
+ *
+ * In the realm of systems biology, the typical variable names are: 
+ * x_i - state variables of the ODE model
+ * k_j - parameters of the model
+ * These terminologies might be mixed up in the comments [TODO: clean up comments]
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,10 +60,9 @@
 #define SMPL_RESUME_TUNE 2
 
 // normalisation methods
+#define DATA_NORMALISED_BY_REFERENCE 0
 #define DATA_NORMALISED_BY_TIMEPOINT 1
-#define DATA_NORMALISED_BY_REFERENCE 2
-#define DATA_NORMALISED_BY_STATE_VAR 3
-
+#define DATA_NORMALISED_BY_STATE_VAR 2
 
 
 /* Auxiliary structure with working storage and aditional parameters for
@@ -76,9 +94,154 @@ int gsl_printf(const char *name, void *gsl_thing, int is_matrix){
   return GSL_SUCCESS;
 }
 
-int TimeSeriesNormalisation(){
+/* Normalisation information: quantities are normalised in place:
+ * NORMALISATION_TYPE: fy_i ← normalisation_function(fy_i,fy_j)
+ * DATA_NORMALISED_BY_REFERENCE: fy_i(t_j,k,u)←fy_i(t_j,k,u)/fy_i(t_j,k,reference_u)
+ * DATA_NORMALISED_BY_TIMEPOINT: fy_i(t_j,k,u)←fy_i(t_j,k,u)/fy_i(t_l,k,u) given l
+ * DATA_NORMALISED_BY_STATE_VAR: fy_i1(t_j,k,u)←fy_i1(t_j,k,u)/fy_i2(t_l,k,u) given i1 i2 and l
+ * DATA_NORMALISED_BY_?:
+ */
 
+
+/* Note that all initial retrun values from CVODES are with respect to
+ * the model's parameters k=exp(x), while we require sensitivities
+ * with respect to x. Therefore, chain rule factors appear in the 
+ * below calculations: dk(x)/dx = k(x); df(k(x))/d(x) = df/dk dk/dx = df/dk * k
+ * 
+ */
+int normalise_by_reference(ode_model_parameters *mp){
+  /*  normalisation by control experiment each data-set (T×N array) is
+   *  normalised by the same reference set.  The reference data-set
+   *  represents nominal system conditions (e.g. wild-type cells,
+   *  etc.). The different data sets differ in the experimental
+   *  conditions. Different conditions manifest themselves by
+   *  different input-vector values:
+   *            Condition_1 :     u:=[u{1,1},…,u{1,U}]
+   *            Condition_2 :     u:=[u{2,1},…,u{2,U}]
+   *            ...
+   *            Condition_C :     u:=[u{C,1},…,u{C,U}]
+   *  Reference Confition   : ref_u:=[ref_u{1},…,ref_u{U}]
+   */
+  int c,i,j,k;
+  int C=mp->input_u->size1;
+  int T=mp->t->size1;
+  int F=mp->y[0]->size2;
+  int D=mp->D;
+  double output_sensitivity=0;
+  gsl_vector **y,**fs;   // arrays with index structure y(t_j,u_k)=y[c*T+j]
+  gsl_matrix **yS,**fyS; //
+  gsl_vector *ref_fy;
+  gsl_matrix *ref_fyS;
+
+  ref_fy=mp->reference_fy;
+  ref_fyS=mp->reference_fyS;
+  
+  y=mp->y;
+  fy=mp->fy;
+  yS=mp->yS;
+  fyS=mp->fyS;
+  for (c=0;c<C;c++){
+    for (j=0;j<T;j++) {
+      //      gsl_vector_div(y[c*T+j],y[c*T+t0]);
+      for (k=0;k<D;k++){
+	for (i=0;i<F;i++){
+	  output_sensitivity=gsl_matrix_get(fyS[c*T+j],k,i);
+	  output_sensitivity-=gsl_matrix_get(fyS[c*T+j],k,i)*gsl_vector_get(fy[c*T+j],k,i)/gsl_vector_get(ref_fy,k,i);
+	  output_sensitivity*=gsl_vector_get(mp->exp_x_u,k)/gsl_vector_get(ref_fy,i);
+	  gsl_matrix_set(oS[c*T+j],k,i,output_sensitivity);
+	}
+      }
+      gsl_vector_div(fy[c*T+j],ref_fy);
+    }
+  }
+  return GSL_SUCCESS;
 }
+
+int normalise_by_timepoint(ode_model_parameters *mp){
+  /*  normalisation by one of the points in the time series at t0,
+   *   where t0 is the index: t[t0] is the time at which the data is
+   *   normalised to 1.
+   */
+  int c,i,j,k;
+  int C=mp->input_u->size1;
+  int T=mp->t->size1;
+  int F=mp->fy[0]->size2;
+  int D=mp->D;
+  int N=mp->y[0]->size2;
+  double output_sensitivity=0;
+  gsl_vector **y,**fs;
+  gsl_matrix **yS,**fyS;
+  y=mp->y;
+  fy=mp->fy;
+  yS=mp->yS;
+  fyS=mp->fyS;
+
+  t0=gsl_matrix_get(mp->normalisation,0,0);
+
+  for (c=0;c<C;c++){
+    for (j=0;j<T;j++){
+      for (k=0;k<D;k++){
+	for (i=0;i<F;i++){
+	  output_sensitivity=gsl_matrix_get(fyS[c*T+j],k,i);
+	  output_sensitivity-=gsl_matrix_get(fyS[c*T+j],k,i)*gsl_vector_get(fy[c*T+j],k,i)/gsl_vector_get(fy[c*T+t0],k,i);
+	  output_sensitivity*=gsl_vector_get(mp->exp_x_u,k)/gsl_vector_get(fy[c*T+t0],i);
+	  gsl_matrix_set(oS[c*T+j],k,i,output_sensitivity);
+	}
+      }
+    }	     
+  }
+  return GSL_SUCCESS;
+}
+
+int normalise_by_state_var(ode_model_parameters *mp){
+  /*  normalisation by one of the points in the time series at t0,
+   *   where t0 is the index: t[t0] is th etime at which the data is
+   *   normalised to 1.
+   */
+  int c,i,j,k,t0=mp->t0;
+  int C=mp->input_u->size1;
+  int T=mp->t->size1;
+  int F=mp->y[0]->size2;
+  int D=mp->D;
+  double normalised_fy;
+  double output_sensitivity=0;
+  gsl_vector **y,**fs;
+  gsl_matrix **yS,**fyS;
+  gsl_vector_view norm_fy, norm_t;
+  gsl_vector *n_fy, *n_t;
+  int i_fy, i_t;
+    
+  norm_fy= gsl_matrix_row(mp->normalisation,0);
+  norm_t = gsl_matrix_row(mp->normalisation,1);
+  n_fy=&(norm_fy.vector); // output function i is normalised by function n_fy[i]
+  n_t =&(norm_t.vector);  // at time index n_t[i]
+  
+  y=mp->y;
+  fy=mp->fy;
+  yS=mp->yS;
+  fyS=mp->fyS;
+  for (c=0;c<C;c++){
+    for (j=0;j<T;j++) {
+      //      gsl_vector_div(y[c*T+j],y[c*T+t0]);
+      for (k=0;k<D;k++){
+	for (i=0;i<F;i++){
+	  i_fy=(int) gsl_vector_get(n_fy,i);
+	  i_t =(int) gsl_vector_get(n_t,i);
+	  output_sensitivity=gsl_matrix_get(fyS[c*T+j],k,i);
+	  output_sensitivity-=gsl_matrix_get(fyS[c*T+j],k,i)*gsl_vector_get(fy[c*T+j],k,i)/gsl_vector_get(fy[c*T+i_t],k,i_fy);
+	  output_sensitivity*=gsl_vector_get(mp->exp_x_u,k)/gsl_vector_get(fy[c*T+i_t],i_fy);
+	  gsl_matrix_set(oS[c*T+j],k,i,output_sensitivity);
+	}
+      }
+      for (i=0;i<F;i++) {
+	normalised_fy=gsl_vector_get(fy[c*T+j],i)/gsl_vector_get(fy[c*T+i_t],i_fy);
+	gsl_vector_set(fy[c*T+j],i,normalised_fy);
+      }
+    }
+  }
+  return GSL_SUCCESS;
+}
+
 
 /* Calculates the unormalised posterior fx, the gradient dfx, the Fisher information FI 
  * and the partial derivatives of the Fisher information matrix for a multivariate normal.

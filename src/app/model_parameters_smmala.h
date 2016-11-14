@@ -40,7 +40,7 @@ typedef struct {
   gsl_matrix *reference_yS; // has to be of size T × N²
   gsl_matrix **fyS;
   gsl_matrix *reference_fyS;// has to be of size T × F²
-  gsl_matrix *oS; // observational sensitivities
+  gsl_matrix **oS; // observational sensitivities
 
   ode_solver *solver; // contains: cvode_mem; *odeModel; N_Vector y; N_Vector *yS; params;
 } ode_model_parameters;
