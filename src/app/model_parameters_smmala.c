@@ -1,30 +1,45 @@
 #include "model_parameters_smmala.h"
 
-int ode_model_parameters_alloc(ode_model_parameters *omp, int D, int N, int F,  int T, int U, int C){
-  /* N: number of states
+int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps){
+  /* problem_size structure contains:
+   * N: number of states
    * D: number of model parameters
    * F: number of output functions
    * U: number of input parameters: u[j*U+i]: i=0,...,U-1
    * C: number of different experimental conditions (No. of inputs u): u[j*U+i]: j=0,...,C-1
    * T: number of measured time points
-   */
-
-  /* the Data structure: concatenation
-   * row index: 0,...,P-1
-   * column index: 0,...,T*U-1
-   * D=cat(2,Data(u_1),Data(u_2),...,Data(u_U))
+   * n1,n2 the size of the normalisation array 
+   * (time and state indices for normalisation):
+   *  e.g., for n1=2; n2=F=3,
+   *  [normalisation]
+   *   2,1,2
+   *   0,3,1
+   *  [/normalisation]
+   * means that output function 0 is normalised by 
+   * output function 2 at its initial condition.
+   * Output function 1 is normalised by itself at time point t[3]
+   * Output function 2 is also normalised by itself but at time point t[1]
    */
   
   gsl_vector **y,**fy;
   gsl_matrix **yS,**fyS;
 
-  int P=omp->solver->odeModel->P;
+  int N=ps->N;
+  int C=ps->C;
+  int F=ps->F;
+  int D=ps->D;
+  int U=ps->U;
+  int T=ps->T;
+  int P=ps->P;
+  
   printf("# allocating model parameters with: N=%i,\tP=%i,\tT=%i.\n",N,P,T);
 
   /* initialise gsl_vectors and matrices these will hold the
    * differential equation data for each experimental condition c and
    * time point t_j, like this: y[c*T+j]=gsl_vector(N)
    */ 
+
+  omp->normalisation=gsl_matrix_alloc(ps.n1,ps.n2);
   
   omp->y=(gsl_vector*) malloc(sizeof(gsl_vector*)*C*T);
   omp->fy=(gsl_vector*) malloc(sizeof(gsl_vector*)*C*T);
@@ -42,9 +57,10 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, int D, int N, int F,  
   for (i=0;i<C*T;i++)  yS[i]=gsl_matrix_alloc(P,N);
   for (i=0;i<C*T;i++) fyS[i]=gsl_matrix_alloc(P,F);
   for (i=0;i<C*T;i++)  oS[i]=gsl_matrix_alloc(D,F);
-  
+  /* during burn-in, we slowly increase beta from 0 to 1; if no
+   * burn-in is performed, beta needs to be 1.0
+   */
   omp->beta=1.0;
-
   
   omp->reference_y=gsl_matrix_alloc(T,N);
   omp->output_C=gsl_matrix_alloc(F,N);
@@ -55,8 +71,8 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, int D, int N, int F,  
   omp->t=gsl_vector_alloc(T);
 
   // Data
-  omp->Data=gsl_matrix_alloc(T*C,F);
-  omp->sdData=gsl_matrix_alloc(T*C,F);
+  for (i=0;i<C;i++) omp->Data[i]=gsl_vector_alloc(T,F);
+  for (i=0;i<C;i++) omp->sdData[i]=gsl_matrix_alloc(T,F);
 
   // outputs
   omp->fy=gsl_vector_alloc(F);
@@ -94,7 +110,8 @@ int ode_model_parameters_free(ode_model_parameters *omp){
   for (i=0;i<CT;i++) gsl_matrix_free(omp->yS[i]);
   for (i=0;i<CT;i++) gsl_matrix_free(omp->fyS[i]);
   for (i=0;i<CT;i++) gsl_matrix_free(omp->oS[i]);
-
+  
+  gsl_matrix_free(omp->normalisation);
   gsl_matrix_free(omp->reference_y);
   gsl_matrix_free(omp->output_C);
   gsl_vector_free(omp->exp_x_u);

@@ -225,6 +225,7 @@ int normalise_by_state_var(ode_model_parameters *mp){
       //      gsl_vector_div(y[c*T+j],y[c*T+t0]);
       for (k=0;k<D;k++){
 	for (i=0;i<F;i++){
+	  // find the normalising denominator for each sensitivity, by index.
 	  i_fy=(int) gsl_vector_get(n_fy,i);
 	  i_t =(int) gsl_vector_get(n_t,i);
 	  output_sensitivity=gsl_matrix_get(fyS[c*T+j],k,i);
@@ -234,6 +235,9 @@ int normalise_by_state_var(ode_model_parameters *mp){
 	}
       }
       for (i=0;i<F;i++) {
+	// find the normalising denominator for each output function, by index.
+	i_fy=(int) gsl_vector_get(n_fy,i);
+	i_t =(int) gsl_vector_get(n_t,i);
 	normalised_fy=gsl_vector_get(fy[c*T+j],i)/gsl_vector_get(fy[c*T+i_t],i_fy);
 	gsl_vector_set(fy[c*T+j],i,normalised_fy);
       }
@@ -569,9 +573,9 @@ int main (int argc, char* argv[]) {
   int Tuning = 1;
   int sampling_action=SMPL_FRESH;
   size_t resume_count;
-  gsl_error_handler_t *gsl_error_handler; 
+  gsl_error_handler_t *gsl_error_handler;
+  
   gsl_error_handler = gsl_set_error_handler_off();
-
 
   //  strcpy(sample_file,"sample.dat");
   main_options cnf_options;
@@ -618,7 +622,10 @@ int main (int argc, char* argv[]) {
   int N = ode_model_getN(odeModel);
   int P = ode_model_getP(odeModel);
   int F = ode_model_getF(odeModel);
-	
+  problem_size ps;
+  ps.N=N;
+  ps.P=P;
+  ps.F=F;
   double y[N];
   ode_model_get_initial_conditions(odeModel, y, N);
 	
@@ -632,7 +639,7 @@ int main (int argc, char* argv[]) {
   cnf=fopen(cfilename,"r");
   if (cnf!=NULL){
     printf("# reading configuration.\n");
-    parse_config(cnf,&omp,&cnf_options);
+    parse_config(cnf,&omp,&ps,&cnf_options);
   } else {
     fprintf(stderr,"# Could not open config file %s.\n",cfilename);
     exit(1);

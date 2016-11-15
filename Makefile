@@ -1,4 +1,4 @@
-CC=gcc
+CC=gcc -std=c11 
 CPP=c++
 
 CPPFLAGS = -Wall -O2
@@ -6,7 +6,7 @@ CFLAGS = -Wall -O2 -fgnu89-inline -march=native
 LDFLAGS = 
 IFLAGS = 
 
-%RMHMC_SRC=./src/mcmc/RMHMC.c ./src/mcmc/mcmc_kernel.c ./src/ode/ode_model.c ./src/app/read_cnf.c ./src/app/model_parameters_rmhmc.c 
+#RMHMC_SRC=./src/mcmc/RMHMC.c ./src/mcmc/mcmc_kernel.c ./src/ode/ode_model.c ./src/app/read_cnf.c ./src/app/model_parameters_rmhmc.c 
 MALA_SRC=./src/mcmc/smmala.c ./src/mcmc/mcmc_kernel.c ./src/ode/ode_model.c ./src/app/read_cnf.c ./src/mcmc/mv_norm.c ./src/app/model_parameters_smmala.c 
 
 ODE_SOURCE = ./src/app/odeSolver_main.c ./src/ode/ode_model.c

@@ -7,7 +7,18 @@
 #include "../ode/ode_model.h"
 
 typedef struct {
-  int D;
+  int D; // number of sampling variables; unknown ODE-Model parameters
+  int P; // number of total parameters of the ODE-Model (including dependent and known parameters)
+  int N; // number of state varibales
+  int F; // number of output functions
+  int T; // number of measurement time-points
+  int U; // number of input parameters
+  int C; // number of experimental conditions, excluding control (reference measurement)
+  int nc1; // n1,n2 are the size of the normalising structure
+  int nc2;
+} problem_size;
+
+typedef struct {
   double beta; // inverse temperature for annealing or tempering; logPosterior= beta*logLikelihood+logPrior
   gsl_vector *exp_x_u; // memory for the exponential parameters and input parameters
   double t0;
@@ -45,5 +56,5 @@ typedef struct {
   ode_solver *solver; // contains: cvode_mem; *odeModel; N_Vector y; N_Vector *yS; params;
 } ode_model_parameters;
 
-int ode_model_parameters_alloc(ode_model_parameters *omp, int D, int N, int F,  int T, int U, int C);
+int ode_model_parameters_alloc(ode_model_parameters *omp, problem_size ps);
 int ode_model_parameters_free(ode_model_parameters *omp);
