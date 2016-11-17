@@ -59,11 +59,6 @@
 #define SMPL_FRESH 0
 #define SMPL_RESUME_TUNE 2
 
-// normalisation methods
-#define DATA_NORMALISED_BY_REFERENCE 0
-#define DATA_NORMALISED_BY_TIMEPOINT 1
-#define DATA_NORMALISED_BY_STATE_VAR 2
-
 
 /* Auxiliary structure with working storage and aditional parameters for
  * a multivariate normal model with known covariance matrix and zero mean.

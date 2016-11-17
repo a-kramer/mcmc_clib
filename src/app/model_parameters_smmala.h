@@ -25,9 +25,13 @@ typedef struct {
   gsl_vector *t; // list of timepoints where measurements occur;
   gsl_matrix *Data; //
   gsl_matrix *sdData; // standard deviation of the datapoints
-  int data_is_relative; // boolean: measurements are relative to a
-			// reference measurement
-  int normalisation_method;
+  gsl_vector_view *data_row; // for convenience, we define some matrix views
+  gsl_vector **data;          // now we can view any of the data rows as a vector
+  gsl_vector_view *sd_data_row; // same for the standard deviations.
+  gsl_vector **sd_data;
+  
+  int normalisation_type;
+  gsl_matrix_int *normalisation;
   gsl_vector *dl; // log likelihood gradient
   gsl_vector **y;
   gsl_matrix *reference_y; // has to be of size T × Y

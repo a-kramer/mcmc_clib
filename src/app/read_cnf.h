@@ -3,12 +3,32 @@
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_vector.h>
 #include <regex.h>
-#ifdef _SMMALA
+#include <math.h>
 #include "model_parameters_smmala.h"
-#endif
-#ifdef _RMHMC
-#include "model_parameters_rmhmc.h"
-#endif
+
+// normalisation methods
+#define DATA_IS_ABSOLUTE 0
+#define DATA_NORMALISED_BY_REFERENCE 1
+#define DATA_NORMALISED_BY_TIMEPOINT 2
+#define DATA_NORMALISED_BY_STATE_VAR 3
+
+// data field ids, must be consecutive, because they are sometimes looped over.
+#define i_time 0
+#define i_reference_input 1
+#define i_reference_data 2
+#define i_sd_reference_data 3
+#define i_input 4
+#define i_data 5
+#define i_sd_data 6
+#define i_prior_mu 7
+#define i_prior_icov 8
+#define i_output 9
+#define i_norm 10
+
+typedef struct {
+  gsl_matrix *M;
+  gsl_matrix *sd;
+} gsl_matrix_sd;
 
 typedef struct {
   char *library_file;
@@ -30,6 +50,7 @@ struct field_expression_t {
   regex_t *opening_bracket; // regular expression for [field_name]
   regex_t *closing_bracket; // regular expression for [/field_name]
   field_expression *next;
+  int id;
 };
 
 field_expression* field_expression_stack(field_expression *top, regex_t *open, regex_t *close);
@@ -41,4 +62,4 @@ int count_columns(const char *c);
 int read_vector(char *c, double *vector, const int length);
 int parse_config(FILE *cnf, ode_model_parameters *omp, main_options *cnf_options);
 int determine_problem_size(FILE *cnf, const field_expressions *fe, const regex_t *comment, problem_size *ps, main_options *cnf_options);
-int read_problem_definition(FILE *cnf, const field_expressions *fe, const regex_t *comment, problem_size *ps, main_options *cnf_options);
+int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_expressions *fe, const regex_t *comment, problem_size *ps, main_options *cnf_options);
