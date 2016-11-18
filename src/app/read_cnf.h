@@ -23,7 +23,8 @@
 #define i_prior_mu 7
 #define i_prior_icov 8
 #define i_output 9
-#define i_norm 10
+#define i_norm_f 10
+#define i_norm_t 11
 
 typedef struct {
   gsl_matrix *M;
@@ -43,6 +44,7 @@ typedef struct  {
   size_t max_length; // maximum length of fields
   char **name;
 } field_names;
+
 int field_names_init(field_names *fn);
 
 typedef struct field_expression_t field_expression;

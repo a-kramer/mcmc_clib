@@ -255,9 +255,7 @@ int determine_problem_size(FILE *cnf, const field_expressions *fe, const regex_t
    * right amount of memory later on. The function returns an
    * indicator for the normalisation type.
    */
-  int D=0,U=0,C=0,F=0,T=0,N=0,R=0;
-  int n_f_[2]={0,0};
-  int n_t_[2]={0,0};
+  int D=0,U=0,C=0,F=0,T=0,N=0;
   int i,rm,l;
   int n=fe->n; // number of fields
   regex_t *cpt=fe->cpt;
@@ -310,7 +308,6 @@ int determine_problem_size(FILE *cnf, const field_expressions *fe, const regex_t
 	    break;
 	  case i_reference_input:
 	    normalisation_type=DATA_NORMALISED_BY_REFERENCE;
-	    count_rc(cnf, current->closing_bracket, comment, &R, &U);
 	    printf("data is normalised by reference data set.\n");
 	    break;
 	  case i_input:
@@ -327,48 +324,22 @@ int determine_problem_size(FILE *cnf, const field_expressions *fe, const regex_t
 	  case i_output:
 	    count_rc(cnf, current->closing_bracket, comment,&F,&N);
 	    break;
-	  case i_norm_f:
-	    count_rc(cnf, current->closing_bracket, comment,&n_f_[0],&n_f_[1]);
+	  case i_norm:
+	    count_rc(cnf, current->closing_bracket, comment,&(ps->n1),&(ps->n2));
+	    if (ps->n1 > 1) {
+	      normalisation_type=DATA_NORMALISED_BY_STATE_VAR;
+	    } else if (ps->n1 == 1) {
+	      normalisation_type=DATA_NORMALISED_BY_TIMEPOINT;
+	    }
 	    break;
-	  case i_norm_t:
-	    count_rc(cnf, current->closing_bracket, comment,&n_t_[0],&n_t_[1]);
-	    break;
-	    
 	  }// switch
 	}// if match
 	current=current->next;
       }// while (regular expressions from stack)
-    } //if [key]=[value]
-  }// while !EOF
-  printf("# file read once to determine the size of the problem.\n");
-  printf("# D=%i\tN=%i\tF=%i\tU=%i\tC=%i\tR=%i\tT=%i\n",D,N,F,U,C,R,T);
-
-  if (normalisation_type!=DATA_NORMALISED_BY_REFERENCE){
-    if (n_f_[0] == 0 && n_t_[0] > 0) {
-      normalisation_type=DATA_NORMALISED_BY_TIMEPOINT;
-      if (n_t_[0] == 1)
-	R=1;
-      else if (n_t_[0] == C && n_t_[1] ==1){
-	R=C;
-      } else {
-	fprintf(stderr,"wrong number of normalisation time indices: (%i×%i)\nMust be either (1×1) or (C×1).\n",n_t_[0],n_t_[1]);
-      }
-    } else {
-      normalisation_type=DATA_NORMALISED_BY_STATE_VAR;
-      if (n_f_[1]==F && n_t_[1]==F){
-	if (n_f_[0]==1 && n_t_[0]==1) {
-	  R=1;
-	} else if (n_f_[0]==C && n_t_[0]==C) {
-	  R=C;
-	} else {
-	  fprintf(stderr,"Both norm_f and norm_t must have 1 or C rows: norm_f has %i rows, norm_t has %i rows.\n",n_f_[0],n_t_[0]);
-	}
-      }else{
-	fprintf(stderr,"norm_f and norm_t must have the same number of columns, F: norm_f has %i columns, norm_t has %i columns.\n",n_f_[1],n_t_[1]);
-      }
-    }
+    }// while !EOF
   }
-
+  printf("# file read once to determine the size of the problem.\n");
+  printf("# D=%i\tN=%i\tF=%i\tU=%i\tC=%i\tT=%i\n",D,N,F,U,C,T);
   //save the problem size determined from configuration file:
   ps->D=D;
   ps->C=C;
@@ -378,12 +349,6 @@ int determine_problem_size(FILE *cnf, const field_expressions *fe, const regex_t
   P=ps->P;
   N=ps->N;
   // this can be checked for consistency:
-  if (R==1 || R==C){
-    ps->R=R;
-  } else {
-    fprintf(stderr,"the number of different (%i×%i) reference measurement sets must be either 1 or %i.\n",T,F,C);
-    exit(-3);
-  }
   if (F!=ps->F) {
     fprintf(stderr,"data file has a different number of outputs than model.\n");
     exit(-1);
@@ -401,16 +366,12 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, gsl_matrix_sd 
   char buffer[bsize];
   size_t nm=3;
   regmatch_t match[nm];
-  field_expression *current;
+  field_expression *current=fe;
   while (!feof(cnf)){
     // discard all comment lines
     do fgets(buffer,bsize,cnf);
     while (regexec(&comment[0],buffer,0,NULL,0)==0);
-    /* now that the line is not a comment or empty:
-     * reset the stack pointer to the top and try all field
-     * expressions on that line
-     */
-    current=fe;
+    // now that the line is not a comment or empty:
     while (current!=NULL){
       if (regexec(current->opening_bracket,buffer,0,NULL,0)==0){
         /* printf("found match with regular expression id %i.\n",i); */
@@ -456,17 +417,12 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, gsl_matrix_sd 
 	case i_output:
 	  read_block(ps->F,ps->N,cnf,omp->output_C->data,comment);
 	  break;
-	case i_norm_f:
-	  read_block(ps->C,ps->F,cnf,omp->norm_f,comment);
+	case i_norm:
+	  read_block(ps->n1,ps->n2,cnf,omp->normalisation,comment);
 	  break;
-	case i_norm_t:
-	  read_block(ps->C,ps->F,cnf,omp->norm_t,comment);
-	  break;
-	}// switch what to do.
-	break; // if matched: break, else try the next regular expression.
-      } else {
-	current=current->next;
+	}// switch
       }// if match
+      current=current->next;
     }// while (regular expressions)
   }// while !EOF
   return EXIT_SUCCESS;
@@ -494,11 +450,10 @@ int field_names_init(field_names *fn){
   // field names should not be longer than 128 characters.
   // n fields are known to the parser
   int i; 
-  fn->n=12
-  fn->max_length=128;
-  fn->name=(char **) calloc(fn->n,sizeof(char*));
-  for (i=0;i<fn->n;i++) {
-    fn->name[i]=(char*) calloc(fn->max_length,sizeof(char));
+  size_t n=11;
+  fn->name=(char **) calloc(n,sizeof(char*));
+  for (i=0;i<n;i++) {
+    fn->name[i]=(char*) calloc(128,sizeof(char));
   }
   
   strcpy(fn->name[i_time],"time");
@@ -511,10 +466,9 @@ int field_names_init(field_names *fn){
   strcpy(fn->name[i_prior_mu],"prior_mu");
   strcpy(fn->name[i_prior_icov],"prior_inv(erse)?_cov(ariance)?");
   strcpy(fn->name[i_output],"output");
-  strcpy(fn->name[i_norm_f],"norm_f");
-  strcpy(fn->name[i_norm_t],"norm_t");
+  strcpy(fn->name[i_norm],"normali[sz]ation");
   fn->n=n;
-
+  fn->max_length=128;
   return EXIT_SUCCESS;
 }
 
@@ -542,6 +496,7 @@ field_expression* field_expression_init(field_names *fn){
     regcomp(closing,sptr,REG_EXTENDED);  
     fe=field_expression_stack(i,fe,opening,closing);
   }
+  
   return fe;
 }
 

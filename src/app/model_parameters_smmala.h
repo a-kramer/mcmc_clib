@@ -14,8 +14,7 @@ typedef struct {
   int T; // number of measurement time-points
   int U; // number of input parameters
   int C; // number of experimental conditions, excluding control (reference measurement)
-  int nc1; // n1,n2 are the size of the normalising structure
-  int nc2;
+  int R; //number of reference measurements, either 1 or C
 } problem_size;
 
 typedef struct {
@@ -31,12 +30,13 @@ typedef struct {
   gsl_vector **sd_data;
   
   int normalisation_type;
-  gsl_matrix_int *normalisation;
+  gsl_matrix_int *norm_f; // C × F matrix
+  gsl_matrix_int *norm_t; // C × F matrix
   gsl_vector *dl; // log likelihood gradient
-  gsl_vector **y;
-  gsl_matrix *reference_y; // has to be of size T × Y
+  gsl_vector **y; // y[c*T+j](i)
+  gsl_matrix **reference_y; // has to be of size T × gsl(Y)
   gsl_vector **fy; // measurement model output functions
-  gsl_matrix *reference_fy;// has to be of size T × F
+  gsl_matrix **reference_fy;// has to be of size T × gsl(F)
   gsl_matrix *input_u; /* inputs applied in the lab: perturbations to
 			*  the model (double precision condition
 			*  parameters)
@@ -52,9 +52,9 @@ typedef struct {
 
   gsl_matrix *yS0;
   gsl_matrix **yS;
-  gsl_matrix *reference_yS; // has to be of size T × N²
-  gsl_matrix **fyS;
-  gsl_matrix *reference_fyS;// has to be of size T × F²
+  gsl_matrix **reference_yS; // has to be of size T × gsl(P,N) 
+  gsl_matrix **fyS;          // has to be of size C × T × gsl(P,N) 
+  gsl_matrix **reference_fyS;// has to be of size T × gsl(P,F)
   gsl_matrix **oS; // observational sensitivities
 
   ode_solver *solver; // contains: cvode_mem; *odeModel; N_Vector y; N_Vector *yS; params;

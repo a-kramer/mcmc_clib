@@ -19,33 +19,37 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
    * output function 2 at its initial condition.
    * Output function 1 is normalised by itself at time point t[3]
    * Output function 2 is also normalised by itself but at time point t[1]
+   * this can repeat for every experimental condition.
    */
-  
+  gsl_vector **r_y,**r_fy;
+  gsl_matrix **r_yS, **r_fyS;
   gsl_vector **y,**fy;
   gsl_matrix **yS,**fyS;
-
-  int N=ps->N;
-  int C=ps->C;
-  int F=ps->F;
-  int D=ps->D;
-  int U=ps->U;
-  int T=ps->T;
-  int P=ps->P;
+  int i,r;
+  int N=ps->N; // number of state variables
+  int C=ps->C; // number of experimental conditions
+  int R=ps->R; // number of reference data sets: 1 or C
+  int F=ps->F; // number of output functions
+  int D=ps->D; // number of sampling parameters (to be estimated)
+  int U=ps->U; // number of input parameters (known)
+  int T=ps->T; // number of measurement time instances
+  int P=ps->P; // number of total parameters D+U (a consistency check
+	       // between ode_model and mcmc configuration file)
   
   printf("# allocating model parameters with: N=%i,\tP=%i,\tT=%i.\n",N,P,T);
 
   /* initialise gsl_vectors and matrices these will hold the
    * differential equation data for each experimental condition c and
    * time point t_j, like this: y[c*T+j]=gsl_vector(N)
-   */ 
-
-  omp->normalisation=gsl_matrix_alloc(ps.n1,ps.n2);
+   */
+  omp->normalisation=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*C); 
+  for (i=0;i<C;i++) omp->normalisation[i]=gsl_matrix_alloc(ps->n1,ps->n2);
   
-  omp->y=(gsl_vector*) malloc(sizeof(gsl_vector*)*C*T);
-  omp->fy=(gsl_vector*) malloc(sizeof(gsl_vector*)*C*T);
-  omp->yS=(gsl_matrix*) malloc(sizeof(gsl_matrix*)*C*T);
-  omp->fyS=(gsl_matrix*) malloc(sizeof(gsl_matrix*)*C*T);
-  omp->oS=(gsl_matrix*) malloc(sizeof(gsl_matrix*)*C*T);
+  omp->y=(gsl_vector**) malloc(sizeof(gsl_vector*)*C*T);
+  omp->fy=(gsl_vector**) malloc(sizeof(gsl_vector*)*C*T);
+  omp->yS=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*C*T);
+  omp->fyS=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*C*T);
+  omp->oS=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*C*T);
     y=omp->y;
    fy=omp->fy;
    yS=omp->yS;
@@ -58,12 +62,36 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
   fyS[i]=gsl_matrix_alloc(P,F);
    oS[i]=gsl_matrix_alloc(D,F);
   }
+
+  omp->reference_y=(gsl_vector**) malloc(sizeof(gsl_vector*)*R*T);
+  omp->reference_fy=(gsl_vector**) malloc(sizeof(gsl_vector*)*R*T);
+  omp->reference_yS=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*R*T);
+  omp->reference_fyS=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*R*T);
+
+  r_y=omp->reference_y;
+  r_fy=omp->reference_fy;
+  r_yS=omp->reference_yS;
+  r_fyS=omp->reference_fyS;
+
+  for (i=0;i<R*T;i++){
+    r_y[i]=gsl_vector_alloc(N);
+    r_fy[i]=gsl_vector_alloc(F);
+    r_yS[i]=gsl_matrix_alloc(P,N);
+    r_fyS[i]=gsl_matrix_alloc(P,F);
+  }
+  if (R==1) { // so, only one reference (control) for all experiments
+    for (r=1;r<C;r++){ // link back to the only reference measurement
+      r_y[r*T+i]=r_y[i];
+      r_fy[r*T+i]=r_fy[i];
+      r_yS[r*T+i]=r_yS[i];
+      r_fyS[r*T+i]=r_fyS[i];
+    }    
+  }
   /* during burn-in, we slowly increase beta from 0 to 1; if no
    * burn-in is performed, beta needs to be 1.0
    */
   omp->beta=1.0;
   
-  omp->reference_y=gsl_matrix_alloc(T,N);
   omp->output_C=gsl_matrix_alloc(F,N);
 
   // [\rho=exp(theta), u]
