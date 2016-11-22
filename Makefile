@@ -1,8 +1,8 @@
-CC=gcc -std=c11 
+CC=gcc
 CPP=c++
 
 CPPFLAGS = -Wall -O2
-CFLAGS = -Wall -O2 -fgnu89-inline -march=native
+CFLAGS = -Wall -O2 -fgnu89-inline -march=native -std=c11 
 LDFLAGS = 
 IFLAGS = 
 
@@ -16,7 +16,6 @@ BIN=bin
 .PHONY: all
 
 all: vfgen bin/ode_smmala ODE*cvs.c ODE*.so
-.PHONY
 
 bin/ode_smmala: ./src/app/ode_smmala.c $(MALA_SRC)
 	$(CC) -D_SMMALA $(CFLAGS) $(MALA_SRC) -o $(BIN)/ode_smmala -lm -lgsl -lcblas -lsundials_cvodes -lsundials_nvecserial -ldl src/app/ode_smmala.c

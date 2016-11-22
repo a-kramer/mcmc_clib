@@ -164,7 +164,7 @@ void		ode_solver_setErrTol(ode_solver* solver, const double rel_tol, double* abs
 void		ode_solver_reinit(ode_solver* solver, const double t0,  double* y0, int lenY, const double* p, int lenP );
 void		ode_solver_reinit_sens(ode_solver* solver, double* yS0, int lenP, int lenY);
 	
-/* Solves the ode system until time t and rerurns solution in y.
+/* Solves the ode system until time t and returns solution in y.
  */	
 int		ode_solver_solve(ode_solver* solver, const double t, double* y, double* tout);
 /* Returns sensitivities for the current solution at t. This function must be called only after ode_solver_solve.

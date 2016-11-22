@@ -3,6 +3,7 @@
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_vector.h>
 #include <regex.h>
+#include <ctype.h>
 #include <math.h>
 #include "model_parameters_smmala.h"
 
@@ -11,6 +12,10 @@
 #define DATA_NORMALISED_BY_REFERENCE 1
 #define DATA_NORMALISED_BY_TIMEPOINT 2
 #define DATA_NORMALISED_BY_STATE_VAR 3
+
+// define target block types
+#define INTEGER_BLOCK 1
+#define DOUBLE_BLOCK 2
 
 // data field ids, must be consecutive, because they are sometimes looped over.
 #define i_time 0
@@ -37,6 +42,7 @@ typedef struct {
   double target_acceptance;
   double initial_stepsize;
   long sample_size;
+  double t0;
 } main_options;  // these are user supplied options to the program
 
 typedef struct  {
@@ -55,13 +61,11 @@ struct field_expression_t {
   int id;
 };
 
-field_expression* field_expression_stack(field_expression *top, regex_t *open, regex_t *close);
+field_expression* field_expression_stack(int id, field_expression *top, regex_t *open, regex_t *close);
 field_expression* field_expression_init(field_names *fn);
-
-int ratio_with_sd(gsl_matrix *A, gsl_matrix *sdA, gsl_matrix *B, gsl_matrix *sdB);
-int count_rc(FILE *cnf, regex_t *end, regex_t *comment, int *rows, int *columns);
+int ratio_with_sd(gsl_matrix_sd *A, gsl_matrix_sd *B);
+int count_rc(FILE *cnf, const regex_t *end, const regex_t *comment, int *rows, int *columns);
 int count_columns(const char *c);
-int read_vector(char *c, double *vector, const int length);
-int parse_config(FILE *cnf, ode_model_parameters *omp, main_options *cnf_options);
-int determine_problem_size(FILE *cnf, const field_expressions *fe, const regex_t *comment, problem_size *ps, main_options *cnf_options);
-int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_expressions *fe, const regex_t *comment, problem_size *ps, main_options *cnf_options);
+int parse_config(FILE *cnf, ode_model_parameters *omp,  problem_size *ps, main_options *cnf_options);
+int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t *comment, problem_size *ps, main_options *cnf_options);
+int read_problem_definition(FILE *cnf, ode_model_parameters *omp, gsl_matrix_sd *RD, const field_expression *fe, const regex_t *comment, problem_size *ps, main_options *cnf_options)

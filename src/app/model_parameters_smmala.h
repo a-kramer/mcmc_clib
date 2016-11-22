@@ -18,6 +18,7 @@ typedef struct {
 } problem_size;
 
 typedef struct {
+  int D;
   double beta; // inverse temperature for annealing or tempering; logPosterior= beta*logLikelihood+logPrior
   gsl_vector *exp_x_u; // memory for the exponential parameters and input parameters
   double t0;
@@ -30,13 +31,12 @@ typedef struct {
   gsl_vector **sd_data;
   
   int normalisation_type;
-  gsl_matrix_int *norm_f; // C × F matrix
-  gsl_matrix_int *norm_t; // C × F matrix
-  gsl_vector *dl; // log likelihood gradient
+  gsl_matrix_int *norm_f; // (1|C) × F matrix
+  gsl_matrix_int *norm_t; // (1|C) × F matrix
   gsl_vector **y; // y[c*T+j](i)
-  gsl_matrix **reference_y; // has to be of size T × gsl(Y)
+  gsl_vector **reference_y;
   gsl_vector **fy; // measurement model output functions
-  gsl_matrix **reference_fy;// has to be of size T × gsl(F)
+  gsl_vector **reference_fy;// has to be of size T × gsl(F)
   gsl_matrix *input_u; /* inputs applied in the lab: perturbations to
 			*  the model (double precision condition
 			*  parameters)
@@ -44,7 +44,9 @@ typedef struct {
   gsl_matrix *output_C;
 
   gsl_vector *reference_u;
-  
+  gsl_vector_view *input_u_row;
+  gsl_vector **u;
+  gsl_vector *tmp_F; // a calculation buffer vector of size F;
   gsl_vector *prior_tmp_a; // some memory allocation ..
   gsl_vector *prior_tmp_b; // .. for calculation buffers
   gsl_vector *prior_mu; // prior parameter: the medians of log normal distributions;
@@ -60,5 +62,5 @@ typedef struct {
   ode_solver *solver; // contains: cvode_mem; *odeModel; N_Vector y; N_Vector *yS; params;
 } ode_model_parameters;
 
-int ode_model_parameters_alloc(ode_model_parameters *omp, problem_size ps);
+int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps);
 int ode_model_parameters_free(ode_model_parameters *omp);

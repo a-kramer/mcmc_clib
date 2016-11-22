@@ -37,23 +37,25 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
 	       // between ode_model and mcmc configuration file)
   
   printf("# allocating model parameters with: N=%i,\tP=%i,\tT=%i.\n",N,P,T);
-
+  omp->tmp_F=gsl_vector_alloc(F);
   /* initialise gsl_vectors and matrices these will hold the
    * differential equation data for each experimental condition c and
    * time point t_j, like this: y[c*T+j]=gsl_vector(N)
    */
-  omp->normalisation=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*C); 
-  for (i=0;i<C;i++) omp->normalisation[i]=gsl_matrix_alloc(ps->n1,ps->n2);
+  omp->norm_f=gsl_matrix_alloc(C,F);
+  omp->norm_t=gsl_matrix_alloc(C,F);
   
   omp->y=(gsl_vector**) malloc(sizeof(gsl_vector*)*C*T);
   omp->fy=(gsl_vector**) malloc(sizeof(gsl_vector*)*C*T);
   omp->yS=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*C*T);
   omp->fyS=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*C*T);
   omp->oS=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*C*T);
+  
     y=omp->y;
    fy=omp->fy;
    yS=omp->yS;
   fyS=omp->fyS;
+   oS=omp->oS;
 
   for (i=0;i<C*T;i++){
     y[i]=gsl_vector_alloc(N);
@@ -63,29 +65,21 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
    oS[i]=gsl_matrix_alloc(D,F);
   }
 
-  omp->reference_y=(gsl_vector**) malloc(sizeof(gsl_vector*)*R*T);
-  omp->reference_fy=(gsl_vector**) malloc(sizeof(gsl_vector*)*R*T);
-  omp->reference_yS=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*R*T);
-  omp->reference_fyS=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*R*T);
+  omp->reference_y=(gsl_vector**) malloc(sizeof(gsl_vector*)*T);
+  omp->reference_fy=(gsl_vector**) malloc(sizeof(gsl_vector*)*T);
+  omp->reference_yS=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*T);
+  omp->reference_fyS=(gsl_matrix**) malloc(sizeof(gsl_matrix*)*T);
 
   r_y=omp->reference_y;
   r_fy=omp->reference_fy;
   r_yS=omp->reference_yS;
   r_fyS=omp->reference_fyS;
 
-  for (i=0;i<R*T;i++){
+  for (i=0;i<T;i++){
     r_y[i]=gsl_vector_alloc(N);
     r_fy[i]=gsl_vector_alloc(F);
     r_yS[i]=gsl_matrix_alloc(P,N);
     r_fyS[i]=gsl_matrix_alloc(P,F);
-  }
-  if (R==1) { // so, only one reference (control) for all experiments
-    for (r=1;r<C;r++){ // link back to the only reference measurement
-      r_y[r*T+i]=r_y[i];
-      r_fy[r*T+i]=r_fy[i];
-      r_yS[r*T+i]=r_yS[i];
-      r_fyS[r*T+i]=r_fyS[i];
-    }    
   }
   /* during burn-in, we slowly increase beta from 0 to 1; if no
    * burn-in is performed, beta needs to be 1.0
@@ -113,12 +107,17 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
   omp->sd_data=(gsl_vector**) malloc(sizeof(gsl_vector*)*C*T);
   for (i=0;i<C*T;i++){
     omp->data_row[i]=gsl_matrix_row(omp->Data,i);
-    omp->data[i]=&(omp->data_row[i]);
+    omp->data[i]=&(omp->data_row[i].vector);
     omp->sd_data_row[i]=gsl_matrix_row(omp->Data,i);
-    omp->sd_data[i]=&(omp->data_row[i]);
+    omp->sd_data[i]=&(omp->data_row[i].vector);
   }
-  
-
+  // shortcuts for input rows;
+  omp->input_u_row=(gsl_vector_view*) malloc(sizeof(gsl_vector_view)*C);
+  omp->u=(gsl_vector **) malloc(sizeof(gsl_vector*)*C);
+  for (i=0;i<C;i++){
+    omp->input_u_row[i]=gsl_matrix_row(omp->input_u,i);
+    omp->u[i]=&(omp->input_u_row[i].vector);
+  }
   
   // outputs
   omp->fy=gsl_vector_alloc(F);
@@ -151,6 +150,8 @@ int ode_model_parameters_free(ode_model_parameters *omp){
   int T=omp->t->size;
   int CT=C*T;
   int i;
+  gsl_vector_free(omp->tmp_F);
+
   for (i=0;i<CT;i++){
     gsl_vector_free(omp->y[i]);
     gsl_vector_free(omp->fy[i]);
@@ -158,12 +159,21 @@ int ode_model_parameters_free(ode_model_parameters *omp){
     gsl_matrix_free(omp->fyS[i]);
     gsl_matrix_free(omp->oS[i]);
   }
+  free(omp->y);
+  free(omp->fy);
+  free(omp->yS);
+  free(omp->fyS);
+  free(omp->oS);
+  
   free(omp->data_row);
   free(omp->sd_data_row);
   free(omp->data);
-  free(omp->data);
+  free(omp->sd_data);
+  free(omp->input_u_row);
+  free(omp->u);
   
-  gsl_matrix_free(omp->normalisation);
+  gsl_matrix_free(omp->norm_f);
+  gsl_matrix_free(omp->norm_t);
   gsl_matrix_free(omp->reference_y);
   gsl_matrix_free(omp->output_C);
   gsl_vector_free(omp->exp_x_u);
@@ -176,7 +186,7 @@ int ode_model_parameters_free(ode_model_parameters *omp){
   gsl_matrix_free(omp->sdData);
 
   // outputs
-  gsl_matrix_free(omp->reference_fy);
+  free(omp->reference_fy);
 
   // inputs
   gsl_matrix_free(omp->input_u);
@@ -190,8 +200,8 @@ int ode_model_parameters_free(ode_model_parameters *omp){
 
   // sensitivities
   gsl_matrix_free(omp->yS0);
-  gsl_matrix_free(omp->reference_yS);
-  gsl_matrix_free(omp->reference_fyS);
+  free(omp->reference_yS);
+  free(omp->reference_fyS);
   //gsl_matrix_free(omp->oS);
 
   return EXIT_SUCCESS;
