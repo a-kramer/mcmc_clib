@@ -35,14 +35,15 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
   int P=ps->P; // number of total parameters D+U (a consistency check
 	       // between ode_model and mcmc configuration file)
   
-  printf("# allocating model parameters with: N=%i,\tP=%i,\tT=%i.\n",N,P,T);
-  omp->tmp_F=gsl_vector_alloc(F);
+  //printf("# allocating model parameters with: N=%i,\tP=%i,\tT=%i.\n",N,P,T);
   /* initialise gsl_vectors and matrices these will hold the
    * differential equation data for each experimental condition c and
    * time point t_j, like this: y[c*T+j]=gsl_vector(N)
    */
+  //printf("alloc norm f and t\n");
   omp->norm_f=gsl_matrix_int_alloc(C,F);
   omp->norm_t=gsl_matrix_int_alloc(C,F);
+  //printf("array alloc y, fy, yS, fyS, oS\n");
   
   omp->y=(gsl_vector**) malloc(sizeof(gsl_vector*)*C*T);
   omp->fy=(gsl_vector**) malloc(sizeof(gsl_vector*)*C*T);
@@ -55,6 +56,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
    yS=omp->yS;
   fyS=omp->fyS;
    oS=omp->oS;
+   //printf("gsl alloc y, fy, yS, fyS, oS\n");
 
   for (i=0;i<C*T;i++){
     y[i]=gsl_vector_alloc(N);
@@ -63,6 +65,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
   fyS[i]=gsl_matrix_alloc(P,F);
    oS[i]=gsl_matrix_alloc(D,F);
   }
+  //printf("ptr alloc reference: y, fy, yS, fyS\n");
 
   omp->reference_y=(gsl_vector**) malloc(sizeof(gsl_vector*)*T);
   omp->reference_fy=(gsl_vector**) malloc(sizeof(gsl_vector*)*T);
@@ -73,6 +76,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
   r_fy=omp->reference_fy;
   r_yS=omp->reference_yS;
   r_fyS=omp->reference_fyS;
+  //printf("gsl alloc reference: y, fy, yS, fyS\n");
 
   for (i=0;i<T;i++){
     r_y[i]=gsl_vector_alloc(N);
@@ -88,31 +92,43 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
   omp->output_C=gsl_matrix_alloc(F,N);
 
   // [\rho=exp(theta), u]
+  //printf("gsl alloc exp_x_u\n");
+
   omp->exp_x_u=gsl_vector_alloc(P);
   // time
+  printf("gsl alloc t\n");
   omp->t=gsl_vector_alloc(T);
 
   // Data (t is the fast index, c the slow one). One huge block of Data:
+  //printf("gsl alloc Data\n");
+
   omp->Data=gsl_matrix_alloc(C*T,F);
   omp->sdData=gsl_matrix_alloc(C*T,F);
   // sometimes it is convenient to do vector operations on single
   // lines of the data.
   // we create some row views for that purpose:
+  //printf("ptr alloc Data row views\n");
+
   omp->data_row=(gsl_vector_view*) malloc(sizeof(gsl_vector_view)*C*T);
   omp->sd_data_row=(gsl_vector_view*) malloc(sizeof(gsl_vector_view)*C*T);
   // list of vector shorcuts to the views, no need to allocate the
   // vectors themselves
   omp->data=(gsl_vector**) malloc(sizeof(gsl_vector*)*C*T);
   omp->sd_data=(gsl_vector**) malloc(sizeof(gsl_vector*)*C*T);
+  //printf("assign Data row views\n");
+
   for (i=0;i<C*T;i++){
     omp->data_row[i]=gsl_matrix_row(omp->Data,i);
     omp->data[i]=&(omp->data_row[i].vector);
-    omp->sd_data_row[i]=gsl_matrix_row(omp->Data,i);
-    omp->sd_data[i]=&(omp->data_row[i].vector);
+    omp->sd_data_row[i]=gsl_matrix_row(omp->sdData,i);
+    omp->sd_data[i]=&(omp->sd_data_row[i].vector);
   }
   // shortcuts for input rows;
+  //printf("ptr alloc input row views\n");
+
   omp->input_u_row=(gsl_vector_view*) malloc(sizeof(gsl_vector_view)*C);
   omp->u=(gsl_vector **) malloc(sizeof(gsl_vector*)*C);
+  //printf("assign input row views\n");
   for (i=0;i<C;i++){
     omp->input_u_row[i]=gsl_matrix_row(omp->input_u,i);
     omp->u[i]=&(omp->input_u_row[i].vector);

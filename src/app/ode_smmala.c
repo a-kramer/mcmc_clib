@@ -725,13 +725,13 @@ int main (int argc, char* argv[]) {
 
   /* load model */
   ode_model *odeModel = ode_model_loadFromFile(lib_name);  /* alloc */
-  if (odeModel == 0) {
+  if (odeModel == NULL) {
     fprintf(stderr, "# Library %s could not be loaded.\n",lib_name);
     exit(1);
   } else printf( "# Library %s loaded.\n",lib_name);
 
   ode_solver* solver = ode_solver_alloc(odeModel); /* alloc */
-  if (solver == 0) {
+  if (solver == NULL) {
     fprintf(stderr, "# Solver %s could not be created.\n",lib_name);
     ode_model_free(odeModel);
     exit(1);

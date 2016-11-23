@@ -46,7 +46,6 @@ typedef struct {
   gsl_vector *reference_u;
   gsl_vector_view *input_u_row;
   gsl_vector **u;
-  gsl_vector *tmp_F; // a calculation buffer vector of size F;
   gsl_vector *prior_tmp_a; // some memory allocation ..
   gsl_vector *prior_tmp_b; // .. for calculation buffers
   gsl_vector *prior_mu; // prior parameter: the medians of log normal distributions;

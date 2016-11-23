@@ -2,32 +2,51 @@
 #include "read_cnf.h"
 //#include "model_parameters_smmala.h"
 
+
+
 int count_rc(FILE *cnf, const regex_t *end, const regex_t *comment, int *rows, int *columns){
   int bsize=1024;
   char buffer[bsize];
   char *c;
   size_t nm=3;
+  char *ptr;
   regmatch_t match[nm];
-  char *fgets_return;
-  rows=0;
-  columns=0;
+  //char *fgets_return;
+  rows[0]=0;
+  columns[0]=0;
   // skip empty lines as well? 
   // skip all comment lines:
-  do fgets_return=fgets(buffer,bsize,cnf);
-  while (regexec(&comment[0],buffer,0,NULL,0)==0 && fgets_return!=NULL);
+  do {
+    fgets(buffer,bsize,cnf);
+    //printf("processing «%s» \n",buffer);
+  }
+  while (regexec(&comment[0],buffer,0,NULL,0)==0);
+  c=strchr(buffer, '\n');
+  if (c!=NULL) c[0]='\0';
+  c=buffer;
   // terminate line at comment symbol, if content and comments are mixed;
   //          this: "12 13 10 # these are very precise\n"
   // transforms to: "12 13 10 \0" for column counting.
-  if (regexec(&comment[1],buffer,nm,match,0)==0) buffer[match[1].rm_so]='\0';
-  c=buffer;
+  /* if (regexec(&comment[1],buffer,nm,match,0)==0) { */
+  /*       printf("line contains a comment: «%s» \n",buffer); */
+  /* 	buffer[match[1].rm_so]='\0'; */
+  /* 	printf("       removing comment: «%s» \n",buffer); */
+  /* } */
 
-  printf("counting columns of «%s»...",c);
-  while ( memchr("\n\0",c[0],2)==NULL ){
-    /* move forward until we find a word character (not space or tab) */
-    while ( isspace(c[0]) ) c++;
-    columns[0]++; // now that we found one, we increase the column counter;
-    while ( isalnum(c[0]) || ispunct(c[0])) c++;
-  };
+  //printf("counting columns of «%s»...",c);
+  c=strtok(buffer, " \t,;");
+  while (c!=NULL){
+    c=strtok(NULL, " \t,;");
+    columns[0]++;
+  }
+
+  /* while ( strchr("\n\0",c[0])==NULL ){ */
+  /*   printf("[%c]",c[0]); */
+  /*   /\* move forward until we find a word character (not space or tab) *\/ */
+  /*   while ( isspace(c[0]) ) c++; */
+  /*   columns[0]++; // now that we found one, we increase the column counter; */
+  /*   while ( isalnum(c[0]) || ispunct(c[0])) c++; */
+  /* }; */
 
   do { 
     if (fgets(buffer,bsize,cnf)==NULL) {
@@ -37,8 +56,9 @@ int count_rc(FILE *cnf, const regex_t *end, const regex_t *comment, int *rows, i
       buffer[match[1].rm_so]='\0';
     }
     // non empty lines which don't appear to be comments are counted as rows:
-    if (regexec(&comment[0],buffer,0,NULL,0)==REG_NOMATCH) rows[0]++;
-  } while (regexec(end,buffer,0,NULL,0)==REG_NOMATCH);
+    if (regexec(&comment[0],buffer,0,NULL,0)!=0) rows[0]++;
+  } while (regexec(end,buffer,0,NULL,0)!=0);
+  //printf("ending at line: %s\nrows: %i\ncols: %i\n",buffer,rows[0],columns[0]);
   //  printf("# counted %i rows in block.\n",l);
   return GSL_SUCCESS;
 }
@@ -306,17 +326,27 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
       // will be changed here. If it isn't, then it must have
       // been changed on command line and the value in the file will
       // be disregarded. Command line options have higher precedence.
-      if (strcmp(cnf_options->output_file,"sample.dat")==0 && strcmp(buffer,"output")==0) strcpy(cnf_options->output_file,var_value);
-      else if (cnf_options->sample_size<0 && strcmp(buffer,"sample_size")==0) cnf_options->sample_size=strtol(var_value,NULL,0);
-      else if (cnf_options->target_acceptance<0 && strcmp(buffer,"acceptance")==0) cnf_options->target_acceptance=strtod(var_value,NULL);
-      else if (cnf_options->initial_stepsize<0 && strcmp(buffer,"step_size")==0) cnf_options->initial_stepsize=strtod(var_value,NULL);
-      else if (strcmp(buffer,"t0")==0) {cnf_options->t0=strtod(var_value,NULL); printf("# t0 = %f\n",cnf_options->t0);}
+      if (strcmp(cnf_options->output_file,"sample.dat")==0 && strcmp(buffer,"output")==0) {
+	strcpy(cnf_options->output_file,var_value);
+      }
+      else if (cnf_options->sample_size<0 && strcmp(buffer,"sample_size")==0) {
+	cnf_options->sample_size=strtol(var_value,NULL,0);
+      }
+      else if (cnf_options->target_acceptance<0 && strcmp(buffer,"acceptance")==0) {
+	cnf_options->target_acceptance=strtod(var_value,NULL);
+      }
+      else if (cnf_options->initial_stepsize<0 && strcmp(buffer,"step_size")==0){
+	cnf_options->initial_stepsize=strtod(var_value,NULL);
+      }
+      else if (strcmp(buffer,"t0")==0) {
+	cnf_options->t0=strtod(var_value,NULL); printf("# t0 = %f\n",cnf_options->t0);}
     }
-    else { 
+    else {
+      current=fe;
       while (current != NULL){
 	if (regexec(current->opening_bracket,buffer,0,NULL,0)==0){
-	  /* printf("found match with regular expression %i.\n",i); */
-	  /* printf(buffer); */
+	  //printf("found match with regular expression %i.\n",current->id);
+	  //printf(buffer);
 	  switch (current->id){ // counting columns and/or rows
 	  case i_time:
 	    count_rc(cnf, current->closing_bracket, comment, &T, &rm);
@@ -350,12 +380,13 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
 	  }// switch
 	}// if match
 	current=current->next;
+	//if (current!=NULL) printf("RE: %i\n",current->id);
       }// while (regular expressions from stack)
     } //if [key]=[value]
   }// while !EOF
   printf("# file read once to determine the size of the problem.\n");
   printf("# D=%i\tN=%i\tF=%i\tU=%i\tC=%i\tR=%i\tT=%i\n",D,N,F,U,C,R,T);
-
+  
   if (normalisation_type!=DATA_NORMALISED_BY_REFERENCE){
     if (n_f_[0] == 0 && n_t_[0] == C) {
       normalisation_type=DATA_NORMALISED_BY_TIMEPOINT;
@@ -404,6 +435,7 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
     fprintf(stderr,"error: P!=D+U.\n The number of model parameters P is not equal to\n the number of unknown paramerts D plus number of input parameters U.\n");
     exit(-2);
   }
+  //printf("problem size fixed.\n");
   return normalisation_type;
 }
 
@@ -411,14 +443,14 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
 int read_problem_definition(FILE *cnf, ode_model_parameters *omp, gsl_matrix_sd *RD, const field_expression *fe, const regex_t *comment, problem_size *ps, main_options *cnf_options){
   int bsize=2048;
   char buffer[bsize];
-  char *c;
+  //char *c;
   //  size_t nm=3;
   //  regmatch_t match[nm];
   const field_expression *current;
   while (!feof(cnf)){
     // discard all comment lines
-    do c=fgets(buffer,bsize,cnf);
-    while (regexec(&comment[0],buffer,0,NULL,0)==0 && c!=NULL);
+    do fgets(buffer,bsize,cnf);
+    while (regexec(&comment[0],buffer,0,NULL,0)==0);
     /* now that the line is not a comment or empty:
      * reset the stack pointer to the top and try all field
      * expressions on that line
@@ -582,6 +614,7 @@ int parse_config(FILE *cnf, ode_model_parameters *omp,  problem_size *ps, main_o
   fe=field_expression_init(&fn);
 
   omp->normalisation_type=determine_problem_size(cnf,fe, comment, ps, cnf_options);
+  //printf("normalisation type: %i\n",omp->normalisation_type);
   /* now we must allocate the necessary memory and fill it with values
    */
   ode_model_parameters_alloc(omp, ps);
