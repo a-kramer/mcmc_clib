@@ -8,13 +8,13 @@ int count_rc(FILE *cnf, const regex_t *end, const regex_t *comment, int *rows, i
   char *c;
   size_t nm=3;
   regmatch_t match[nm];
-
+  char *fgets_return;
   rows=0;
   columns=0;
   // skip empty lines as well? 
   // skip all comment lines:
-  do fgets(buffer,bsize,cnf);
-  while (regexec(&comment[0],buffer,0,NULL,0)==0);
+  do fgets_return=fgets(buffer,bsize,cnf);
+  while (regexec(&comment[0],buffer,0,NULL,0)==0 && fgets_return!=NULL);
   // terminate line at comment symbol, if content and comments are mixed;
   //          this: "12 13 10 # these are very precise\n"
   // transforms to: "12 13 10 \0" for column counting.
@@ -50,8 +50,8 @@ int read_block(int rows, int columns, FILE *f, int target_type, void *target, co
   size_t nm=3;
   regmatch_t match[nm];
   int match_err;
-  int *v_i;
-  double *v_d;
+  int *v_i=NULL;
+  double *v_d=NULL;
   char *line;
 
   if (target_type==DOUBLE_BLOCK){
@@ -59,7 +59,7 @@ int read_block(int rows, int columns, FILE *f, int target_type, void *target, co
   } else if (target_type==INTEGER_BLOCK){
     v_i=(int *) target;
   } else {
-    fprintf(stderr,"unexpected target type in «read_block»: %i\n",v_type);
+    fprintf(stderr,"unexpected target type in «read_block»: %i\n",target_type);
     exit(-3);
   }
   
@@ -73,11 +73,14 @@ int read_block(int rows, int columns, FILE *f, int target_type, void *target, co
     // terminate string at beginning of comment:
     if (match_err==0) buffer[match[1].rm_so]='\0';
     line=buffer;
-    if (target_type==DOUBLE_BLOCK){
+    if (target_type==DOUBLE_BLOCK && v_d!=NULL){
       for (c=0; c<columns; c++) v_d[r*columns+c]=strtod(line,&line);
-    } else if (target_type==INTEGER_BLOCK){
+    } else if (target_type==INTEGER_BLOCK && v_i!=NULL){
       for (c=0; c<columns; c++) v_i[r*columns+c]=strtol(line,&line,10);    
-    } 
+    } else {
+      fprintf(stderr,"read_block error for target type: %i\n",target_type);
+      exit(-3);
+    }
     //printf("⟩");
   }
   return EXIT_SUCCESS;
@@ -121,7 +124,7 @@ int gsl_vector_sqrt(gsl_vector *v){
  * both d and s to be positive, hence absolute values by default.
  */
 
-int normalise_by_timepoint_with_sd(ode_model_parameters *omp, problem_size *ps, gsl_matrix_int *norm_t){
+int normalise_by_timepoint_with_sd(ode_model_parameters *omp, problem_size *ps){
   /* here normalisation is just one entry, containing the
    * normalisation time index. Many of the operation are done in
    * place, so variable interpretation changes.
@@ -137,7 +140,7 @@ int normalise_by_timepoint_with_sd(ode_model_parameters *omp, problem_size *ps, 
   
   // data vector at time t_j and under condition u_c: data[c*T+j] 
   for (c=0;c<C;c++){
-    l=gsl_matrix_int_get(norm_t,c,0);
+    l=gsl_matrix_int_get(omp->norm_t,c,0);
     for (j=0;j<T;j++) {
       d=omp->data[c*T+j];
       sd_d=omp->sd_data[c*T+j];
@@ -164,7 +167,7 @@ int normalise_by_timepoint_with_sd(ode_model_parameters *omp, problem_size *ps, 
   return GSL_SUCCESS;  
 }
 
-int normalise_by_state_var_with_sd(ode_model_parameters *omp, problem_size *ps, gsl_matrix_int *norm_f, gsl_matrix *norm_t){
+int normalise_by_state_var_with_sd(ode_model_parameters *omp, problem_size *ps){
   /* here normalisation consists of two lines. Line 1 lists the state
    * variables to use for normalisation. Line 2 selects the time index
    * of that state variable to normalise at.
@@ -266,10 +269,10 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
    * right amount of memory later on. The function returns an
    * indicator for the normalisation type.
    */
-  int D=0,U=0,C=0,F=0,T=0,N=0,R=0,P=0;
+  int D=0,U=0,C=0,F=0,T=0,N=0,R=0;
   int n_f_[2]={0,0};
   int n_t_[2]={0,0};
-  int i,rm,l;
+  int rm,l;
   
   int bsize=2048;
   char buffer[bsize];
@@ -385,7 +388,6 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
   ps->U=U;
   ps->T=T;
   // these are known from the model file:
-  P=ps->P;
   N=ps->N;
   // this can be checked for consistency:
   if (R==1 || R==C){
@@ -409,13 +411,14 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
 int read_problem_definition(FILE *cnf, ode_model_parameters *omp, gsl_matrix_sd *RD, const field_expression *fe, const regex_t *comment, problem_size *ps, main_options *cnf_options){
   int bsize=2048;
   char buffer[bsize];
-  size_t nm=3;
-  regmatch_t match[nm];
-  field_expression *current;
+  char *c;
+  //  size_t nm=3;
+  //  regmatch_t match[nm];
+  const field_expression *current;
   while (!feof(cnf)){
     // discard all comment lines
-    do fgets(buffer,bsize,cnf);
-    while (regexec(&comment[0],buffer,0,NULL,0)==0);
+    do c=fgets(buffer,bsize,cnf);
+    while (regexec(&comment[0],buffer,0,NULL,0)==0 && c!=NULL);
     /* now that the line is not a comment or empty:
      * reset the stack pointer to the top and try all field
      * expressions on that line
@@ -538,7 +541,7 @@ field_expression* field_expression_init(field_names *fn){
   size_t n=fn->n;
   field_expression *fe;
   char sptr[fn->max_length];
-
+  fe=NULL;
   for (i=0;i<n;i++){
     // we assume that fe is completely uninitialised
     opening = (regex_t*) malloc(sizeof(regex_t));
@@ -618,7 +621,7 @@ int parse_config(FILE *cnf, ode_model_parameters *omp,  problem_size *ps, main_o
 	gsl_matrix_int_set(omp->norm_t,c,0,gsl_matrix_int_get(omp->norm_t,c%R,0));
       }
     }
-    normalise_by_timepoint_with_sd(omp);
+    normalise_by_timepoint_with_sd(omp,ps);
     printf("# done.\n");
     break;
   case DATA_NORMALISED_BY_STATE_VAR:
@@ -631,7 +634,7 @@ int parse_config(FILE *cnf, ode_model_parameters *omp,  problem_size *ps, main_o
 	}
       }
     }
-    normalise_by_state_var_with_sd(omp);
+    normalise_by_state_var_with_sd(omp,ps);
     printf("# done.\n");
     break;
   }

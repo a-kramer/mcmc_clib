@@ -82,7 +82,7 @@ int gsl_printf(const char *name, void *gsl_thing, int is_matrix){
     gsl_matrix_fprintf(stdout, A, "%g");
   }else{
     x=(gsl_vector*) gsl_thing;
-    printf(" %i elements\n",x->size);
+    printf(" %i elements\n",(int) x->size);
     gsl_vector_fprintf(stdout, x, "%g");
   }
   printf("[/%s]\n",name);
@@ -117,12 +117,11 @@ int normalise_by_reference(ode_model_parameters *mp){
    *            Condition_C :     u:=[u{C,1},…,u{C,U}]
    *  Reference Confition   : ref_u:=[ref_u{1},…,ref_u{U}]
    */
-  int c,i,j,k;
+  int c,j,k;
   int C=mp->input_u->size1;
   int T=mp->t->size;
-  int F=mp->y[0]->size;
   int D=mp->D;
-  double output_sensitivity=0;
+  
   gsl_vector *fy;   // arrays with index structure y(t_j,u_k)=y[c*T+j]
   gsl_matrix *fyS,*oS; //
   gsl_vector *r_fy;
@@ -181,15 +180,12 @@ int normalise_by_timepoint(ode_model_parameters *mp){
    *  data is normalised to 1. Must be the same time for all
    *  trajectories.
    */
-  int c,i,j,k,l;
+  int c,j,k,l;
   int C=mp->input_u->size1;
-  int T=mp->t->size1;
-  int F=mp->fy[0]->size2;
+  int T=mp->t->size;
   int D=mp->D;
-  int N=mp->y[0]->size2;
-  double output_sensitivity=0;
   gsl_vector *fy,*l_fy;
-  gsl_matrix *fyS;
+  gsl_matrix *fyS, *oS;
   gsl_vector *tmp;
   gsl_vector_view fyS_k_view; // 
   gsl_vector *fyS_k; // the raw fy sensitivity for one parameter k
@@ -198,11 +194,11 @@ int normalise_by_timepoint(ode_model_parameters *mp){
   gsl_vector_view oS_k_view; // 
   gsl_vector *oS_k; // the normalised output sensitivity for one parameter k
 
-  tmp=omp->reference_fy[0]; // this should be unused memory for this normalisation type
+  tmp=mp->reference_fy[0]; // this should be unused memory for this normalisation type
 
   for (c=0;c<C;c++){
+    l=gsl_matrix_int_get(mp->norm_t,c,0);    
     l_fy=mp->fy[c*T+l];
-    l=gsl_matrix_get(mp->norm_t,c,0);    
     for (j=0;j<T;j++){
       fy=mp->fy[c*T+j];
       fyS=mp->fyS[c*T+j];
@@ -237,24 +233,22 @@ int normalise_by_state_var(ode_model_parameters *mp){
    *  time series at t(ti), where si is a state dependent time
    *  index. So, fy[c*T+j](i)/fy[c*T+ti](si)
    */
-  int c,i,j,ti,si;
+  int c,i,j,k,ti,si;
   int C=mp->input_u->size1;
-  int T=mp->t->size1;
-  int F=mp->fy[0]->size2;
+  int T=mp->t->size;
+  int F=mp->fy[0]->size;
   int D=mp->D;
-  int N=mp->y[0]->size2;
-  double output_sensitivity=0;
   gsl_vector *fy;
   gsl_vector *r_fy;
-  gsl_matrix *fyS, *r_fyS;
+  gsl_matrix *fyS, *r_fyS, *oS;
   gsl_vector *tmp;
-  gsl_vector_view *si_col_view;
+  gsl_vector_view si_col_view;
   gsl_vector *si_col;
-  gsl_vector_view *fyS_k_view; // 
+  gsl_vector_view fyS_k_view; // 
   gsl_vector *fyS_k; // the raw fy sensitivity for one parameter k
-  gsl_vector_view *r_fyS_k_view; // 
+  gsl_vector_view r_fyS_k_view; // 
   gsl_vector *r_fyS_k; // the raw r_fy sensitivity for one parameter k
-  gsl_vector_view *oS_k_view; // 
+  gsl_vector_view oS_k_view; // 
   gsl_vector *oS_k; // the normalised output sensitivity for one parameter k
 
   for (c=0;c<C;c++){
@@ -262,8 +256,8 @@ int normalise_by_state_var(ode_model_parameters *mp){
     r_fy=mp->reference_fy[0]; // these can be used as temporary storage
     r_fyS=mp->reference_fyS[0];
     for (i=0;i<F;i++){
-      si=gsl_matrix_get(mp->norm_f,c,i); // normalising state index: si
-      ti=gsl_matrix_get(mp->norm_t,c,i); // time idx ti: fy[c*T+li](ki)
+      si=gsl_matrix_int_get(mp->norm_f,c,i); // normalising state index: si
+      ti=gsl_matrix_int_get(mp->norm_t,c,i); // time idx ti: fy[c*T+li](ki)
       gsl_vector_set(r_fy,i,gsl_vector_get(mp->fy[c*T+ti],si));
       si_col_view=gsl_matrix_subcolumn(mp->fyS[c*T+ti],si,0,D);
       si_col=&(si_col_view.vector);
@@ -273,12 +267,12 @@ int normalise_by_state_var(ode_model_parameters *mp){
       fy=mp->fy[c*T+j];
       fyS=mp->fyS[c*T+j];
       oS=mp->oS[c*T+j];
-      gsl_vector_div(fy,l_fy);
+      gsl_vector_div(fy,r_fy);
       for (k=0;k<D;k++){
 	// set up vector views for the sensitivity of:
 	// the normalising raw output row fy at time index l
 	r_fyS_k_view=gsl_matrix_row(r_fyS,k);
-	r_fyS_k=&(l_fyS_k_view.vector);
+	r_fyS_k=&(r_fyS_k_view.vector);
 	// the raw output functions
 	fyS_k_view=gsl_matrix_row(fyS,k);
 	fyS_k=&(fyS_k_view.vector);
@@ -288,9 +282,9 @@ int normalise_by_state_var(ode_model_parameters *mp){
 	// calculate normalised output sensitivity
 	gsl_vector_memcpy(oS_k,fyS_k);
 	gsl_vector_memcpy(tmp,fy);
-	gsl_vector_mul(tmp,l_fyS_k);
+	gsl_vector_mul(tmp,r_fyS_k);
 	gsl_vector_sub(oS_k,tmp);
-	gsl_vector_div(oS_k,l_fy);
+	gsl_vector_div(oS_k,r_fy);
 	gsl_vector_scale(oS_k,gsl_vector_get(mp->exp_x_u,k));
       }
     }	     
@@ -318,19 +312,13 @@ int Posterior(const double* x,  void* model_params, double* fx,
                      double* dfx, double* FI);
 
 
-int ode_solver_step(ode_solver *solver, double t, realtype *tout, gsl_vector *y, gsl_vector* fy, gsl_matrix *yS, gsl_matrix *fyS){
+int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy, gsl_matrix *yS, gsl_matrix *fyS){
   /* solves ODE for parameter vector p;
    * returns state vectors y
    */
   double tout;
   ode_model *model;
-  t=mp->t;
-  solver=mp->solver;
   model=solver->odeModel;
-  T=t->size;  
-  C=mp->input_u->size1;  
-  U=mp->input_u->size2;
-  
   int CVerror =  ode_solver_solve(solver, t, y->data, &tout);
   if (CVerror) {
     fprintf(stderr, "ODE solver failed with ERROR = %i.\n",CVerror);
@@ -342,7 +330,7 @@ int ode_solver_step(ode_solver *solver, double t, realtype *tout, gsl_vector *y,
     ode_solver_get_func(solver, tout, y->data, fy->data);
   }
   else {
-    error("ode model has no functions");
+    fprintf(stderr,"ode model has no output functions");
   }
   
   if (ode_model_has_sens(model)){
@@ -352,7 +340,7 @@ int ode_solver_step(ode_solver *solver, double t, realtype *tout, gsl_vector *y,
     } // end if has func sens
   } // end if has sens
   else{
-    error("ode model has no sensitivities.");
+    fprintf(stderr,"ode model has no sensitivities.");
   }
   return GSL_SUCCESS;
 }
@@ -378,41 +366,42 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
    *
    * FI has to be initialized with zeros(D,D)
    */
-  int i,j,k,f,c,u,T,C,F,P,U,N;
+  int i,j,c,T,C,P,U,N;
   int D=mp->D;
   double l_t_j;
   gsl_vector *y,*fy;
   gsl_matrix *yS,*fyS;
   gsl_vector *t;
-  int iy;
   gsl_vector_view grad_l_view;
   gsl_vector *grad_l;
   gsl_matrix_view fisher_information_view;
-  gsl_matrif *fisher_information;
+  gsl_matrix *fisher_information;
   gsl_vector_view oS_row;
   gsl_vector_view input_part;
-  
+  int i_flag=CV_SUCCESS;
+  ode_model *model;
+  ode_solver *solver;
   t=mp->t;
   solver=mp->solver;
   model=solver->odeModel;
   T=t->size;  
   C=mp->input_u->size1;  
   U=mp->input_u->size2;
-  P=(mp->D)+U; // P=D+U
+  P=D+U;
   //initialise all return values
   // log-likelihood
   l[0]=0;
   // gradient of the log-likelihood
   grad_l_view=gsl_vector_view_array(dl,D);
   grad_l=&(grad_l_view.vector);
-  gsl_set_zero(grad_l);
+  gsl_vector_set_zero(grad_l);
   // fisher information
   fisher_information_view=gsl_matrix_view_array(FI,D,D);
   fisher_information=&(fisher_information_view.matrix);
   gsl_matrix_set_zero(fisher_information);
   
   N=ode_model_getN(model);
-  F=ode_model_getF(model);
+  //  F=ode_model_getF(model);
   //  printf("[L] D=%i\tF=%i\tU=%i\tC=%i\tT=%i\tP=%i\n",D,F,U,C,T,P);
   /* calculate reference model output if necessary:
    */
@@ -430,7 +419,7 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
       fy=mp->reference_fy[j];
       yS=mp->reference_yS[j];
       fyS=mp->reference_fyS[j];
-      ode_solver_step(solver, gsl_vector_get(t,j), &tout, y, fy, yS, fyS);
+      ode_solver_step(solver, gsl_vector_get(t,j), y, fy, yS, fyS);
     }
 
   } 
@@ -447,7 +436,7 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
       fy=mp->fy[c*T+j];
       yS=mp->yS[c*T+j];
       fyS=mp->fyS[c*T+j];
-      ode_solver_step(solver, gsl_vector_get(t,j), &tout, y, fy, yS, fyS);
+      i_flag=ode_solver_step(solver, gsl_vector_get(t,j), y, fy, yS, fyS);
     }
   }
   /* normalise ode solution to reflect data
@@ -479,183 +468,190 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
       /* Calculate The Likelihood Gradient and Fisher Information:
        */
       gsl_vector_div(mp->fy[c*T+j],mp->sd_data[c*T+j]); // (fy-data)/sd_data²
-      gsl_blas_dgemv(CblasNoTrans,-1.0, mp->oS, mp->fy[c*T+j],1.0, grad_l);
+      gsl_blas_dgemv(CblasNoTrans,-1.0,
+		     mp->oS[c*T+j],
+		     mp->fy[c*T+j],1.0,
+		     grad_l);
       
       /* Calculate the Fisher information
        */
       for (i=0;i<D;i++) {
-	oS_row=gsl_matrix_row(mp->oS,i);
+	oS_row=gsl_matrix_row(mp->oS[c*T+j],i);
 	gsl_vector_div(&(oS_row.vector),mp->sd_data[c*T+j]);
       }
-      gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0, mp->oS, mp->oS, 1.0, fisher_information);	
+      gsl_blas_dgemm(CblasNoTrans,
+		     CblasTrans, 1.0,
+		     mp->oS[c*T+j],
+		     mp->oS[c*T+j], 1.0,
+		     fisher_information);	
     } // end for loop for time points
   } //end for different experimental conditions (i.e. inputs)
-  return GSL_SUCCESS;
+  return i_flag;
 }
 
-int Likelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
+/* int Likelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){ */
 
-  /* Here, the ode integration is done
-   * 
-   * «l» is a scalar, the return slot of the log-likelihood
-   * dl is the parameter gradient of the log likelihood (size=D)
-   *
-   * cvode returns functions «fy» of the state variables «y».
-   * fy=C*y;
-   * Note P is the cvode related number of ode parameters
-   * while D is the number of MCMC related parameters
-   * P=D+U
-   * where U is the number of input parameters
-   * y[i]: i=0,...,D-1
-   * u[i]: i=0,...,U-1
-   * cvode sees:
-   * p[i]: i=0,...,D-1,D,...,P-1
-   *         yyyyyyyyy,uuuuuuuuu
-   *
-   * FI has to be initialized with zeros(D,D)
-   */
-  int i,j,k,f,c,u,T,C,F,P,U,N;
-  int D=mp->D;
-  realtype tout;
-  ode_model *model;
-  ode_solver *solver;
-  double diff;
-  gsl_vector *y,*fy,*yS,*fyS;
-  gsl_vector_view ref_fy_ti;
-  gsl_vector *rfyi,*t;
-  int iy;
+/*   /\* Here, the ode integration is done */
+/*    *  */
+/*    * «l» is a scalar, the return slot of the log-likelihood */
+/*    * dl is the parameter gradient of the log likelihood (size=D) */
+/*    * */
+/*    * cvode returns functions «fy» of the state variables «y». */
+/*    * fy=C*y; */
+/*    * Note P is the cvode related number of ode parameters */
+/*    * while D is the number of MCMC related parameters */
+/*    * P=D+U */
+/*    * where U is the number of input parameters */
+/*    * y[i]: i=0,...,D-1 */
+/*    * u[i]: i=0,...,U-1 */
+/*    * cvode sees: */
+/*    * p[i]: i=0,...,D-1,D,...,P-1 */
+/*    *         yyyyyyyyy,uuuuuuuuu */
+/*    * */
+/*    * FI has to be initialized with zeros(D,D) */
+/*    *\/ */
+/*   int i,j,k,f,c,u,T,C,F,P,U,N; */
+/*   int D=mp->D; */
+/*   realtype tout; */
+/*   ode_model *model; */
+/*   ode_solver *solver; */
+/*   double diff; */
+/*   gsl_vector *y,*fy,*yS,*fyS; */
+/*   gsl_vector_view ref_fy_ti; */
+/*   gsl_vector *rfyi,*t; */
+/*   int iy; */
 
-  t=mp->t;
-  solver=mp->solver;
-  model=solver->odeModel;
-  T=t->size;  
-  C=mp->input_u->size1;  
-  U=mp->input_u->size2;
-  P=(mp->D)+U; // P=D+U
-  l[0]=0;
-  N=ode_model_getN(model);
-  F=ode_model_getF(model);
-  //  printf("[L] D=%i\tF=%i\tU=%i\tC=%i\tT=%i\tP=%i\n",D,F,U,C,T,P);
+/*   t=mp->t; */
+/*   solver=mp->solver; */
+/*   model=solver->odeModel; */
+/*   T=t->size;   */
+/*   C=mp->input_u->size1;   */
+/*   U=mp->input_u->size2; */
+/*   P=(mp->D)+U; // P=D+U */
+/*   l[0]=0; */
+/*   N=ode_model_getN(model); */
+/*   F=ode_model_getF(model); */
+/*   //  printf("[L] D=%i\tF=%i\tU=%i\tC=%i\tT=%i\tP=%i\n",D,F,U,C,T,P); */
 
-  for (c=-1; c<C; c++){// loop over different experimental conditions
-    // write inputs into the ode parameter vector    
-    if (c<0){ // reference experiment
-      for (u=0;u<U;u++) gsl_vector_set(mp->exp_x_u,D+u,gsl_vector_get(mp->reference_u,u));
-    }else{ 
-      for (u=0;u<U;u++) gsl_vector_set(mp->exp_x_u,D+u,gsl_matrix_get(mp->input_u,c,u));
-    }
+/*   for (c=-1; c<C; c++){// loop over different experimental conditions */
+/*     // write inputs into the ode parameter vector     */
+/*     if (c<0){ // reference experiment */
+/*       for (u=0;u<U;u++) gsl_vector_set(mp->exp_x_u,D+u,gsl_vector_get(mp->reference_u,u)); */
+/*     }else{  */
+/*       for (u=0;u<U;u++) gsl_vector_set(mp->exp_x_u,D+u,gsl_matrix_get(mp->input_u,c,u)); */
+/*     } */
 
-    ode_solver_reinit(solver, mp->t0, 0, N,
-		      mp->exp_x_u->data,
-		      mp->exp_x_u->size);
+/*     ode_solver_reinit(solver, mp->t0, 0, N, */
+/* 		      mp->exp_x_u->data, */
+/* 		      mp->exp_x_u->size); */
     
-    ode_solver_reinit_sens(solver, mp->yS0->data, P, N);
+/*     ode_solver_reinit_sens(solver, mp->yS0->data, P, N); */
 
-    for (i=0; i < t->size; i++){
-      if (c<0){ // reference experiment
-	y=&(mp->reference_y->data[i*N]);        // access the correct block for
-	fy=&(mp->reference_fy->data[i*F]);      // the current time point t[i]
-	yS=&(mp->reference_yS->data[i*P*N]);    // so for fyS_{ik}^j the general
-	fyS=&(mp->reference_fyS->data[i*P*F]);  // index is: i*P*F+j*F+k
-      }else{
-	y=mp->y->data;
-	fy=mp->fy->data;
-	yS=mp->yS->data;
-	fyS=mp->fyS->data;
-      }
+/*     for (i=0; i < t->size; i++){ */
+/*       if (c<0){ // reference experiment */
+/* 	y=&(mp->reference_y->data[i*N]);        // access the correct block for */
+/* 	fy=&(mp->reference_fy->data[i*F]);      // the current time point t[i] */
+/* 	yS=&(mp->reference_yS->data[i*P*N]);    // so for fyS_{ik}^j the general */
+/* 	fyS=&(mp->reference_fyS->data[i*P*F]);  // index is: i*P*F+j*F+k */
+/*       }else{ */
+/* 	y=mp->y->data; */
+/* 	fy=mp->fy->data; */
+/* 	yS=mp->yS->data; */
+/* 	fyS=mp->fyS->data; */
+/*       } */
 
-      if ((c<0) && !(mp->data_is_relative) ){
-	/* set reference_fyS to 0.0 and reference_fy to 1.0, i.e. the
-	   reference is a constant 1.0 */
-	gsl_matrix_set_zero(mp->reference_fyS);
-	gsl_matrix_set_all(mp->reference_fy,1.0);
-      }else{
-	int CVerror =  ode_solver_solve(solver, gsl_vector_get(t,i), y, &tout);
-	//    printf("[Likelihood (i=%i, c=%i) t=%g] y = ",i,c,gsl_vector_get(t,i));
-        //for (iy=0;iy<N;iy++) printf(" %g ",y[iy]); printf("\n");
+/*       if ((c<0) && !(mp->data_is_relative) ){ */
+/* 	/\* set reference_fyS to 0.0 and reference_fy to 1.0, i.e. the */
+/* 	   reference is a constant 1.0 *\/ */
+/* 	gsl_matrix_set_zero(mp->reference_fyS); */
+/* 	gsl_matrix_set_all(mp->reference_fy,1.0); */
+/*       }else{ */
+/* 	int CVerror =  ode_solver_solve(solver, gsl_vector_get(t,i), y, &tout); */
+/* 	//    printf("[Likelihood (i=%i, c=%i) t=%g] y = ",i,c,gsl_vector_get(t,i)); */
+/*         //for (iy=0;iy<N;iy++) printf(" %g ",y[iy]); printf("\n"); */
 
-	if (CVerror) {
-	  fprintf(stderr, "ODE solver failed with ERROR = %i.\n",CVerror);
-	  // return a rejection message; the Likelihood is not defined for this argument;
-	  return GSL_EDOM;
-	}
-	//printf("ode_model_has_functions: %i\n",ode_model_has_funcs(model));
-	if (ode_model_has_funcs(model)) {
-	  ode_solver_get_func(solver, tout, y, fy);
-	}
-	else {
-	  error("ode model has no functions");
-	}
+/* 	if (CVerror) { */
+/* 	  fprintf(stderr, "ODE solver failed with ERROR = %i.\n",CVerror); */
+/* 	  // return a rejection message; the Likelihood is not defined for this argument; */
+/* 	  return GSL_EDOM; */
+/* 	} */
+/* 	//printf("ode_model_has_functions: %i\n",ode_model_has_funcs(model)); */
+/* 	if (ode_model_has_funcs(model)) { */
+/* 	  ode_solver_get_func(solver, tout, y, fy); */
+/* 	} */
+/* 	else { */
+/* 	  error("ode model has no functions"); */
+/* 	} */
 
-	if (ode_model_has_sens(model)){
-	  ode_solver_get_sens(solver, tout, yS);
-	  if (ode_model_has_funcs_sens(model)){
-	    ode_solver_get_func_sens(solver, tout, y, yS, fyS);
-	  } // end if has func sens
-	} // end if has sens
-	else{
-	  error("ode model has no sensitivities.");
-	}	
-      }	
-      if (c>=0){ /* only start calculating the likelihood, gradient
-		  * and FI when reference observations are done
-		  */
-	ref_fy_ti=gsl_matrix_row(mp->reference_fy,i); // point to the right row
-	rfyi=&(ref_fy_ti.vector);
-	gsl_vector_div(mp->fy,rfyi);
-	for (f=0;f<F;f++) {
-	  diff=gsl_matrix_get(mp->Data,c*T+i,f)-gsl_vector_get(mp->fy,f);
-	  diff/=gsl_matrix_get(mp->sdData,c*T+i,f);
-	  l[0]+=-0.5*gsl_pow_2(diff);
-	} // end likelihood sum
-	/* printf("l = %g\n",l[0]); */
-	/* gsl_printf("exp_x_u",mp->exp_x_u,0); */
-	/* gsl_printf("fyS",mp->fyS,1); */
-	/* gsl_printf("fy",mp->fy,0); */
-	/* gsl_printf("reference_fyS",mp->reference_fyS,1); */
-	for (j=0;j<D;j++) {
-	  /*
-	   * the dense index of sensitivities is the state (or
-	   * "function") index 
-	   * yS[i*N+j] = dy[j]/dp[i];
-	   * fyS[i*F+j] = dfy[j]/dp[i];
-	   */
-	  for (f=0;f<F;f++){ // calculate observational sensitivities, i.e. ~{fy/ref_fy}S 
-	    gsl_matrix_set(mp->oS,j,f,
-			   gsl_vector_get(mp->exp_x_u,j)*
-			   (gsl_matrix_get(mp->fyS,j,f)
-			    -gsl_vector_get(mp->fy,f)*gsl_matrix_get(mp->reference_fyS,i*P+j,f))
-			   /gsl_vector_get(rfyi,f)
-			   );
-	  }
-	  if (dl!=NULL){
-	    dl[j]=0;
-	    for (f=0;f<F;f++){ // loop over y functions
-	      diff=gsl_matrix_get(mp->Data,c*T+i,f)-gsl_vector_get(mp->fy,f);
-	      diff/=gsl_pow_2(gsl_matrix_get(mp->sdData,c*T+i,f));
-	      dl[j]+=diff*gsl_matrix_get(mp->oS,j,f);
-	    } // end loop over functions
-	    //printf("dl[%i] = %g \n",j,dl[j]);
-	  } // end if dl != NULL
-	} // end gradient loop
+/* 	if (ode_model_has_sens(model)){ */
+/* 	  ode_solver_get_sens(solver, tout, yS); */
+/* 	  if (ode_model_has_funcs_sens(model)){ */
+/* 	    ode_solver_get_func_sens(solver, tout, y, yS, fyS); */
+/* 	  } // end if has func sens */
+/* 	} // end if has sens */
+/* 	else{ */
+/* 	  error("ode model has no sensitivities."); */
+/* 	}	 */
+/*       }	 */
+/*       if (c>=0){ /\* only start calculating the likelihood, gradient */
+/* 		  * and FI when reference observations are done */
+/* 		  *\/ */
+/* 	ref_fy_ti=gsl_matrix_row(mp->reference_fy,i); // point to the right row */
+/* 	rfyi=&(ref_fy_ti.vector); */
+/* 	gsl_vector_div(mp->fy,rfyi); */
+/* 	for (f=0;f<F;f++) { */
+/* 	  diff=gsl_matrix_get(mp->Data,c*T+i,f)-gsl_vector_get(mp->fy,f); */
+/* 	  diff/=gsl_matrix_get(mp->sdData,c*T+i,f); */
+/* 	  l[0]+=-0.5*gsl_pow_2(diff); */
+/* 	} // end likelihood sum */
+/* 	/\* printf("l = %g\n",l[0]); *\/ */
+/* 	/\* gsl_printf("exp_x_u",mp->exp_x_u,0); *\/ */
+/* 	/\* gsl_printf("fyS",mp->fyS,1); *\/ */
+/* 	/\* gsl_printf("fy",mp->fy,0); *\/ */
+/* 	/\* gsl_printf("reference_fyS",mp->reference_fyS,1); *\/ */
+/* 	for (j=0;j<D;j++) { */
+/* 	  /\* */
+/* 	   * the dense index of sensitivities is the state (or */
+/* 	   * "function") index  */
+/* 	   * yS[i*N+j] = dy[j]/dp[i]; */
+/* 	   * fyS[i*F+j] = dfy[j]/dp[i]; */
+/* 	   *\/ */
+/* 	  for (f=0;f<F;f++){ // calculate observational sensitivities, i.e. ~{fy/ref_fy}S  */
+/* 	    gsl_matrix_set(mp->oS,j,f, */
+/* 			   gsl_vector_get(mp->exp_x_u,j)* */
+/* 			   (gsl_matrix_get(mp->fyS,j,f) */
+/* 			    -gsl_vector_get(mp->fy,f)*gsl_matrix_get(mp->reference_fyS,i*P+j,f)) */
+/* 			   /gsl_vector_get(rfyi,f) */
+/* 			   ); */
+/* 	  } */
+/* 	  if (dl!=NULL){ */
+/* 	    dl[j]=0; */
+/* 	    for (f=0;f<F;f++){ // loop over y functions */
+/* 	      diff=gsl_matrix_get(mp->Data,c*T+i,f)-gsl_vector_get(mp->fy,f); */
+/* 	      diff/=gsl_pow_2(gsl_matrix_get(mp->sdData,c*T+i,f)); */
+/* 	      dl[j]+=diff*gsl_matrix_get(mp->oS,j,f); */
+/* 	    } // end loop over functions */
+/* 	    //printf("dl[%i] = %g \n",j,dl[j]); */
+/* 	  } // end if dl != NULL */
+/* 	} // end gradient loop */
 	
-	/* calculate Fisher Information; we are still inside the time loop
-	   (over t[i])*/
-	if (FI!=NULL){	  
-	  for (j=0;j<D;j++){ // loop over rows of FI, 0,...,D-1
-	    for (k=0;k<D;k++){ // loop over columns of FI, 0,...,D-1
-	      for (f=0;f<F;f++){ // loop over functions
-		FI[j*D+k]+=gsl_matrix_get(mp->oS,j,f)*gsl_matrix_get(mp->oS,k,f)
-		  /gsl_pow_2(gsl_matrix_get(mp->sdData,c*T+i,f)); // squared
-	      }// end loop over functions
-	    }// end loop over columns
-	  }// end loop over rows	  
-	} // end if FI!=NULL	
-      } // end if c>=0
-    } // end for loop for time points
-  } //end for different experimental conditions (i.e. inputs)
-  return GSL_SUCCESS;
-}
+/* 	/\* calculate Fisher Information; we are still inside the time loop */
+/* 	   (over t[i])*\/ */
+/* 	if (FI!=NULL){	   */
+/* 	  for (j=0;j<D;j++){ // loop over rows of FI, 0,...,D-1 */
+/* 	    for (k=0;k<D;k++){ // loop over columns of FI, 0,...,D-1 */
+/* 	      for (f=0;f<F;f++){ // loop over functions */
+/* 		FI[j*D+k]+=gsl_matrix_get(mp->oS,j,f)*gsl_matrix_get(mp->oS,k,f) */
+/* 		  /gsl_pow_2(gsl_matrix_get(mp->sdData,c*T+i,f)); // squared */
+/* 	      }// end loop over functions */
+/* 	    }// end loop over columns */
+/* 	  }// end loop over rows	   */
+/* 	} // end if FI!=NULL	 */
+/*       } // end if c>=0 */
+/*     } // end for loop for time points */
+/*   } //end for different experimental conditions (i.e. inputs) */
+/*   return GSL_SUCCESS; */
+/* } */
 
 int print_help(){
   printf("Usage:\n");
@@ -666,7 +662,7 @@ int print_help(){
   printf("-s $N\n");
   printf("\t\t\t$N sample size. default N=10.\n\n");
   printf("-r, --resume\n");
-  printf("\t\t\tresume from last sampled MCMC point. Only the last MCMC position is read from the file named «resume.double». Everything else can be changed.")
+  printf("\t\t\tresume from last sampled MCMC point. Only the last MCMC position is read from the file named «resume.double». Everything else about the problem can be changed.\n");
   printf("-o ./output_file\n");
   printf("\t\t\tfile for output. Output can be binary.\n\n");
   printf("-b\n");
@@ -683,21 +679,20 @@ int print_help(){
 
 int main (int argc, char* argv[]) {
   int D = 0; // number of MCMC sampling variables, i.e. model parameters
-  int C = 0; // number of experimental conditions, i.e different input vectors
-  int i,j;
+  //int C = 0; // number of experimental conditions, i.e different input vectors
+  int i=0;
   char *cfilename=NULL;
   char lib_name[128];
   ode_model_parameters omp;
   FILE *cnf;   // configuration file, with file name: cfilename
   char sample_file[128]="sample.dat"; // filename for sample output
-  char *x_sample_file=NULL; // filename for sample output x(t,p)
-  char *y_sample_file=NULL; // filename for sample output y(t,p)
+  //char *x_sample_file=NULL; // filename for sample output x(t,p)
+  //char *y_sample_file=NULL; // filename for sample output y(t,p)
   FILE *oFile; // will be the file named «sample_file»
   FILE *rFile; // last sampled value will be written to this file
   char resume_filename[128]="resume.double";
   int output_is_binary=0;
   double seed = 1;
-  int Tuning = 1;
   int sampling_action=SMPL_FRESH;
   size_t resume_count;
   gsl_error_handler_t *gsl_error_handler;
@@ -716,7 +711,7 @@ int main (int argc, char* argv[]) {
     if (strcmp(argv[i],"-c")==0) cfilename=argv[i+1];
     else if (strcmp(argv[i],"--resume")==0 || strcmp(argv[i],"-r")==0) sampling_action=SMPL_RESUME;
     else if (strcmp(argv[i],"-l")==0) strcpy(cnf_options.library_file,argv[i+1]);
-    else if (strcmp(argv[i],"-n")==0) Tuning=0;
+    //    else if (strcmp(argv[i],"-n")==0) Tuning=0;
     else if (strcmp(argv[i],"-s")==0) cnf_options.sample_size=strtol(argv[i+1],NULL,0);
     else if (strcmp(argv[i],"-o")==0) strcpy(cnf_options.output_file,argv[i+1]);
     else if (strcmp(argv[i],"-b")==0) output_is_binary=1;
@@ -804,7 +799,11 @@ int main (int argc, char* argv[]) {
     smmala_model* model_function, 
     unsigned long int seed)
   */
-  mcmc_kernel* kernel = smmala_kernel_alloc(omp.D, cnf_options.initial_stepsize, model, seed, cnf_options.target_acceptance);
+  mcmc_kernel* kernel = smmala_kernel_alloc(omp.D,
+					    cnf_options.initial_stepsize,
+					    model,
+					    seed,
+					    cnf_options.target_acceptance);
   printf("# initializing MCMC.\n");
 
   /* initialise MCMC */
@@ -813,11 +812,11 @@ int main (int argc, char* argv[]) {
     rFile=fopen(resume_filename,"r");
     if (rFile==NULL) {
       printf("Could not open resume file. Starting from: ");
-      gsl_printf("prior mean" omp.prior_mu,0);
+      gsl_printf("prior mean",omp.prior_mu,0);
     } else {
-      size_t resume_count=fread(init_x, sizof(double), D, rFile);
+      resume_count=fread(init_x, sizeof(double), D, rFile);
       fclose(rFile);
-      if (resume_count!=D) error("Reading from resume file returned a wrong number of values.");
+      if (resume_count!=D) fprintf(stderr,"Reading from resume file returned a wrong number of values.");
     }
   }
   mcmc_init(kernel, init_x);
@@ -919,7 +918,7 @@ int main (int argc, char* argv[]) {
   }
   rFile=fopen(resume_filename,"w");
   mcmc_write_sample(kernel, rFile);
-  fclose(rFile)
+  fclose(rFile);
   ct=clock()-ct;
   fclose(oFile);
   printf("# computation time spend sampling: %f s\n",((double) ct)/((double) CLOCKS_PER_SEC));
@@ -959,41 +958,22 @@ int Posterior(const double* x,  void* model_params, double* fx, double* dfx, dou
 	
   ode_model_parameters* params =  (ode_model_parameters*) model_params;
   double prior_value=0;            // the prior distribution related sum of squares
-  int i,j,F,T,D,U;
-  gsl_matrix *Data,*sd;
-  gsl_vector *fy;
+  int i;
   gsl_matrix *inv_cov;
   gsl_vector *prior_diff, *prior_mv;
-  double l;
+  // double l;
   int logL_stat;
+  int D=params->D;
 
-  U=params->input_u->size2;
-  D=params->D;
   prior_diff=params->prior_tmp_a;
   prior_mv=params->prior_tmp_b;
-
-  fy=params->fy;
-  Data=params->Data;
-  sd=params->sdData;
-
   inv_cov=params->prior_inverse_cov;
 
-  T=(params->t)->size;
-  F=(params->fy)->size;
-  // init FI and dFI
   fx[0]=0;
   for (i=0;i<D;i++) gsl_vector_set(params->exp_x_u,i,gsl_sf_exp(x[i]));
-  for (i=0;i<D*D;i++) FI[i]=0;
+  //for (i=0;i<D*D;i++) FI[i]=0;
  
   logL_stat=LikelihoodComplexNorm(params, fx, dfx, FI);
-  //  printf("Likelihood: fx = %f\n",*fx);
-  //  printf("Likelihood: dfx = ["); for (i=0;i<D;i++) printf("%f\t",dfx[i]); printf("]\n");
-  //  printf("[l FI]\n");
-  /*for (i=0;i<D;i++){
-    for (j=0;j<D;j++) printf("%f\t",FI[i*D+j]); printf("\n");
-    }*/
-  //printf("[/l FI]\n");
-
   for (i=0;i<D;i++) gsl_vector_set(prior_diff,i,x[i]-gsl_vector_get(params->prior_mu,i));
 
   gsl_blas_dsymv(CblasUpper,-0.5,inv_cov,prior_diff,0.0,prior_mv);

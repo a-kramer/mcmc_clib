@@ -388,6 +388,10 @@ void ode_solver_reinit_sens(ode_solver* solver,  double* yS0, int lenP, int lenY
   
   flag = CVodeSensReInit(solver->cvode_mem, CV_STAGGERED1, solver->yS);
   flag = CVodeSetSensParams(solver->cvode_mem, solver->params, scale_p, NULL);
+  if (flag!=CV_SUCCESS){
+    fprintf(stderr,"reinit_sens failed.\n");
+    exit(-1);
+  }
 }
 
 int ode_solver_solve(ode_solver* solver, const double t, double* y, double* tout){

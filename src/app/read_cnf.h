@@ -61,11 +61,37 @@ struct field_expression_t {
   int id;
 };
 
-field_expression* field_expression_stack(int id, field_expression *top, regex_t *open, regex_t *close);
+field_expression* field_expression_stack(int id,
+					 field_expression *top,
+					 regex_t *open,
+					 regex_t *close);
+
 field_expression* field_expression_init(field_names *fn);
+
 int ratio_with_sd(gsl_matrix_sd *A, gsl_matrix_sd *B);
-int count_rc(FILE *cnf, const regex_t *end, const regex_t *comment, int *rows, int *columns);
+
+int count_rc(FILE *cnf,
+	     const regex_t *end,
+	     const regex_t *comment,
+	     int *rows,
+	     int *columns);
 int count_columns(const char *c);
-int parse_config(FILE *cnf, ode_model_parameters *omp,  problem_size *ps, main_options *cnf_options);
-int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t *comment, problem_size *ps, main_options *cnf_options);
-int read_problem_definition(FILE *cnf, ode_model_parameters *omp, gsl_matrix_sd *RD, const field_expression *fe, const regex_t *comment, problem_size *ps, main_options *cnf_options)
+
+int parse_config(FILE *cnf,
+		 ode_model_parameters *omp,
+		 problem_size *ps,
+		 main_options *cnf_options);
+
+int determine_problem_size(FILE *cnf,
+			   const field_expression *fe,
+			   const regex_t *comment,
+			   problem_size *ps,
+			   main_options *cnf_options);
+
+int read_problem_definition(FILE *cnf,
+			    ode_model_parameters *omp,
+			    gsl_matrix_sd *RD,
+			    const field_expression *fe,
+			    const regex_t *comment,
+			    problem_size *ps,
+			    main_options *cnf_options);
