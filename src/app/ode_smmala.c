@@ -133,7 +133,7 @@ int normalise_by_reference(ode_model_parameters *mp){
   gsl_vector *r_fyS_k; // the raw fy sensitivity for one parameter k
   gsl_vector_view oS_k_view; // 
   gsl_vector *oS_k; // the normalised output sensitivity for one parameter k
-
+  tmp=mp->tmpF; // maybe find a piece of unused memory somewhere?
   for (c=0;c<C;c++){
     for (j=0;j<T;j++){
       // define some shorthands
@@ -161,7 +161,7 @@ int normalise_by_reference(ode_model_parameters *mp){
 	oS_k_view=gsl_matrix_row(oS,k);
 	oS_k=&(oS_k_view.vector);
 	// calculate normalised output sensitivity
-	tmp=r_fy; //r_fy is not needed anymore
+	//tmp=r_fy; //r_fy is not needed anymore ! wrong
 	gsl_vector_memcpy(oS_k,fyS_k);
 	gsl_vector_memcpy(tmp,fy);
 	gsl_vector_mul(tmp,r_fyS_k);
@@ -412,7 +412,7 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
     ode_solver_reinit(solver, mp->t0, 0, N,
 		      mp->exp_x_u->data,
 		      mp->exp_x_u->size);
-    
+    //gsl_printf("reference exp_x_u",mp->exp_x_u,0);
     ode_solver_reinit_sens(solver, mp->yS0->data, P, N);
     for (j=0; j<T; j++){
       y=mp->reference_y[j];
@@ -426,6 +426,7 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
   for (c=0; c<C; c++){// loop over different experimental conditions
     // write inputs into the ode parameter vector
     gsl_vector_memcpy(&(input_part.vector),mp->u[c]);
+    //gsl_printf("exp_x_u",mp->exp_x_u,0);
     ode_solver_reinit(solver, mp->t0, 0, N,
 		      mp->exp_x_u->data,
 		      mp->exp_x_u->size);
@@ -443,12 +444,28 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
    * normalisation. Normalisation will be performed "in place",
    * i.e. the ODE solution will be overwritten
    */
+  //printf("after simulation:\n");
+  /* for (c=0;c<C;c++){ */
+  /*   for (j=0;j<T;j++){ */
+  /*     gsl_printf("Data",mp->data[c*T+j],0); */
+  /*     gsl_printf("fy",mp->fy[c*T+j],0); */
+  /*     gsl_printf("reference fy",mp->reference_fy[j],0); */
+  /*     gsl_printf("fyS",mp->fyS[c*T+j],1); */
+  /*     gsl_printf("reference fyS",mp->reference_fyS[j],1); */
+  /*   } */
+  /* } */
+  /* for (j=0;j<T;j++) gsl_printf("fy",mp->fy[c],0); */
+  /* for (c=0;c<C*T;c++) gsl_printf("fyS",mp->fyS[c],1); */
+
   switch (mp->normalisation_type){
   case DATA_NORMALISED_BY_TIMEPOINT:
     normalise_by_timepoint(mp);
     break;
   case DATA_NORMALISED_BY_REFERENCE:
     normalise_by_reference(mp);
+    /* printf("after normalisation:\n"); */
+    /* for (c=0;c<C*T;c++) gsl_printf("fy normalised",mp->fy[c],0); */
+    /* for (c=0;c<C*T;c++) gsl_printf("oS normalised",mp->oS[c],1); */
     break;
   case DATA_NORMALISED_BY_STATE_VAR:
     normalise_by_state_var(mp);

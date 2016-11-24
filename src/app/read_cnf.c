@@ -1,8 +1,5 @@
 #include <string.h>
 #include "read_cnf.h"
-//#include "model_parameters_smmala.h"
-
-
 
 int count_rc(FILE *cnf, const regex_t *end, const regex_t *comment, int *rows, int *columns){
   int bsize=1024;
@@ -195,7 +192,7 @@ int normalise_by_state_var_with_sd(ode_model_parameters *omp, problem_size *ps){
   int c,i,j;
   gsl_vector *tmp; // intermediate results
   //gsl_vector_view D,SD;
-  gsl_vector *s,*sd_s,*d,*sd_d;
+  gsl_vector *r,*sd_r,*d,*sd_d;
   int i_f, i_t;
   int C=ps->C;
   int T=ps->T;
@@ -203,42 +200,53 @@ int normalise_by_state_var_with_sd(ode_model_parameters *omp, problem_size *ps){
   // here, we need to allocate some memory for s and sd_s, because the
   // normalisation is more complex and different from state variable
   // to state variable.
-  tmp=gsl_vector_alloc(F);
-  s=gsl_vector_alloc(F);
-  sd_s=gsl_vector_alloc(F);
+  tmp=omp->tmpF;
+  r=omp->reference_fy[0];
+  sd_r=gsl_vector_alloc(F);
+  //printf("\n");
+  //printf("# norm_f:\n");
+  //gsl_matrix_int_fprintf(stdout,omp->norm_f,"%i");
+  //printf("# norm_t:\n");
+  //gsl_matrix_int_fprintf(stdout,omp->norm_t,"%i");
+  
   for (c=0;c<C;c++) {
+    //printf("# [norm_f/norm_t] c=%i/%i\n",c,C);
     // s is defined per block of experimental conditions (c=const.)
     for (i=0;i<F;i++) {
+      //printf("# [norm_f/norm_t] i=%i/%i\n",i,F);
+
       // fill s with the appropriate data point:
       // that is, state variable with index i_d
       i_f=gsl_matrix_int_get(omp->norm_f,c,i); 
       // at time index i_t, as specified by the normalisation matrix
       i_t=gsl_matrix_int_get(omp->norm_t,c,i);
-      d=omp->data[c*T+i_t];
-      sd_d=omp->data[c*T+i_t];
-      gsl_vector_set(s,i,gsl_vector_get(d,i_f));
-      gsl_vector_set(sd_s,i,gsl_vector_get(sd_d,i_f));
+      //printf("i_t=%i\ti_f=%i\n",i_t,i_f);fflush(stdout);
+      if (i_f<F && i_t<T){
+	d=omp->data[c*T+i_t];
+	sd_d=omp->sd_data[c*T+i_t];
+	gsl_vector_set(r,i,gsl_vector_get(d,i_f));
+	gsl_vector_set(sd_r,i,gsl_vector_get(sd_d,i_f));
+      } else {
+	printf("normalisation index pair out of bounds: 0≤%i<%i and 0≤%i<%i.\n",i_f,F,i_t,T); exit(-1);
+      }
     }
     for (j=0;j<T;j++) { 
       d=omp->data[c*T+j];
-      sd_d=omp->data[c*T+j];
+      sd_d=omp->sd_data[c*T+j];
       // data will be scaled by 1/s
-      gsl_vector_div(d,s);
+      gsl_vector_div(d,r);
       // calculate standard deviation of result:
-      gsl_vector_set_zero(tmp);
-      gsl_vector_add(tmp,d);
+      gsl_vector_memcpy(tmp,d);
       // add both error terms
-      gsl_vector_div(sd_s,s);
-      gsl_vector_mul(tmp,sd_s);
-      // so: (d/s) * (sd_s/s) = (d/s²) sd_s   
-      gsl_vector_div(sd_d,s);
+      gsl_vector_div(sd_r,r);
+      gsl_vector_mul(tmp,sd_r);
+      // so: (d/s) * (sd_r/r) = (d/r²) sd_r   
+      gsl_vector_div(sd_d,r);
       gsl_vector_add(sd_d,tmp);
-      // so: (sd_d/s) + sd_s × (d/s²) = (d/s)×(sd_d/d) + (d/s)×(sd_s/s);
+      // so: (sd_d/r) + sd_r × (d/r²) = (d/r)×(sd_d/d) + (d/r)×(sd_r/r);
     }
   }
-  gsl_vector_free(tmp);
-  gsl_vector_free(s);
-  gsl_vector_free(sd_s);
+  gsl_vector_free(sd_r);
   return GSL_SUCCESS;  
 }
 
@@ -289,7 +297,7 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
    * right amount of memory later on. The function returns an
    * indicator for the normalisation type.
    */
-  int D=0,U=0,C=0,F=0,T=0,N=0,R=0;
+  int D=0,U=0,C=0,F=0,T=0,R=0;
   int n_f_[2]={0,0};
   int n_t_[2]={0,0};
   int rm,l;
@@ -367,9 +375,6 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
 	  case i_prior_mu:
 	    count_rc(cnf, current->closing_bracket, comment, &D, &rm);
 	    break;
-	  case i_output:
-	    count_rc(cnf, current->closing_bracket, comment, &F, &N);
-	    break;
 	  case i_norm_f:
 	    count_rc(cnf, current->closing_bracket, comment, &n_f_[0], &n_f_[1]);
 	    break;
@@ -384,8 +389,6 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
       }// while (regular expressions from stack)
     } //if [key]=[value]
   }// while !EOF
-  printf("# file read once to determine the size of the problem.\n");
-  printf("# D=%i\tN=%i\tF=%i\tU=%i\tC=%i\tR=%i\tT=%i\n",D,N,F,U,C,R,T);
   
   if (normalisation_type!=DATA_NORMALISED_BY_REFERENCE){
     if (n_f_[0] == 0 && n_t_[0] == C) {
@@ -418,8 +421,7 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
   ps->C=C;
   ps->U=U;
   ps->T=T;
-  // these are known from the model file:
-  N=ps->N;
+  // this is known from the model file:
   // this can be checked for consistency:
   if (R==1 || R==C){
     ps->R=R;
@@ -436,6 +438,9 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
     exit(-2);
   }
   //printf("problem size fixed.\n");
+  printf("# file read once to determine the size of the problem.\n");
+  printf("# D=%i\tN=%i\tF=%i\tU=%i\tC=%i\tR=%i\tT=%i\n",D,ps->N,ps->F,U,C,R,T);
+
   return normalisation_type;
 }
 
@@ -498,14 +503,13 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, gsl_matrix_sd 
 	  read_block(ps->D,ps->D,cnf,DOUBLE_BLOCK,omp->prior_inverse_cov->data,comment);
 	  printf("# prior inverse covariance matrix read.\n");
 	  break;
-	case i_output:
-	  read_block(ps->F,ps->N,cnf,DOUBLE_BLOCK,omp->output_C->data,comment);
-	  break;
 	case i_norm_f:
-	  read_block(ps->R,ps->F,cnf,INTEGER_BLOCK,omp->norm_f,comment);
+	  read_block(ps->R,ps->F,cnf,INTEGER_BLOCK,omp->norm_f->data,comment);
+	  printf("# norm_f read.\n");
 	  break;
 	case i_norm_t:
-	  read_block(ps->R,ps->F,cnf,INTEGER_BLOCK,omp->norm_t,comment);
+	  read_block(ps->R,ps->F,cnf,INTEGER_BLOCK,omp->norm_t->data,comment);
+	  printf("# norm_t read.\n");
 	  break;
 	}// switch what to do.
 	break; // if matched: break, else try the next regular expression.
@@ -601,7 +605,6 @@ int parse_config(FILE *cnf, ode_model_parameters *omp,  problem_size *ps, main_o
   regex_t comment[2];
   field_expression *fe;
   field_names fn;
-
   field_names_init(&fn);
   /*comments in file: a line that is only a comment: "_blank_ #
    * comment" must be disregarded when line counting; a line that
@@ -612,6 +615,7 @@ int parse_config(FILE *cnf, ode_model_parameters *omp,  problem_size *ps, main_o
   regcomp(&comment[1],"\\w+\\s*(#|//|%)",REG_EXTENDED);
   
   fe=field_expression_init(&fn);
+
 
   omp->normalisation_type=determine_problem_size(cnf,fe, comment, ps, cnf_options);
   //printf("normalisation type: %i\n",omp->normalisation_type);
@@ -639,8 +643,8 @@ int parse_config(FILE *cnf, ode_model_parameters *omp,  problem_size *ps, main_o
 
   /* now we perform the data normalisation
    */
-  printf("# calculating relative data.");
-
+  printf("# calculating relative data.\n");
+  printf("# normalisation type: %i.\n",omp->normalisation_type);
   switch (omp->normalisation_type){
   case DATA_NORMALISED_BY_REFERENCE:
     printf("# taking ratios of Data and Refrence Data...");
@@ -660,7 +664,7 @@ int parse_config(FILE *cnf, ode_model_parameters *omp,  problem_size *ps, main_o
   case DATA_NORMALISED_BY_STATE_VAR:
     printf("# normalising using another state variable at specified time instance...");
     if (R<C){ // user supplied just one normalisation line
-      for (c=R;c<ps->C;c++) { //copy this line for all c 
+      for (c=R;c<C;c++) { //copy this line for all c 
 	for (i=0;i<ps->F;i++){
 	  gsl_matrix_int_set(omp->norm_t,c,i,gsl_matrix_int_get(omp->norm_t,c%R,i));
 	  gsl_matrix_int_set(omp->norm_f,c,i,gsl_matrix_int_get(omp->norm_f,c%R,i));

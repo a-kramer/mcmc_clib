@@ -33,6 +33,7 @@ typedef struct {
   int normalisation_type;
   gsl_matrix_int *norm_f; // (1|C) × F matrix
   gsl_matrix_int *norm_t; // (1|C) × F matrix
+  gsl_vector *tmpF;
   gsl_vector **y; // y[c*T+j](i)
   gsl_vector **reference_y;
   gsl_vector **fy; // measurement model output functions
@@ -41,8 +42,6 @@ typedef struct {
 			*  the model (double precision condition
 			*  parameters)
 			*/
-  gsl_matrix *output_C;
-
   gsl_vector *reference_u;
   gsl_vector_view *input_u_row;
   gsl_vector **u;

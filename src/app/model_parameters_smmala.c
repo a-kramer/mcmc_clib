@@ -40,6 +40,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
    * differential equation data for each experimental condition c and
    * time point t_j, like this: y[c*T+j]=gsl_vector(N)
    */
+  omp->tmpF=gsl_vector_alloc(F);
   //printf("alloc norm f and t\n");
   omp->norm_f=gsl_matrix_int_alloc(C,F);
   omp->norm_t=gsl_matrix_int_alloc(C,F);
@@ -89,8 +90,6 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
    */
   omp->beta=1.0;
   
-  omp->output_C=gsl_matrix_alloc(F,N);
-
   // [\rho=exp(theta), u]
   //printf("gsl alloc exp_x_u\n");
 
@@ -126,6 +125,9 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
   // shortcuts for input rows;
   //printf("ptr alloc input row views\n");
 
+  // inputs
+  omp->input_u=gsl_matrix_alloc(C,U);
+  omp->reference_u=gsl_vector_alloc(U);
   omp->input_u_row=(gsl_vector_view*) malloc(sizeof(gsl_vector_view)*C);
   omp->u=(gsl_vector **) malloc(sizeof(gsl_vector*)*C);
   //printf("assign input row views\n");
@@ -134,9 +136,6 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
     omp->u[i]=&(omp->input_u_row[i].vector);
   }
   
-  // inputs
-  omp->input_u=gsl_matrix_alloc(C,U);
-  omp->reference_u=gsl_vector_alloc(U);
 
   // prior 
   omp->prior_tmp_a=gsl_vector_alloc(D);
@@ -194,7 +193,6 @@ int ode_model_parameters_free(ode_model_parameters *omp){
   gsl_matrix_int_free(omp->norm_f);
   gsl_matrix_int_free(omp->norm_t);
   
-  gsl_matrix_free(omp->output_C);
   gsl_vector_free(omp->exp_x_u);
   
   // time
