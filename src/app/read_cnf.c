@@ -391,15 +391,10 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
   }// while !EOF
   
   if (normalisation_type!=DATA_NORMALISED_BY_REFERENCE){
-    if (n_f_[0] == 0 && n_t_[0] == C) {
+    if (n_f_[0] == 0 && n_t_[0] > 0) {
       normalisation_type=DATA_NORMALISED_BY_TIMEPOINT;
-      if (n_t_[0] == 1)
-	R=1;
-      else if (n_t_[0] == C && n_t_[1] ==1){
-	R=C;
-      } else {
-	fprintf(stderr,"wrong number of normalisation time indices: (%i×%i)\nMust be either (1×1) or (C×1).\n",n_t_[0],n_t_[1]);
-      }
+      R=n_t_[0];
+      printf("# data normalised by timepoint.\n");
     } else {
       normalisation_type=DATA_NORMALISED_BY_STATE_VAR;
       if (n_f_[1]==F && n_t_[1]==F){
@@ -423,12 +418,7 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
   ps->T=T;
   // this is known from the model file:
   // this can be checked for consistency:
-  if (R==1 || R==C){
-    ps->R=R;
-  } else {
-    fprintf(stderr,"the number of different (%i×%i) reference measurement sets must be either 1 or %i.\n",T,F,C);
-    exit(-3);
-  }
+  ps->R=R;
   if (F!=ps->F) {
     fprintf(stderr,"data file has a different number of outputs than model.\n");
     exit(-1);
@@ -504,11 +494,11 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, gsl_matrix_sd 
 	  printf("# prior inverse covariance matrix read.\n");
 	  break;
 	case i_norm_f:
-	  read_block(ps->R,ps->F,cnf,INTEGER_BLOCK,omp->norm_f->data,comment);
+	  read_block(ps->C,ps->F,cnf,INTEGER_BLOCK,omp->norm_f->data,comment);
 	  printf("# norm_f read.\n");
 	  break;
 	case i_norm_t:
-	  read_block(ps->R,ps->F,cnf,INTEGER_BLOCK,omp->norm_t->data,comment);
+	  read_block(ps->C,ps->F,cnf,INTEGER_BLOCK,omp->norm_t->data,comment);
 	  printf("# norm_t read.\n");
 	  break;
 	}// switch what to do.

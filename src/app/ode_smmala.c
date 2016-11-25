@@ -50,6 +50,9 @@
 #include <gsl/gsl_linalg.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_sf_exp.h>
+#include <gsl/gsl_sort.h>
+#include <gsl/gsl_sort_vector.h>
+#include <gsl/gsl_statistics_double.h>
 #include "read_cnf.h"
 #include "../mcmc/smmala.h"
 #include "../ode/ode_model.h"
@@ -194,7 +197,7 @@ int normalise_by_timepoint(ode_model_parameters *mp){
   gsl_vector_view oS_k_view; // 
   gsl_vector *oS_k; // the normalised output sensitivity for one parameter k
 
-  tmp=mp->reference_fy[0]; // this should be unused memory for this normalisation type
+  tmp=mp->tmpF;
 
   for (c=0;c<C;c++){
     l=gsl_matrix_int_get(mp->norm_t,c,0);    
@@ -252,7 +255,7 @@ int normalise_by_state_var(ode_model_parameters *mp){
   gsl_vector *oS_k; // the normalised output sensitivity for one parameter k
 
   for (c=0;c<C;c++){
-    tmp=mp->reference_fy[1];
+    tmp=mp->tmpF;
     r_fy=mp->reference_fy[0]; // these can be used as temporary storage
     r_fyS=mp->reference_fyS[0];
     for (i=0;i<F;i++){
@@ -388,18 +391,8 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
   C=mp->input_u->size1;  
   U=mp->input_u->size2;
   P=D+U;
-  //initialise all return values
-  // log-likelihood
-  l[0]=0;
-  // gradient of the log-likelihood
-  grad_l_view=gsl_vector_view_array(dl,D);
-  grad_l=&(grad_l_view.vector);
-  gsl_vector_set_zero(grad_l);
-  // fisher information
-  fisher_information_view=gsl_matrix_view_array(FI,D,D);
-  fisher_information=&(fisher_information_view.matrix);
-  gsl_matrix_set_zero(fisher_information);
   
+
   N=ode_model_getN(model);
   //  F=ode_model_getF(model);
   //  printf("[L] D=%i\tF=%i\tU=%i\tC=%i\tT=%i\tP=%i\n",D,F,U,C,T,P);
@@ -473,6 +466,17 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
   default:
     fprintf(stderr,"unknown normalisation method: %i\n",mp->normalisation_type);
   }
+  //initialise all return values
+  // log-likelihood
+  l[0]=0;
+  // gradient of the log-likelihood
+  grad_l_view=gsl_vector_view_array(dl,D);
+  grad_l=&(grad_l_view.vector);
+  gsl_vector_set_zero(grad_l);
+  // fisher information
+  fisher_information_view=gsl_matrix_view_array(FI,D,D);
+  fisher_information=&(fisher_information_view.matrix);
+  gsl_matrix_set_zero(fisher_information);
   
   for (c=0; c<C; c++){
     for (j=0; j<T; j++){
@@ -505,171 +509,6 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
   } //end for different experimental conditions (i.e. inputs)
   return i_flag;
 }
-
-/* int Likelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){ */
-
-/*   /\* Here, the ode integration is done */
-/*    *  */
-/*    * «l» is a scalar, the return slot of the log-likelihood */
-/*    * dl is the parameter gradient of the log likelihood (size=D) */
-/*    * */
-/*    * cvode returns functions «fy» of the state variables «y». */
-/*    * fy=C*y; */
-/*    * Note P is the cvode related number of ode parameters */
-/*    * while D is the number of MCMC related parameters */
-/*    * P=D+U */
-/*    * where U is the number of input parameters */
-/*    * y[i]: i=0,...,D-1 */
-/*    * u[i]: i=0,...,U-1 */
-/*    * cvode sees: */
-/*    * p[i]: i=0,...,D-1,D,...,P-1 */
-/*    *         yyyyyyyyy,uuuuuuuuu */
-/*    * */
-/*    * FI has to be initialized with zeros(D,D) */
-/*    *\/ */
-/*   int i,j,k,f,c,u,T,C,F,P,U,N; */
-/*   int D=mp->D; */
-/*   realtype tout; */
-/*   ode_model *model; */
-/*   ode_solver *solver; */
-/*   double diff; */
-/*   gsl_vector *y,*fy,*yS,*fyS; */
-/*   gsl_vector_view ref_fy_ti; */
-/*   gsl_vector *rfyi,*t; */
-/*   int iy; */
-
-/*   t=mp->t; */
-/*   solver=mp->solver; */
-/*   model=solver->odeModel; */
-/*   T=t->size;   */
-/*   C=mp->input_u->size1;   */
-/*   U=mp->input_u->size2; */
-/*   P=(mp->D)+U; // P=D+U */
-/*   l[0]=0; */
-/*   N=ode_model_getN(model); */
-/*   F=ode_model_getF(model); */
-/*   //  printf("[L] D=%i\tF=%i\tU=%i\tC=%i\tT=%i\tP=%i\n",D,F,U,C,T,P); */
-
-/*   for (c=-1; c<C; c++){// loop over different experimental conditions */
-/*     // write inputs into the ode parameter vector     */
-/*     if (c<0){ // reference experiment */
-/*       for (u=0;u<U;u++) gsl_vector_set(mp->exp_x_u,D+u,gsl_vector_get(mp->reference_u,u)); */
-/*     }else{  */
-/*       for (u=0;u<U;u++) gsl_vector_set(mp->exp_x_u,D+u,gsl_matrix_get(mp->input_u,c,u)); */
-/*     } */
-
-/*     ode_solver_reinit(solver, mp->t0, 0, N, */
-/* 		      mp->exp_x_u->data, */
-/* 		      mp->exp_x_u->size); */
-    
-/*     ode_solver_reinit_sens(solver, mp->yS0->data, P, N); */
-
-/*     for (i=0; i < t->size; i++){ */
-/*       if (c<0){ // reference experiment */
-/* 	y=&(mp->reference_y->data[i*N]);        // access the correct block for */
-/* 	fy=&(mp->reference_fy->data[i*F]);      // the current time point t[i] */
-/* 	yS=&(mp->reference_yS->data[i*P*N]);    // so for fyS_{ik}^j the general */
-/* 	fyS=&(mp->reference_fyS->data[i*P*F]);  // index is: i*P*F+j*F+k */
-/*       }else{ */
-/* 	y=mp->y->data; */
-/* 	fy=mp->fy->data; */
-/* 	yS=mp->yS->data; */
-/* 	fyS=mp->fyS->data; */
-/*       } */
-
-/*       if ((c<0) && !(mp->data_is_relative) ){ */
-/* 	/\* set reference_fyS to 0.0 and reference_fy to 1.0, i.e. the */
-/* 	   reference is a constant 1.0 *\/ */
-/* 	gsl_matrix_set_zero(mp->reference_fyS); */
-/* 	gsl_matrix_set_all(mp->reference_fy,1.0); */
-/*       }else{ */
-/* 	int CVerror =  ode_solver_solve(solver, gsl_vector_get(t,i), y, &tout); */
-/* 	//    printf("[Likelihood (i=%i, c=%i) t=%g] y = ",i,c,gsl_vector_get(t,i)); */
-/*         //for (iy=0;iy<N;iy++) printf(" %g ",y[iy]); printf("\n"); */
-
-/* 	if (CVerror) { */
-/* 	  fprintf(stderr, "ODE solver failed with ERROR = %i.\n",CVerror); */
-/* 	  // return a rejection message; the Likelihood is not defined for this argument; */
-/* 	  return GSL_EDOM; */
-/* 	} */
-/* 	//printf("ode_model_has_functions: %i\n",ode_model_has_funcs(model)); */
-/* 	if (ode_model_has_funcs(model)) { */
-/* 	  ode_solver_get_func(solver, tout, y, fy); */
-/* 	} */
-/* 	else { */
-/* 	  error("ode model has no functions"); */
-/* 	} */
-
-/* 	if (ode_model_has_sens(model)){ */
-/* 	  ode_solver_get_sens(solver, tout, yS); */
-/* 	  if (ode_model_has_funcs_sens(model)){ */
-/* 	    ode_solver_get_func_sens(solver, tout, y, yS, fyS); */
-/* 	  } // end if has func sens */
-/* 	} // end if has sens */
-/* 	else{ */
-/* 	  error("ode model has no sensitivities."); */
-/* 	}	 */
-/*       }	 */
-/*       if (c>=0){ /\* only start calculating the likelihood, gradient */
-/* 		  * and FI when reference observations are done */
-/* 		  *\/ */
-/* 	ref_fy_ti=gsl_matrix_row(mp->reference_fy,i); // point to the right row */
-/* 	rfyi=&(ref_fy_ti.vector); */
-/* 	gsl_vector_div(mp->fy,rfyi); */
-/* 	for (f=0;f<F;f++) { */
-/* 	  diff=gsl_matrix_get(mp->Data,c*T+i,f)-gsl_vector_get(mp->fy,f); */
-/* 	  diff/=gsl_matrix_get(mp->sdData,c*T+i,f); */
-/* 	  l[0]+=-0.5*gsl_pow_2(diff); */
-/* 	} // end likelihood sum */
-/* 	/\* printf("l = %g\n",l[0]); *\/ */
-/* 	/\* gsl_printf("exp_x_u",mp->exp_x_u,0); *\/ */
-/* 	/\* gsl_printf("fyS",mp->fyS,1); *\/ */
-/* 	/\* gsl_printf("fy",mp->fy,0); *\/ */
-/* 	/\* gsl_printf("reference_fyS",mp->reference_fyS,1); *\/ */
-/* 	for (j=0;j<D;j++) { */
-/* 	  /\* */
-/* 	   * the dense index of sensitivities is the state (or */
-/* 	   * "function") index  */
-/* 	   * yS[i*N+j] = dy[j]/dp[i]; */
-/* 	   * fyS[i*F+j] = dfy[j]/dp[i]; */
-/* 	   *\/ */
-/* 	  for (f=0;f<F;f++){ // calculate observational sensitivities, i.e. ~{fy/ref_fy}S  */
-/* 	    gsl_matrix_set(mp->oS,j,f, */
-/* 			   gsl_vector_get(mp->exp_x_u,j)* */
-/* 			   (gsl_matrix_get(mp->fyS,j,f) */
-/* 			    -gsl_vector_get(mp->fy,f)*gsl_matrix_get(mp->reference_fyS,i*P+j,f)) */
-/* 			   /gsl_vector_get(rfyi,f) */
-/* 			   ); */
-/* 	  } */
-/* 	  if (dl!=NULL){ */
-/* 	    dl[j]=0; */
-/* 	    for (f=0;f<F;f++){ // loop over y functions */
-/* 	      diff=gsl_matrix_get(mp->Data,c*T+i,f)-gsl_vector_get(mp->fy,f); */
-/* 	      diff/=gsl_pow_2(gsl_matrix_get(mp->sdData,c*T+i,f)); */
-/* 	      dl[j]+=diff*gsl_matrix_get(mp->oS,j,f); */
-/* 	    } // end loop over functions */
-/* 	    //printf("dl[%i] = %g \n",j,dl[j]); */
-/* 	  } // end if dl != NULL */
-/* 	} // end gradient loop */
-	
-/* 	/\* calculate Fisher Information; we are still inside the time loop */
-/* 	   (over t[i])*\/ */
-/* 	if (FI!=NULL){	   */
-/* 	  for (j=0;j<D;j++){ // loop over rows of FI, 0,...,D-1 */
-/* 	    for (k=0;k<D;k++){ // loop over columns of FI, 0,...,D-1 */
-/* 	      for (f=0;f<F;f++){ // loop over functions */
-/* 		FI[j*D+k]+=gsl_matrix_get(mp->oS,j,f)*gsl_matrix_get(mp->oS,k,f) */
-/* 		  /gsl_pow_2(gsl_matrix_get(mp->sdData,c*T+i,f)); // squared */
-/* 	      }// end loop over functions */
-/* 	    }// end loop over columns */
-/* 	  }// end loop over rows	   */
-/* 	} // end if FI!=NULL	 */
-/*       } // end if c>=0 */
-/*     } // end for loop for time points */
-/*   } //end for different experimental conditions (i.e. inputs) */
-/*   return GSL_SUCCESS; */
-/* } */
-
 int print_help(){
   printf("Usage:\n");
   printf("-c ./data.cfg\n");
@@ -693,11 +532,64 @@ int print_help(){
   return EXIT_SUCCESS;
 }
 
+void print_chunk_graph(gsl_matrix *X, gsl_vector *lP){
+  int width=100; // we assume that the display can show $width characters
+  int i,j,k,n,nc;
+  int tmp;
+  double *x;
+  gsl_vector_view x_view;
+  double Q[5];
+  int q[5];
+  double max,min,range;
+  char s[32],c[32];
+  n=X->size2;
+  max=gsl_matrix_max(X);
+  min=gsl_matrix_min(X);
+  range=max-min;
+  printf("range: [%g,%g] (%g)\n",min,max,range);
+  for (i=0;i<X->size1;i++){
+    //sort each row:
+    x_view=gsl_matrix_row(X,i);
+    gsl_sort_vector(&(x_view.vector));
+    //determine eachquantile
+    x=gsl_matrix_ptr(X,i,0);
+    Q[0]=gsl_stats_quantile_from_sorted_data(x,1,n,0.01);
+    Q[1]=gsl_stats_quantile_from_sorted_data(x,1,n,0.25);
+    Q[2]=gsl_stats_quantile_from_sorted_data(x,1,n,0.50);
+    Q[3]=gsl_stats_quantile_from_sorted_data(x,1,n,0.75);
+    Q[4]=gsl_stats_quantile_from_sorted_data(x,1,n,0.99);
+    //printf("quantiles: %g\t%g\t%g\t%g\t%g\n",Q[0],Q[1],Q[2],Q[3],Q[4]);
+
+    for (j=0;j<5;j++) {
+      q[j]=(int) ((Q[j]-min)*width/range);
+    }
+    sprintf(s," -LU- ");
+    sprintf(c,"+{|}+ ");
+    tmp=0;
+    for (k=0;k<5;k++){
+      nc=q[k]-tmp;
+      for (j=0;j<nc;j++) {
+	printf("%c",s[k]);
+      }
+      tmp=q[k];
+      printf("%c",c[k]);
+    }
+    printf("\n\n");    
+  }
+  printf("|");
+  for (j=0;j<width-2;j++) printf("-"); printf("|\n");
+  printf("%+4.4g",min);
+  for (j=0;j<width-8;j++) printf(" ");
+  printf("%+4.4g\n",max);  
+}
+
+
 
 int main (int argc, char* argv[]) {
   int D = 0; // number of MCMC sampling variables, i.e. model parameters
   //int C = 0; // number of experimental conditions, i.e different input vectors
   int i=0;
+  int warm_up=0; // sets the number of burn in points at command line
   char *cfilename=NULL;
   char lib_name[128];
   ode_model_parameters omp;
@@ -726,6 +618,7 @@ int main (int argc, char* argv[]) {
 
   for (i=0;i<argc;i++){
     if (strcmp(argv[i],"-c")==0) cfilename=argv[i+1];
+    else if (strcmp(argv[i],"-w")==0 || strcmp(argv[i],"--warm-up")==0) warm_up=strtol(argv[i+1],NULL,10);
     else if (strcmp(argv[i],"--resume")==0 || strcmp(argv[i],"-r")==0) sampling_action=SMPL_RESUME;
     else if (strcmp(argv[i],"-l")==0) strcpy(cnf_options.library_file,argv[i+1]);
     //    else if (strcmp(argv[i],"-n")==0) Tuning=0;
@@ -807,7 +700,7 @@ int main (int argc, char* argv[]) {
   smmala_model* model = smmala_model_alloc(Posterior, NULL, &omp); // ode_model_parameters
   /* initial parameter values */
   double init_x[omp.D];
-	
+  D=omp.D;
   /* allocate a new RMHMC MCMC kernel */
   printf("# allocating memory for a new SMMALA MCMC kernel.\n");
   /*mcmc_kernel* smmala_kernel_alloc(
@@ -844,7 +737,7 @@ int main (int argc, char* argv[]) {
   double dfx[omp.D];
   double FI[omp.D*omp.D];
   Posterior(init_x, &omp, &fx, dfx, FI);
-  printf("# x=ones(%i); Posterior(x)=%f;\n",omp.D,fx);
+  printf("# θ=θ₀; Posterior(θ|D)=%g;\n",fx);
 
   /* print first sample, initial values in init_x */
   mcmc_print_sample(kernel, stdout);
@@ -862,10 +755,22 @@ int main (int argc, char* argv[]) {
     exit(1);
   }
 
+  size_t BurnInSamples;
+  if (warm_up==0){
+    BurnInSamples = 7 * (int) sqrt(cnf_options.sample_size);
+  } else {
+    BurnInSamples=warm_up;
+  }
 
-  size_t BurnInSamples = 7 * (int) sqrt(cnf_options.sample_size);
   if (sampling_action==SMPL_FRESH){
     fprintf(stdout, "# Burn-in phase.\n");
+    gsl_vector *lP;
+    gsl_matrix *X;
+    gsl_vector_view X_view, array_view;
+    size_t Chunk=100;
+    lP=gsl_vector_alloc(Chunk);
+    X=gsl_matrix_alloc(D,Chunk);
+  
     /* "find mode" Loop */
     for (it = 0; it < BurnInSamples; it++) {
       omp.beta=((double) it)/((double) BurnInSamples);
@@ -874,14 +779,23 @@ int main (int argc, char* argv[]) {
       mcmc_sample(kernel, &acc);
       acc_c += acc;
       /* print sample */
-      mcmc_print_sample(kernel, stdout);
-		
+      //mcmc_print_sample(kernel, stdout);
+      //ptr=gsl_matrix_const_ptr(X,i,0);
+      X_view=gsl_matrix_column(X,it);
+      array_view=gsl_vector_view_array(kernel->x,D);
+      gsl_vector_memcpy(&(X_view.vector),&(array_view.vector));
+      //printf("accessing fx: %g.\n",fx);
+      fx=kernel->fx[0];
+      //printf("accessing fx: %g.\n",fx);
+      gsl_vector_set(lP,it,fx);
+
       /* Addapt MCMC parameters every 100 burn-in samples */
-      if ( ((it + 1) % 100) == 0 ) {
-	acc_rate = (double)acc_c / (double)100;
+      if ( ((it + 1) % Chunk) == 0 ) {
+	acc_rate = (double) acc_c / (double) Chunk;
 	fprintf(stdout, "# Iteration: %li\tAcceptance rate: %.2g\t",it, acc_rate);
 	/* print log and statistics */
 	mcmc_print_stats(kernel, stdout);
+	print_chunk_graph(X,lP);
 	/* adapt parameters */
 	mcmc_adapt(kernel, acc_rate);
 	acc_c = 0;
@@ -895,7 +809,7 @@ int main (int argc, char* argv[]) {
       mcmc_sample(kernel, &acc);
       acc_c += acc;
       /* print sample */
-      mcmc_print_sample(kernel, stdout);
+      //mcmc_print_sample(kernel, stdout);
       if ( ((it + 1) % 100) == 0 ) {
 	acc_rate = (double)acc_c / (double)100;
 	fprintf(stdout, "# Iteration: %li\tAcceptance rate: %.2g\t",it, acc_rate);

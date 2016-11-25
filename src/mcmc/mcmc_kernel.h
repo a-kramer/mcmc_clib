@@ -35,8 +35,7 @@ extern "C" {
 #include <gsl/gsl_rng.h>
 
 /* Abstract data type for all MCMC kernels. All MCMC algorithms implement this interface */
-typedef struct mcmc_kernel_struct_ mcmc_kernel;
-
+  typedef struct mcmc_kernel_struct_ mcmc_kernel;
 
 /* ====== Common interface for all MCMC samplers ======== */
 
@@ -112,6 +111,7 @@ struct mcmc_kernel_struct_ {
   int N;						/* number of parameters. size of x */
   long int t;					/* itteration number, initialise at 0 */
   double* x;					/* current state of the chain, parameters */
+  double* fx;
   void* rng;					/* pointer to random number generator */
   void* model_function;		/* pointer to structure with user defined functions for the model */
   void* kernel_params;		/* kernel specific parameters and working storage */
@@ -123,21 +123,21 @@ struct mcmc_kernel_struct_ {
   fptrMCMCPrint PrintStats;	/* loging function for mcmc kernel. Prints to an output stream kernel statistics and loging information */
 };
 
-	/* Draw a radom sample from the prior.
-	 *  Arguments:
-	 *   rng:			a pointer to a GSL random number generator.
-	 *	 model_params:  a pointer to a user defined model parameters structure.
-	 *  Results:
-	 *	 sample is the array with a random sample from the prior.
-	 */
-	typedef int (*fptrPrior_rnd) (gsl_rng* rng, const const void* model_params, double* sample);
-	
-	/* convinience macros for sampling and adaptation */
-	#define MCMC_SAMPLE( K, a ) ((K)->Sample) ((K), (a))
-	#define MCMC_ADAPT( K, a ) ((K)->Adapt) ((K), (a))
-
-
-	/* complie with -DHAVE_INLINE so that the functions below are inlined */
+  /* Draw a radom sample from the prior.
+   *  Arguments:
+   *   rng:			a pointer to a GSL random number generator.
+   *	 model_params:  a pointer to a user defined model parameters structure.
+   *  Results:
+   *	 sample is the array with a random sample from the prior.
+   */
+  typedef int (*fptrPrior_rnd) (gsl_rng* rng, const const void* model_params, double* sample);
+  
+  /* convinience macros for sampling and adaptation */
+#define MCMC_SAMPLE( K, a ) ((K)->Sample) ((K), (a))
+#define MCMC_ADAPT( K, a ) ((K)->Adapt) ((K), (a))
+  
+  
+  /* complie with -DHAVE_INLINE so that the functions below are inlined */
 #ifdef HAVE_INLINE
 	extern inline int mcmc_sample(mcmc_kernel* kernel, int* acc){
 		kernel->t ++;
