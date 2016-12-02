@@ -45,6 +45,14 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
   omp->norm_f=gsl_matrix_int_alloc(C,F);
   omp->norm_t=gsl_matrix_int_alloc(C,F);
   //printf("array alloc y, fy, yS, fyS, oS\n");
+
+  omp->ref_initial_conditions_y=gsl_vector_alloc(N);
+  omp->initial_conditions_y=gsl_matrix_alloc(C,N);
+  omp->init_y_view = (gsl_vector_view*) malloc(sizeof(gsl_vector_view)*C);
+  for (i=0;i<C;i++) {
+    omp->init_y_view[i] = gsl_matrix_row(omp->initial_conditions_y,i);
+    omp->init_y[i]=&(omp->init_y_view[i].vector);
+  }
   
   omp->y=(gsl_vector**) malloc(sizeof(gsl_vector*)*C*T);
   omp->fy=(gsl_vector**) malloc(sizeof(gsl_vector*)*C*T);
@@ -194,7 +202,9 @@ int ode_model_parameters_free(ode_model_parameters *omp){
   gsl_matrix_int_free(omp->norm_t);
   
   gsl_vector_free(omp->exp_x_u);
-  
+
+  gsl_matrix_free(omp->initial_conditions_y);
+  free(omp->init_y_view);
   // time
   gsl_vector_free(omp->t);
 

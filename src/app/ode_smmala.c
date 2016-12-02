@@ -260,7 +260,7 @@ int normalise_by_state_var(ode_model_parameters *mp){
     r_fyS=mp->reference_fyS[0];
     for (i=0;i<F;i++){
       si=gsl_matrix_int_get(mp->norm_f,c,i); // normalising state index: si
-      ti=gsl_matrix_int_get(mp->norm_t,c,i); // time idx ti: fy[c*T+li](ki)
+      ti=gsl_matrix_int_get(mp->norm_t,c,i); // time idx ti: fy[c*T+ti](si)
       gsl_vector_set(r_fy,i,gsl_vector_get(mp->fy[c*T+ti],si));
       si_col_view=gsl_matrix_subcolumn(mp->fyS[c*T+ti],si,0,D);
       si_col=&(si_col_view.vector);
@@ -402,7 +402,7 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
 
   if (mp->normalisation_type==DATA_NORMALISED_BY_REFERENCE){
     gsl_vector_memcpy(&(input_part.vector),mp->reference_u);
-    ode_solver_reinit(solver, mp->t0, 0, N,
+    ode_solver_reinit(solver, mp->t0, mp->ref_initial_conditions_y->data, N,
 		      mp->exp_x_u->data,
 		      mp->exp_x_u->size);
     //gsl_printf("reference exp_x_u",mp->exp_x_u,0);
@@ -420,7 +420,7 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
     // write inputs into the ode parameter vector
     gsl_vector_memcpy(&(input_part.vector),mp->u[c]);
     //gsl_printf("exp_x_u",mp->exp_x_u,0);
-    ode_solver_reinit(solver, mp->t0, 0, N,
+    ode_solver_reinit(solver, mp->t0, mp->init_y[c]->data, N,
 		      mp->exp_x_u->data,
 		      mp->exp_x_u->size);
     
@@ -864,26 +864,8 @@ int main (int argc, char* argv[]) {
 
 
 
-/* Updates the mvNormParams structure with the inverse of the covariance matrix.
- */
-/*void ParamsInvertCovariance(ode_model_parameters* params){
-//	 do it only once since the variance does not depent on x 
-	int D = params->D;
-	if (params->init == 0) {
-		gsl_matrix_view invV_v = gsl_matrix_view_array(params->Precision, D, D);
-		gsl_matrix_const_view V_v = gsl_matrix_const_view_array(params->Variance, D, D);
-		
-		gsl_matrix_memcpy(&invV_v.matrix, &V_v.matrix);
-		gsl_linalg_cholesky_decomp(&invV_v.matrix);
-		gsl_linalg_cholesky_invert(&invV_v.matrix);
-		
-		params->init = 1;
-	}
-}
-*/
-
-/* Calculates the unormalised log? posterior fx, the gradient dfx, the Fisher information FI 
- * and the partial derivatives of the Fisher information matrix for ode models
+/* Calculates the unormalised log-posterior fx, the gradient dfx, the
+ * Fisher information FI.
  */
 int Posterior(const double* x,  void* model_params, double* fx, double* dfx, double* FI){
 	
@@ -892,6 +874,8 @@ int Posterior(const double* x,  void* model_params, double* fx, double* dfx, dou
   int i;
   gsl_matrix *inv_cov;
   gsl_vector *prior_diff, *prior_mv;
+  
+  const gsl_vector *x_v;
   // double l;
   int logL_stat;
   int D=params->D;
@@ -899,13 +883,17 @@ int Posterior(const double* x,  void* model_params, double* fx, double* dfx, dou
   prior_diff=params->prior_tmp_a;
   prior_mv=params->prior_tmp_b;
   inv_cov=params->prior_inverse_cov;
-
+  
+  gsl_vector_const_view x_view=gsl_vector_const_view_array(x,D);
+  x_v=&x_view.vector;
+  
   fx[0]=0;
   for (i=0;i<D;i++) gsl_vector_set(params->exp_x_u,i,gsl_sf_exp(x[i]));
   //for (i=0;i<D*D;i++) FI[i]=0;
  
   logL_stat=LikelihoodComplexNorm(params, fx, dfx, FI);
-  for (i=0;i<D;i++) gsl_vector_set(prior_diff,i,x[i]-gsl_vector_get(params->prior_mu,i));
+  gsl_vector_memcpy(prior_diff,x_v);
+  gsl_vector_sub(prior_diff,params->prior_mu);
 
   gsl_blas_dsymv(CblasUpper,-0.5,inv_cov,prior_diff,0.0,prior_mv);
   gsl_blas_ddot(prior_diff,prior_mv,&prior_value);
@@ -928,11 +916,6 @@ int Posterior(const double* x,  void* model_params, double* fx, double* dfx, dou
     FI[i] *= gsl_pow_2(params->beta);
     FI[i] += params->prior_inverse_cov->data[i];
   }
-  /* printf("[p FI]\n"); */
-  /* for (i=0;i<D;i++){ */
-  /*   for (j=0;j<D;j++) printf("%f\t",FI[i*D+j]); printf("\n"); */
-  /* } */
-  /* printf("[/p FI]\n"); */
 
   return logL_stat;
 }

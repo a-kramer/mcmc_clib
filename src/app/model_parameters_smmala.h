@@ -23,6 +23,10 @@ typedef struct {
   gsl_vector *exp_x_u; // memory for the exponential parameters and input parameters
   double t0;
   gsl_vector *t; // list of timepoints where measurements occur;
+  gsl_vector *ref_initial_conditions_y;
+  gsl_matrix *initial_conditions_y;
+  gsl_vector_view *init_y_view;
+  gsl_vector **init_y;
   gsl_matrix *Data; //
   gsl_matrix *sdData; // standard deviation of the datapoints
   gsl_vector_view *data_row; // for convenience, we define some matrix views

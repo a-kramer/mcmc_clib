@@ -6,7 +6,6 @@ int count_rc(FILE *cnf, const regex_t *end, const regex_t *comment, int *rows, i
   char buffer[bsize];
   char *c;
   size_t nm=3;
-  char *ptr;
   regmatch_t match[nm];
   //char *fgets_return;
   rows[0]=0;
@@ -297,7 +296,7 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
    * right amount of memory later on. The function returns an
    * indicator for the normalisation type.
    */
-  int D=0,U=0,C=0,F=0,T=0,R=0;
+  int D=0,U=0,C=0,F=0,T=0,R=0,N=0;
   int n_f_[2]={0,0};
   int n_t_[2]={0,0};
   int rm,l;
@@ -368,6 +367,10 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
 	    count_rc(cnf, current->closing_bracket, comment, &C, &U);
 	    // printf("# input field has %i lines. (%i experimental conditions)\n",l,C);
 	    break;
+	  case i_initial_conditions:
+	    count_rc(cnf, current->closing_bracket, comment, &C, &N);
+	    printf("# initial conditions: %i lines %i state variables.\n",C,N);
+	    break;
 	  case i_data:
 	    count_rc(cnf, current->closing_bracket, comment, &l, &F);
 	    printf("# data has %i (%i × %i) lines.\n",l,C,T);
@@ -423,13 +426,18 @@ int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t 
     fprintf(stderr,"data file has a different number of outputs than model.\n");
     exit(-1);
   }
+  if (N!=0 && N!=ps->N) {
+    fprintf(stderr,"data file has a different number of state variables (%i) than model (%i).\n",N,ps->N);
+    exit(-1);
+  }
   if (ps->P!=D+U){
     fprintf(stderr,"error: P!=D+U.\n The number of model parameters P is not equal to\n the number of unknown paramerts D plus number of input parameters U.\n");
     exit(-2);
   }
+  
   //printf("problem size fixed.\n");
   printf("# file read once to determine the size of the problem.\n");
-  printf("# D=%i\tN=%i\tF=%i\tU=%i\tC=%i\tR=%i\tT=%i\n",D,ps->N,ps->F,U,C,R,T);
+  printf("# D=%i\tN=%i\tF=%i\tU=%i\tC=%i\tR=%i\tT=%i\n",D,N,F,U,C,R,T);
 
   return normalisation_type;
 }
@@ -475,6 +483,10 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, gsl_matrix_sd 
 	  break;
 	case i_input:
 	  read_block(ps->C,ps->U,cnf,DOUBLE_BLOCK,omp->input_u->data,comment);
+	  printf("# input read.\n");
+	  break;
+	case i_initial_conditions:
+	  read_block(ps->C,ps->N,cnf,DOUBLE_BLOCK,omp->initial_conditions_y->data,comment);
 	  printf("# input read.\n");
 	  break;
 	case i_data:
@@ -549,7 +561,7 @@ int field_names_init(field_names *fn){
   strcpy(fn->name[i_reference_input],"reference_input");
   strcpy(fn->name[i_prior_mu],"prior_mu");
   strcpy(fn->name[i_prior_icov],"prior_inv(erse)?_cov(ariance)?");
-  strcpy(fn->name[i_output],"output");
+  strcpy(fn->name[i_initial_conditions],"init(ial_conditions)?");
   strcpy(fn->name[i_norm_f],"norm_f");
   strcpy(fn->name[i_norm_t],"norm_t");
 
@@ -673,6 +685,7 @@ int parse_config(FILE *cnf, ode_model_parameters *omp,  problem_size *ps, main_o
     regfree(fe->closing_bracket);
     fe=fe->next;    
   }
+  fflush(stdout);
 
   return EXIT_SUCCESS;
 }

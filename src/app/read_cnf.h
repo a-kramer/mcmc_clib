@@ -27,7 +27,7 @@
 #define i_sd_data 6
 #define i_prior_mu 7
 #define i_prior_icov 8
-#define i_output 9
+#define i_initial_conditions 9
 #define i_norm_f 10
 #define i_norm_t 11
 
