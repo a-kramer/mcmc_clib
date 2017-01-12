@@ -50,6 +50,7 @@
 #include <gsl/gsl_linalg.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_sf_exp.h>
+#include <gsl/gsl_sf_log.h>
 #include <gsl/gsl_sort.h>
 #include <gsl/gsl_sort_vector.h>
 #include <gsl/gsl_statistics_double.h>
@@ -463,8 +464,8 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
   case DATA_NORMALISED_BY_STATE_VAR:
     normalise_by_state_var(mp);
     break;
-  default:
-    fprintf(stderr,"unknown normalisation method: %i\n",mp->normalisation_type);
+    //default:
+    //fprintf(stderr,"unknown normalisation method: %i\n",mp->normalisation_type);
   }
   //initialise all return values
   // log-likelihood
@@ -687,7 +688,7 @@ int main (int argc, char* argv[]) {
   /* gsl_printf("u",omp.input_u,1); */
   /* gsl_printf("t",omp.t,0); */
   
-  printf("# init ivp: t0=%g\n",omp.t0);
+  printf("# init ivp: t0=%g\n",omp.t0); fflush(stdout);
   ode_solver_init(solver, omp.t0, y, N, p, P);
   ode_solver_setErrTol(solver, solver_param[1], &solver_param[0], 1);
   if (ode_model_has_sens(odeModel)) {
@@ -717,7 +718,7 @@ int main (int argc, char* argv[]) {
   printf("# initializing MCMC.\n");
 
   /* initialise MCMC */
-  for (i=0;i<omp.D;i++) init_x[i]=gsl_vector_get(omp.prior_mu,i);
+  for (i=0;i<omp.D;i++) init_x[i]=gsl_sf_log(p[i]);
   if (sampling_action==SMPL_RESUME){
     rFile=fopen(resume_filename,"r");
     if (rFile==NULL) {

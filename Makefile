@@ -29,12 +29,12 @@ bin/ode_smmala: ./src/app/ode_smmala.c $(MALA_SRC)
 #	$(CC) -D_RMHMC $(CFLAGS) $(RMHMC_SRC) -o $(BIN)/ode_rmhmc -lm -lgsl -lcblas -lsundials_cvodes -lsundials_nvecserial -ldl src/app/ode_rmhmc.c
 
 vfgen: 
-	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml
+	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread
 
 ODE%_cvs.c: ODE%.xml
 	./vfgen cvodes:sens=yes,func=yes ODE%.xml
 
 ODE%.so: ODE%_cvs.c
-	$(CC) -shared -fPIC $(CFLAGS) -o $@  ODE%_cvs.c
+	$(CC) -shared -fPIC $(CFLAGS) -o $@  ODE$*_cvs.c
 
 

@@ -31,6 +31,24 @@
 #define i_norm_f 10
 #define i_norm_t 11
 
+typedef union{
+  double d;
+  int i;
+} value_t; 
+typedef struct cnf_block_value_t cnf_block_value;
+typedef struct cnf_block_value_t {
+  value_t value;
+  cnf_block_value *next;
+};
+typedef struct {
+  int N; //number of elements; always correct, when using push and pop
+  int nd; // number of dimensions; 
+  int *size; // size of each dimension;these are set when a data block is
+	  // read from file
+  int btype;
+  cnf_block_value *root; // root element for the variable length array
+} var_ndim_array;
+
 typedef struct {
   gsl_matrix *M;
   gsl_matrix *sd;
@@ -61,12 +79,18 @@ struct field_expression_t {
   int id;
 };
 
+
+
 field_expression* field_expression_stack(int id,
 					 field_expression *top,
 					 regex_t *open,
 					 regex_t *close);
 
 field_expression* field_expression_init(field_names *fn);
+
+var_ndim_array *nda_alloc();
+int nda_push(var_ndim_array* nda, value_t* value);
+int nda_pop(var_ndim_array* nda, value_t* value);
 
 int ratio_with_sd(gsl_matrix_sd *A, gsl_matrix_sd *B);
 

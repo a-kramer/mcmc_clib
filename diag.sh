@@ -6,7 +6,7 @@ if (($#!=3)); then
 else
     for ((i=0;i<$1;i++)); do
 	for ((j=0;j<$2;j++)); do
-	    if ((i==j)); then echo -en "$3\t"; else echo -en "0\t"; fi
+	    if ((i==j)); then echo -en "$3 "; else echo -en "0 "; fi
 	done
 	echo
     done
