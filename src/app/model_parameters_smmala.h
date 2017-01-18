@@ -41,8 +41,8 @@ typedef struct {
   double beta; // inverse temperature for annealing or tempering; logPosterior= beta*logLikelihood+logPrior
   gsl_vector *p; // memory for the ODE's parameters (they are
 		 // exponential) and input parameters, appended
-  experiment *E; // an experiment (data, initial conditions, inputs)
-  experiment ref_E;
+  experiment **E; // an experiment (data, initial conditions, inputs)
+  experiment *ref_E;
   int normalisation_type;
   gsl_matrix_int *norm_f; // (1|C) × F matrix
   gsl_matrix_int *norm_t; // (1|C) × F matrix

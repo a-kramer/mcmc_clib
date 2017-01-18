@@ -17,7 +17,7 @@
 #define INTEGER_BLOCK 1
 #define DOUBLE_BLOCK 2
 
-// data field ids, must be consecutive, because they are sometimes looped over.
+// data field ids, should be consecutive atm., because they are sometimes looped over.
 #define i_time 0
 #define i_reference_input 1
 #define i_reference_data 2
@@ -34,7 +34,17 @@
 typedef union{
   double d;
   int i;
-} value_t; 
+} value_t;
+
+// one gsl_object which can be a matrix or vector, double or integer
+// this is used while reading data from a file and storing it for a bit.
+typedef union {
+  gsl_matrix *matrix;
+  gsl_vector *vector;
+  gsl_matrix_int *matrix_int;
+  gsl_vector_int *vector_int;
+} gsl_thing;
+
 typedef struct cnf_block_value_t cnf_block_value;
 typedef struct cnf_block_value_t {
   value_t value;
