@@ -1,71 +1,42 @@
 #include <string.h>
 #include "read_cnf.h"
+#include "normalisation_sd.h"
+#include "dynamic_array.h"
 
-/* nda_to_gsl gets a variable length n-dim array (currently vectors
- * and matrices) and copies the contents, which it allocates itself.
- * This matrix directly represents the contents of a file. The data
- * can later be copied into other structures.
- */
-
-gsl_thing* nda_to_gsl(var_dim_array *nda){
-  int i,N=nda->N;
-  int nd=nda->nd;
-  int r,c;
-  gsl_thing *G;
-  G=(gsl_thing*) malloc(sizeof(gsl_thing));
-  value_t value;
-  if (nda->btype==DOUBLE_BLOCK){
-    double *data;
-    if (nd==2) {
-      r=nda->size[0];
-      c=nda->size[1];
-      G->matrix=gsl_matrix_alloc(r,c);
-      data=G->matrix->data;
-    } else if (nd==1) {
-      r=nda->size[0];
-      G->vector=gsl_vector_alloc(r);
-      data=G->vector->data;
-    } else {
-      fprintf(stderr,"[nda_to_gsl] cannot tell if data is vector or matrix: nd=%i\n",nda->nd);
-      exit(-3);    
-    }
-    for (i=1;i<=N;i++) {
-      if (nda_pop(nda,value)!= GSL_EINVAL){
-	data[N-i]=value.d;
-      } else {
-      fprintf(stderr,"[nda_to_gsl] array contained fewer values than expected\n");
-      exit(-3);	
-      }
-    }
-  } else if (nda->btype==INTEGER_BLOCK){
-    int *data;
-    if (nd==2) {
-      r=nda->size[0];
-      c=nda->size[1];
-      G->matrix_int=gsl_matrix_int_alloc(r,c);
-      data=G->matrix_int->data;
-    } else if (nd==1) {
-      r=nda->size[0];
-      G->vector_int=gsl_vector_int_alloc(r);
-      data=G->vector_int->data;
-    } else {
-      fprintf(stderr,"[nda_to_gsl] cannot tell if int_data is vector or matrix: nd=%i\n",nda->nd);
-      exit(-3);    
-    }
-    for (i=1;i<=N;i++) {
-      if (nda_pop(nda,value)!= GSL_EINVAL){
-	data[N-i]=value.i;
-      } else {
-	perror("[nda_to_gsl] array contained fewer values than expected");
-      exit(-3);	
-      }
-    }
-  } else {
-    perror("nda_to_gsl: unknown block type: %i\n",nda->btype);
-    exit(-3);    
-  }
-  return G;
+gsl_object* gsl_object_alloc(){
+  gsl_object *new;
+  new=(gsl_object*) malloc(sizeof(gsl_object));
+  new->gsl=(gsl_t*) malloc(sizeof(gsl_t));
+  return new;
 }
+
+int gsl_object_init(gsl_object *G){
+  G->is_double=0;
+  G->is_int=0;
+  G->is_matrix=0;
+  G->is_vector=0;
+  return GSL_SUCCESS;
+}
+
+int gsl_object_free(gsl_object *G){
+  if (G->is_matrix){
+    if (G->is_double) {
+      gsl_matrix_free(G->gsl->matrix);
+    } else {
+      gsl_matrix_int_free(G->gsl->matrix_int);
+    }
+  }  else {
+    if (G->is_double) {
+      gsl_vector_free(G->gsl->vector);
+    } else {
+      gsl_vector_int_free(G->gsl->vector_int);
+    }
+  }
+  free(G->gsl);
+  free(G);
+  return GSL_SUCCESS;
+}
+
 
 var_ndim_array* read_block_nd(FILE *f, int target_type, const regex_t *end, const regex_t *comment){
   int r=0,c=0,pre_c=0; // number of rows and columns, pre_c is there
@@ -150,171 +121,6 @@ var_ndim_array* read_block_nd(FILE *f, int target_type, const regex_t *end, cons
   }
   return GSL_SUCCESS;
 }
-
-var_ndim_array* nda_alloc(){
-  var_ndim_array *new_nda;
-  new_nda=(var_ndim_array *)malloc(sizeof(var_ndim_array));
-  new_nda->root=NULL;
-  new_nda->N=0;
-  new_nda->nd=0;
-  new_nda->size=NULL;
-  return new_nda;
-}
-int nda_free(var_dim_array *nda){
-  if (nda->root == NULL){
-    free(nda->size);
-    free(nda);
-  } else {
-    perror("var dim array is not empty.");
-    exit(-1);
-  }
-  return GSL_SUCCESS;
-}
-
-
-int nda_push(var_ndim_array* nda, value_t* value){
-  cnf_block_value *p;
-  p=nda->root;
-  
-  p=(cnf_block_value*) malloc(sizeof(cnf_block_value));
-  if (nda->btype==DOUBLE_BLOCK){
-    p->value->d=value->d;
-  }else if (nda->btype==INTEGER_BLOCK){
-    p->value->i=value->i;
-  } else {
-    fprintf(stderr,"nda_push: error for target type: %i\n",nda->btype);
-    exit(-3);
-  }
-  nda->N++;
-  p->next=nda->root;
-  nda->root=p;
-  return GSL_SUCCESS;
-}
-int nda_pop(var_ndim_array* nda, value_t* value){
-  cnf_block_value *p;
-  p=nda->root;
-  if (p!=NULL){
-    if (nda->btype==DOUBLE_BLOCK){
-      value->d=p->value->d;
-    }else if (nda->btype==INTEGER_BLOCK){
-      value->i=p->value->i;
-    } else {
-      fprintf(stderr,"nda_pop: error for target type: %i\n",nda->btype);
-      exit(-3);
-    }
-  }else{
-    return GSL_EINVAL;
-  }
-  nda->root=p->next;
-  free(p);
-  nda->N--;
-  return GSL_SUCCESS;
-}
-
-
-  
-int count_rc(FILE *cnf, const regex_t *end, const regex_t *comment, int *rows, int *columns){
-  int bsize=1024;
-  char buffer[bsize];
-  char *c;
-  size_t nm=3;
-  regmatch_t match[nm];
-  //char *fgets_return;
-  rows[0]=0;
-  columns[0]=0;
-  // skip empty lines as well? 
-  // skip all comment lines:
-  do {
-    fgets(buffer,bsize,cnf);
-    //printf("processing «%s» \n",buffer);
-  }
-  while (regexec(&comment[0],buffer,0,NULL,0)==0);
-  c=strchr(buffer, '\n');
-  if (c!=NULL) c[0]='\0';
-  c=buffer;
-  // terminate line at comment symbol, if content and comments are mixed;
-  //          this: "12 13 10 # these are very precise\n"
-  // transforms to: "12 13 10 \0" for column counting.
-  /* if (regexec(&comment[1],buffer,nm,match,0)==0) { */
-  /*       printf("line contains a comment: «%s» \n",buffer); */
-  /* 	buffer[match[1].rm_so]='\0'; */
-  /* 	printf("       removing comment: «%s» \n",buffer); */
-  /* } */
-
-  //printf("counting columns of «%s»...",c);
-  c=strtok(buffer, " \t,;");
-  while (c!=NULL){
-    c=strtok(NULL, " \t,;");
-    columns[0]++;
-  }
-
-  /* while ( strchr("\n\0",c[0])==NULL ){ */
-  /*   printf("[%c]",c[0]); */
-  /*   /\* move forward until we find a word character (not space or tab) *\/ */
-  /*   while ( isspace(c[0]) ) c++; */
-  /*   columns[0]++; // now that we found one, we increase the column counter; */
-  /*   while ( isalnum(c[0]) || ispunct(c[0])) c++; */
-  /* }; */
-
-  do { 
-    if (fgets(buffer,bsize,cnf)==NULL) {
-      printf("error reading config file: end of file reached; missing closing tag?\n");
-      exit(1);
-    } else if ( regexec(&comment[1],buffer,nm,match,0)==0) {
-      buffer[match[1].rm_so]='\0';
-    }
-    // non empty lines which don't appear to be comments are counted as rows:
-    if (regexec(&comment[0],buffer,0,NULL,0)!=0) rows[0]++;
-  } while (regexec(end,buffer,0,NULL,0)!=0);
-  //printf("ending at line: %s\nrows: %i\ncols: %i\n",buffer,rows[0],columns[0]);
-  //  printf("# counted %i rows in block.\n",l);
-  return GSL_SUCCESS;
-}
-
-int read_block(int rows, int columns, FILE *f, int target_type, void *target, const regex_t *comment){
-  int r,c;
-  int bsize=1024;
-  char buffer[bsize];
-  size_t nm=3;
-  regmatch_t match[nm];
-  int match_err;
-  int *v_i=NULL;
-  double *v_d=NULL;
-  char *line;
-
-  if (target_type==DOUBLE_BLOCK){
-    v_d=(double *) target;
-  } else if (target_type==INTEGER_BLOCK){
-    v_i=(int *) target;
-  } else {
-    fprintf(stderr,"unexpected target type in «read_block»: %i\n",target_type);
-    exit(-3);
-  }
-  
-  for (r=0;r<rows;r++){ 
-    do{
-      fgets(buffer,bsize,f);
-      //printf("%s (is comment: %i)\n",buffer,regexec(comment,buffer,0,NULL,0)==0);
-    } while (regexec(&comment[0],buffer,0,NULL,0)==0 || strlen(buffer)<2);
-    //printf("⟨");
-    match_err=regexec(&comment[1],buffer,nm,match,0);
-    // terminate string at beginning of comment:
-    if (match_err==0) buffer[match[1].rm_so]='\0';
-    line=buffer;
-    if (target_type==DOUBLE_BLOCK && v_d!=NULL){
-      for (c=0; c<columns; c++) v_d[r*columns+c]=strtod(line,&line);
-    } else if (target_type==INTEGER_BLOCK && v_i!=NULL){
-      for (c=0; c<columns; c++) v_i[r*columns+c]=strtol(line,&line,10);    
-    } else {
-      fprintf(stderr,"read_block error for target type: %i\n",target_type);
-      exit(-3);
-    }
-    //printf("⟩");
-  }
-  return EXIT_SUCCESS;
-}
-
-
 /* 
 //just in case
 int gsl_vector_square(gsl_vector *v){
@@ -340,319 +146,6 @@ int gsl_vector_sqrt(gsl_vector *v){
 }
 */
 
-/* All normalisation functions in this file use absolte values of
- * derivatives and add them weighted by individual sds. This works
- * under the assumption that the result's standard deviation is more
- * accurately estimated by: sd(r=d/s) = |r/d|*sd(d) + |r/s|*sd(s).
- * This overestimates uncorrelated errors slightly compared to
- * (sqrt((r/d)²*sd(d))² + (r/s)²*sd(s)²)), which is the Taylor series based
- * expression.  However, in systems biology, the measurement errors
- * are often large, so the bias in a truncated Taylor series is
- * significant. Therefore, we err on the side of caution.  We also assume
- * both d and s to be positive, hence absolute values by default.
- */
-
-int normalise_by_timepoint_with_sd(ode_model_parameters *omp, problem_size *ps){
-  /* here normalisation is just one entry, containing the
-   * normalisation time index. Many of the operation are done in
-   * place, so variable interpretation changes.
-   */
-  int c,j,l;
-  int C=ps->C;
-  int T=ps->T;
-  int F=ps->F;
-  gsl_vector *d,*sd_d,*sd_s,*s;
-  gsl_vector *tmp; // intermediate results
-  tmp=gsl_vector_alloc(F);
-  
-  
-  // data vector at time t_j and under condition u_c: data[c*T+j] 
-  for (c=0;c<C;c++){
-    l=gsl_matrix_int_get(omp->norm_t,c,0);
-    for (j=0;j<T;j++) {
-      d=omp->data[c*T+j];
-      sd_d=omp->sd_data[c*T+j];
-      s=omp->data[c*T+l];
-      sd_s=omp->sd_data[c*T+l];
-      // data will be scaled by 1/s
-      gsl_vector_div(d,s);
-      // calculate standard deviation of result:
-      gsl_vector_set_zero(tmp);
-      gsl_vector_add(tmp,d);
-      // add both error terms
-      gsl_vector_div(sd_s,s);
-      gsl_vector_mul(tmp,sd_s); // so: (d/s) * (sd_s/s) = (d/s²) sd_s   
-        
-      gsl_vector_div(sd_d,s);
-      gsl_vector_add(sd_d,tmp); // so: (sd_d/s) + sd_s × (d/s²) = (d/s)×(sd_d/d) + (d/s)×(sd_s/s);
-    }
-  }
-  /* all datapoints are now normalised in place. Some data points are
-   * now exactly 1, but the simulations will be as well, so they won't
-   * contribute to the likelihood.
-   */
-  gsl_vector_free(tmp);
-  return GSL_SUCCESS;  
-}
-
-int normalise_by_state_var_with_sd(ode_model_parameters *omp, problem_size *ps){
-  /* here normalisation consists of two lines. Line 1 lists the state
-   * variables to use for normalisation. Line 2 selects the time index
-   * of that state variable to normalise at.
-   */
-  int c,i,j;
-  gsl_vector *tmp; // intermediate results
-  //gsl_vector_view D,SD;
-  gsl_vector *r,*sd_r,*d,*sd_d;
-  int i_f, i_t;
-  int C=ps->C;
-  int T=ps->T;
-  int F=ps->F;
-  // here, we need to allocate some memory for s and sd_s, because the
-  // normalisation is more complex and different from state variable
-  // to state variable.
-  tmp=omp->tmpF;
-  r=omp->reference_fy[0];
-  sd_r=gsl_vector_alloc(F);
-  //printf("\n");
-  //printf("# norm_f:\n");
-  //gsl_matrix_int_fprintf(stdout,omp->norm_f,"%i");
-  //printf("# norm_t:\n");
-  //gsl_matrix_int_fprintf(stdout,omp->norm_t,"%i");
-  
-  for (c=0;c<C;c++) {
-    //printf("# [norm_f/norm_t] c=%i/%i\n",c,C);
-    // s is defined per block of experimental conditions (c=const.)
-    for (i=0;i<F;i++) {
-      //printf("# [norm_f/norm_t] i=%i/%i\n",i,F);
-
-      // fill s with the appropriate data point:
-      // that is, state variable with index i_d
-      i_f=gsl_matrix_int_get(omp->norm_f,c,i); 
-      // at time index i_t, as specified by the normalisation matrix
-      i_t=gsl_matrix_int_get(omp->norm_t,c,i);
-      //printf("i_t=%i\ti_f=%i\n",i_t,i_f);fflush(stdout);
-      if (i_f<F && i_t<T){
-	d=omp->data[c*T+i_t];
-	sd_d=omp->sd_data[c*T+i_t];
-	gsl_vector_set(r,i,gsl_vector_get(d,i_f));
-	gsl_vector_set(sd_r,i,gsl_vector_get(sd_d,i_f));
-      } else {
-	printf("normalisation index pair out of bounds: 0≤%i<%i and 0≤%i<%i.\n",i_f,F,i_t,T); exit(-1);
-      }
-    }
-    for (j=0;j<T;j++) { 
-      d=omp->data[c*T+j];
-      sd_d=omp->sd_data[c*T+j];
-      // data will be scaled by 1/s
-      gsl_vector_div(d,r);
-      // calculate standard deviation of result:
-      gsl_vector_memcpy(tmp,d);
-      // add both error terms
-      gsl_vector_div(sd_r,r);
-      gsl_vector_mul(tmp,sd_r);
-      // so: (d/s) * (sd_r/r) = (d/r²) sd_r   
-      gsl_vector_div(sd_d,r);
-      gsl_vector_add(sd_d,tmp);
-      // so: (sd_d/r) + sd_r × (d/r²) = (d/r)×(sd_d/d) + (d/r)×(sd_r/r);
-    }
-  }
-  gsl_vector_free(sd_r);
-  return GSL_SUCCESS;  
-}
-
-
-int ratio_with_sd(gsl_matrix_sd *A, gsl_matrix_sd *B){
-  /* we take the ratio A./B (by elements) B is repeated to match the
-   * size of A. Both A and B contain a struct member sd, its standard
-   * deviation values. A must have the same number of columns as B and
-   * an integer multiple of rows, e.g. A=[B;B;B] (GNU Octave
-   * Notation).  the result is stored in A.  All matrices are expected
-   * to contain only positive elements.
-   */
-  int l;
-  int C,T,F;
-  gsl_matrix_view a;
-  gsl_matrix *R; // for the relative error of B
-
-  T=B->M->size1;
-  C=(A->M->size1)/T;
-  F=A->M->size2;
-  //  printf("sizes: T=%i, C=%i, F=%i\n",T,C,F);
-  R=gsl_matrix_alloc(C*T,F);
-  
-  
-  for (l=0;l<C;l++){
-    a=gsl_matrix_submatrix(A->M,l*T,0,T,F);
-    gsl_matrix_div_elements(&(a.matrix),B->M); //A'=A./B
-  }
-  
-  for (l=0;l<C;l++){
-    a=gsl_matrix_submatrix(A->sd,l*T,0,T,F);//sd(A)'=sd(A)./B
-    gsl_matrix_div_elements(&(a.matrix),B->M);
-  }
-  
-  gsl_matrix_div_elements(B->sd,B->M); //sd(B)'=sd(B)./B
-  gsl_matrix_memcpy(R,A->M); // copy: R=A'=A./B
-  for (l=0;l<C;l++){
-    a=gsl_matrix_submatrix(R,l*T,0,T,F);
-    gsl_matrix_mul_elements(&(a.matrix),B->sd); //R effectively ends up being A./B*sdB/B
-  }
-  gsl_matrix_add(A->sd,R);
-  gsl_matrix_free(R);
-  return EXIT_SUCCESS;
-}
-
-int determine_problem_size(FILE *cnf, const field_expression *fe, const regex_t *comment, problem_size *ps, main_options *cnf_options){
-  /* Counts columns and rows of supplied data blocks to allocate the
-   * right amount of memory later on. The function returns an
-   * indicator for the normalisation type.
-   */
-  int D=0,U=0,C=0,F=0,T=0,R=0,N=0;
-  int n_f_[2]={0,0};
-  int n_t_[2]={0,0};
-  int rm,l;
-  
-  int bsize=2048;
-  char buffer[bsize];
-  char *var_value, *var_value_newline;
-  const field_expression *current=fe;
-  size_t nm=3;
-  regmatch_t match[nm];
-  int normalisation_type=DATA_IS_ABSOLUTE;
-  
-  while (!feof(cnf)){
-    do {
-      fgets(buffer,bsize,cnf);
-    } while (regexec(&comment[0],buffer,0,NULL,0)==0);
-    if (regexec(&comment[1],buffer,nm,match,0)==0) buffer[match[1].rm_so]='\0';    
-    // if the string looks like this: [var_name]=[var_value]\n
-    // then this will return a pointer to "="
-    var_value=strchr(buffer,'='); 
-    if (var_value!=NULL) { // we have a variable definition
-      var_value[0]='\0'; //mark the end of the variable name
-      /*printf("var_name=%s\n",buffer);
-        printf("var_value=%s\n",var_value+1);
-       *printf("removing newline....\n");
-       */
-      var_value_newline=strchr(++var_value,'\n');
-      if (var_value_newline!=NULL) var_value_newline[0]='\0';      
-      printf("# [cfg] {%s} ← {%s}\n",buffer,var_value);
-      // set some options that can also be set from command line.
-      // there is no flag whether an option was already set on command
-      // line (to do later?)  at the moment. Values are compared
-      // against their defaults, if an option is still at default it
-      // will be changed here. If it isn't, then it must have
-      // been changed on command line and the value in the file will
-      // be disregarded. Command line options have higher precedence.
-      if (strcmp(cnf_options->output_file,"sample.dat")==0 && strcmp(buffer,"output")==0) {
-	strcpy(cnf_options->output_file,var_value);
-      }
-      else if (cnf_options->sample_size<0 && strcmp(buffer,"sample_size")==0) {
-	cnf_options->sample_size=strtol(var_value,NULL,0);
-      }
-      else if (cnf_options->target_acceptance<0 && strcmp(buffer,"acceptance")==0) {
-	cnf_options->target_acceptance=strtod(var_value,NULL);
-      }
-      else if (cnf_options->initial_stepsize<0 && strcmp(buffer,"step_size")==0){
-	cnf_options->initial_stepsize=strtod(var_value,NULL);
-      }
-      else if (strcmp(buffer,"t0")==0) {
-	cnf_options->t0=strtod(var_value,NULL); printf("# t0 = %f\n",cnf_options->t0);}
-    }
-    else {
-      current=fe;
-      while (current != NULL){
-	if (regexec(current->opening_bracket,buffer,0,NULL,0)==0){
-	  //printf("found match with regular expression %i.\n",current->id);
-	  //printf(buffer);
-	  switch (current->id){ // counting columns and/or rows
-	  case i_time:
-	    count_rc(cnf, current->closing_bracket, comment, &T, &rm);
-	    break;
-	  case i_reference_input:
-	    normalisation_type=DATA_NORMALISED_BY_REFERENCE;
-	    count_rc(cnf, current->closing_bracket, comment, &R, &U);
-	    printf("data is normalised by reference data set.\n");
-	    break;
-	  case i_input:
-	    count_rc(cnf, current->closing_bracket, comment, &C, &U);
-	    // printf("# input field has %i lines. (%i experimental conditions)\n",l,C);
-	    break;
-	  case i_initial_conditions:
-	    count_rc(cnf, current->closing_bracket, comment, &C, &N);
-	    printf("# initial conditions: %i lines %i state variables.\n",C,N);
-	    break;
-	  case i_data:
-	    count_rc(cnf, current->closing_bracket, comment, &l, &F);
-	    printf("# data has %i (%i × %i) lines.\n",l,C,T);
-	    break;
-	  case i_prior_mu:
-	    count_rc(cnf, current->closing_bracket, comment, &D, &rm);
-	    break;
-	  case i_norm_f:
-	    count_rc(cnf, current->closing_bracket, comment, &n_f_[0], &n_f_[1]);
-	    break;
-	  case i_norm_t:
-	    count_rc(cnf, current->closing_bracket, comment, &n_t_[0], &n_t_[1]);
-	    break;
-	    
-	  }// switch
-	}// if match
-	current=current->next;
-	//if (current!=NULL) printf("RE: %i\n",current->id);
-      }// while (regular expressions from stack)
-    } //if [key]=[value]
-  }// while !EOF
-  
-  if (normalisation_type!=DATA_IS_ABSOLUTE && normalisation_type!=DATA_NORMALISED_BY_REFERENCE){
-    if (n_f_[0] == 0 && n_t_[0] > 0) {
-      normalisation_type=DATA_NORMALISED_BY_TIMEPOINT;
-      R=n_t_[0];
-      printf("# data normalised by timepoint.\n");
-    } else {
-      normalisation_type=DATA_NORMALISED_BY_STATE_VAR;
-      if (n_f_[1]==F && n_t_[1]==F){
-	if (n_f_[0]==1 && n_t_[0]==1) {
-	  R=1;
-	} else if (n_f_[0]==C && n_t_[0]==C) {
-	  R=C;
-	} else {
-	  fprintf(stderr,"Both norm_f and norm_t must have 1 or C rows: norm_f has %i rows, norm_t has %i rows.\n",n_f_[0],n_t_[0]);
-	}
-      }else{
-	fprintf(stderr,"norm_f and norm_t must have the same number of columns, F: norm_f has %i columns, norm_t has %i columns.\n",n_f_[1],n_t_[1]);
-      }
-    }
-  }
-
-  //save the problem size determined from configuration file:
-  ps->D=D;
-  ps->C=C;
-  ps->U=U;
-  ps->T=T;
-  // this is known from the model file:
-  // this can be checked for consistency:
-  ps->R=R;
-  if (F!=ps->F) {
-    fprintf(stderr,"data file has a different number of outputs than model.\n");
-    exit(-1);
-  }
-  if (N!=0 && N!=ps->N) {
-    fprintf(stderr,"data file has a different number of state variables (%i) than model (%i).\n",N,ps->N);
-    exit(-1);
-  }
-  if (ps->P!=D+U){
-    fprintf(stderr,"error: P!=D+U.\n The number of model parameters P is not equal to\n the number of unknown paramerts D plus number of input parameters U.\n");
-    exit(-2);
-  }
-  
-  //printf("problem size fixed.\n");
-  printf("# file read once to determine the size of the problem.\n");
-  printf("# D=%i\tN=%i\tF=%i\tU=%i\tC=%i\tR=%i\tT=%i\n",D,N,F,U,C,R,T);
-
-  return normalisation_type;
-}
 
 
 int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_expression *fe, const regex_t *comment, main_options *cnf_options){
@@ -660,14 +153,18 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
   int bsize=2048;
   char buffer[bsize];
   var_ndim_array *nda;
-  gsl_thing gsl_object;
+  gsl_object *G;
   gsl_matrix_sd Data;
   gsl_matrix_sd ReferenceData;
+
   //char *c;
   //  size_t nm=3;
   //  regmatch_t match[nm];
   omp->normalisation_type=DATA_IS_ABSOLUTE;
   const field_expression *current;
+
+
+  G=gsl_object_alloc();
   while (!feof(cnf)){
     // discard all comment lines
     do fgets(buffer,bsize,cnf);
@@ -684,20 +181,26 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
 	switch (current->id){// reading the data
 	case i_time:
 	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
-	  gsl_object=nda_to_gsl(nda);
-	  for (i=0;i<nda->size[0];i++)
-	    gsl_matrix_get_row(omp->E[i]->t, gsl_object.matrix, i);
+	  gsl_object_init(G);
+	  nda_to_gsl(nda,G);
+	  if (omp->E==NULL){
+	    omp->E=(experiment**) malloc(sizeof(experiment*)*nda->size[0]);
+	  }
+	  for (i=0;i<nda->size[0];i++){
+	    gsl_vector_alloc(omp->E[i]->t,nda->size[1]);
+	    gsl_matrix_get_row(omp->E[i]->t, G->gsl->matrix, i);
+	  }
 	  nda_free(nda);
-	  gsl_free(gsl_object.vector);
 	  printf("# measurement time(s) read.\n");
 	  break;
 	case i_reference_input:
 	  //printf("# reading reference input.\n");
 	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
-	  gsl_object=nda_to_gsl(nda);
-	  gsl_memcpy(omp->ref_E->input_u,gsl_object.vector);
+	  gsl_object_init(G);
+	  nda_to_gsl(nda,G);
+	  gsl_vector_alloc(omp->ref_E->input_u,nda->size[0]);
+	  gsl_memcpy(omp->ref_E->input_u,G->gsl->vector);
 	  nda_free(nda);
-	  gsl_free(gsl_object.vector);
 	  //read_block(1,ps->U,cnf,DOUBLE_BLOCK,omp->reference_u->data,comment);
 	  printf("# reference input read.\n");
 	  break;
@@ -706,40 +209,43 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
 			       // for now.
 	  omp->normalisation_type=DATA_NORMALISED_BY_REFERENCE;
 	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
-	  gsl_object=nda_to_gsl(nda);
+	  gsl_object_init(G);
+	  nda_to_gsl(nda,G);
 	  gsl_alloc(ReferenceData.M,nda->size[0],nda->size[1]);
-	  gsl_memcpy(ReferenceData.M,gsl_object.matrix);
-	  gsl_free(gsl_object.matrix);
+	  gsl_memcpy(ReferenceData.M,G->gsl->matrix);
+	  omp->size->T=nda->size[0];
 	  nda_free(nda)
 	  //read_block(ps->T,ps->F,cnf,DOUBLE_BLOCK,RD->M->data,comment);
 	  printf("# reference data read.\n");
 	  break;
 	case i_sd_reference_data:
 	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
-	  gsl_object=nda_to_gsl(nda);
+	  gsl_object_init(G);
+	  nda_to_gsl(nda,G);
 	  gsl_alloc(ReferenceData.sd,nda->size[0],nda->size[1]);
-	  gsl_memcpy(ReferenceData.sd,gsl_object.matrix);
-	  gsl_free(gsl_object.matrix);
+	  gsl_memcpy(ReferenceData.sd, G->gsl->matrix);
 	  nda_free(nda);	  
 	  //read_block(ps->T,ps->F,cnf,DOUBLE_BLOCK,RD->sd->data,comment);
 	  printf("# standard deviation of reference data read.\n");
 	  break;
 	case i_input:
 	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
-	  gsl_object=nda_to_gsl(nda);
+	  gsl_object_init(G);
+	  nda_to_gsl(nda,G);
 	  for (i=0;i<nda->size[0];i++)
-	    gsl_matrix_get_row(omp->E[i]->input_u,gsl_object.matrix,i);
-	  gsl_free(gsl_object.matrix);
+	    gsl_matrix_get_row(omp->E[i]->input_u, G->gsl->matrix,i);
+	  omp->size->C=nda->size[0];
 	  nda_free(nda);	  
 	  //read_block(ps->C,ps->U,cnf,DOUBLE_BLOCK,omp->input_u->data,comment);
 	  printf("# input read.\n");
 	  break;
 	case i_initial_conditions:
 	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
-	  gsl_object=nda_to_gsl(nda);
+	  gsl_object_init(G);
+	  nda_to_gsl(nda,G);
 	  for (i=0;i<nda->size[0];i++)
-	    gsl_matrix_get_row(omp->E[i]->init_y,gsl_object.matrix,i);
-	  gsl_free(gsl_object.matrix);
+	    gsl_matrix_get_row(omp->E[i]->init_y,G->gsl->matrix,i);
+	  gsl_object_free(G);
 	  nda_free(nda);	  
 	  //	  read_block(ps->C,ps->N,cnf,DOUBLE_BLOCK,omp->initial_conditions_y->data,comment);
 	  printf("# input read.\n");
@@ -747,38 +253,38 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
 	case i_data: // data possibly needs to be normalised, so we
 		     // set it aside for now;
 	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
-	  gsl_object=nda_to_gsl(nda);
+	  gsl_object_init(G);
+	  nda_to_gsl(nda,G);
 	  gsl_alloc(Data.M,nda->size[0],nda->size[1]);
-	  gsl_memcpy(Data.M,gsl_object.matrix);
-	  gsl_free(gsl_object.matrix);
+	  gsl_memcpy(Data.M, G->gsl->matrix);
 	  nda_free(nda);
 	  //read_block((ps->C)*(ps->T),ps->F,cnf,DOUBLE_BLOCK,omp->Data->data,comment);
 	  printf("# data read.\n");
 	  break;
 	case i_sd_data:
 	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
-	  gsl_object=nda_to_gsl(nda);
+	  gsl_object_init(G);
+	  nda_to_gsl(nda,G);
 	  gsl_alloc(Data.sd,nda->size[0],nda->size[1]);
-	  gsl_memcpy(Data.sd,gsl_object.matrix);
-	  gsl_free(gsl_object.matrix);
+	  gsl_memcpy(Data.sd, G->gsl->matrix);
 	  nda_free(nda);
 	  //read_block((ps->C)*(ps->T),ps->F,cnf,DOUBLE_BLOCK,omp->sdData->data,comment);
 	  printf("# standard deviation of data read.\n");
 	  break;
 	case i_prior_mu:
 	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
-	  gsl_object=nda_to_gsl(nda);
-	  gsl_memcpy(omp->prior_mu,gsl_object.matrix);
-	  gsl_free(gsl_object.matrix);
+	  gsl_object_init(G);
+	  nda_to_gsl(nda,G);
+	  gsl_memcpy(omp->prior_mu, G->gsl->matrix);
 	  nda_free(nda);
 	  //read_block(ps->D,1,cnf,DOUBLE_BLOCK,omp->prior_mu->data,comment);
 	  printf("# prior mean read.\n");
 	  break;
 	case i_prior_icov:
 	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
-	  gsl_object=nda_to_gsl(nda);
-	  gsl_memcpy(omp->prior_inverse_cov,gsl_object.matrix);
-	  gsl_free(gsl_object.matrix);
+	  gsl_object_init(G);
+	  nda_to_gsl(nda,G);
+	  gsl_memcpy(omp->prior_inverse_cov, G->gsl->matrix);
 	  nda_free(nda);
 	  //read_block(ps->D,ps->D,cnf,DOUBLE_BLOCK,omp->prior_inverse_cov->data,comment);
 	  printf("# prior inverse covariance matrix read.\n");
@@ -786,19 +292,19 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
 	case i_norm_f: // norm_f and norm_t can be combined, so they add up.
 	  omp->normalisation_type++;
 	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
-	  gsl_object=nda_to_gsl(nda);
-	  gsl_memcpy(omp->norm_f,gsl_object.matrix_int);
-	  gsl_free(gsl_object.matrix_int);
+	  gsl_object_init(G);
+	  nda_to_gsl(nda,G);
+	  gsl_memcpy(omp->norm_f, G->gsl->matrix_int);
 	  nda_free(nda);
 	  //read_block(ps->C,ps->F,cnf,INTEGER_BLOCK,omp->norm_f->data,comment);
 	  printf("# norm_f read.\n");
 	  break;
-	case i_norm_t:
+	case i_norm_t: // mixing reference data and these two types will then lead to an error.
 	  omp->normalisation_type+=2;
 	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
-	  gsl_object=nda_to_gsl(nda);
-	  gsl_memcpy(omp->norm_t,gsl_object.matrix_int);
-	  gsl_free(gsl_object.matrix_int);
+	  gsl_object_init(G);
+	  nda_to_gsl(nda,G);
+	  gsl_memcpy(omp->norm_t, G->gsl->matrix_int);
 	  nda_free(nda);
 	  //	  read_block(ps->C,ps->F,cnf,INTEGER_BLOCK,omp->norm_t->data,comment);
 	  printf("# norm_t read.\n");
@@ -817,11 +323,13 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
     switch (omp->normalisation_type){
     case DATA_NORMALISED_BY_REFERENCE:
       printf("# taking ratios of Data and Refrence Data...");
-      ratio_with_sd(&Data,&ReferenceData); //Data/Reference Data.
+      ratio_with_sd(&Data,&ReferenceData); //Data/ReferenceData.
+      
       printf("# done.\n");
       break;
     case DATA_NORMALISED_BY_TIMEPOINT:
       printf("# normalising using one time instance...");
+      
       if (R<C){ // user supplied fewer than C normalisation time indices
 	for (c=R;c<C;c++) { //copy this time index for all experimental conditions 
 	  gsl_matrix_int_set(omp->norm_t,c,0,gsl_matrix_int_get(omp->norm_t,c%R,0));
@@ -848,8 +356,7 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
   // cleanup
   gsl_matrix_free(RD.M);
   gsl_matrix_free(RD.sd);
-
-  
+  gsl_object_free(G);
   return EXIT_SUCCESS;
 }
 
@@ -948,27 +455,8 @@ int parse_config(FILE *cnf, ode_model_parameters *omp,  problem_size *ps, main_o
   
   fe=field_expression_init(&fn);
 
-
-  omp->normalisation_type=determine_problem_size(cnf,fe, comment, ps, cnf_options);
-  //printf("normalisation type: %i\n",omp->normalisation_type);
-  /* now we must allocate the necessary memory and fill it with values
-   */
   ode_model_parameters_alloc(omp, ps);
   omp->t0=cnf_options->t0;
-  omp->D=ps->D;
-  printf("# smmala memory allocated.\n");
-
-  // reference data:
-  gsl_matrix_sd RD;
-  RD.M=gsl_matrix_alloc(ps->T,ps->F);
-  RD.sd=gsl_matrix_alloc(ps->T,ps->F);
-  gsl_matrix_sd ND; // Data to be Normalised by reference
-  ND.M=omp->Data;
-  ND.sd=omp->sdData;
-  int R=ps->R;
-  int C=ps->C;
-  rewind(cnf);
-  printf("# rewind.\n");
   read_problem_definition(cnf, omp, &RD, fe, comment, ps, cnf_options);
   
   printf("# configuration read.\n");

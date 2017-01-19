@@ -31,38 +31,12 @@
 #define i_norm_f 10
 #define i_norm_t 11
 
-typedef union{
-  double d;
-  int i;
-} value_t;
-
-// one gsl_object which can be a matrix or vector, double or integer
-// this is used while reading data from a file and storing it for a bit.
-typedef union {
-  gsl_matrix *matrix;
-  gsl_vector *vector;
-  gsl_matrix_int *matrix_int;
-  gsl_vector_int *vector_int;
-} gsl_thing;
 
 typedef struct cnf_block_value_t cnf_block_value;
 typedef struct cnf_block_value_t {
   value_t value;
   cnf_block_value *next;
 };
-typedef struct {
-  int N; //number of elements; always correct, when using push and pop
-  int nd; // number of dimensions; 
-  int *size; // size of each dimension;these are set when a data block is
-	  // read from file
-  int btype;
-  cnf_block_value *root; // root element for the variable length array
-} var_ndim_array;
-
-typedef struct {
-  gsl_matrix *M;
-  gsl_matrix *sd;
-} gsl_matrix_sd;
 
 typedef struct {
   char *library_file;
@@ -98,29 +72,11 @@ field_expression* field_expression_stack(int id,
 
 field_expression* field_expression_init(field_names *fn);
 
-var_ndim_array *nda_alloc();
-int nda_push(var_ndim_array* nda, value_t* value);
-int nda_pop(var_ndim_array* nda, value_t* value);
-
-int ratio_with_sd(gsl_matrix_sd *A, gsl_matrix_sd *B);
-
-int count_rc(FILE *cnf,
-	     const regex_t *end,
-	     const regex_t *comment,
-	     int *rows,
-	     int *columns);
-int count_columns(const char *c);
-
 int parse_config(FILE *cnf,
 		 ode_model_parameters *omp,
 		 problem_size *ps,
 		 main_options *cnf_options);
 
-int determine_problem_size(FILE *cnf,
-			   const field_expression *fe,
-			   const regex_t *comment,
-			   problem_size *ps,
-			   main_options *cnf_options);
 
 int read_problem_definition(FILE *cnf,
 			    ode_model_parameters *omp,
