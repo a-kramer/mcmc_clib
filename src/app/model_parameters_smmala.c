@@ -49,6 +49,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp, const problem_size *ps
   omp->tmpF=gsl_vector_alloc(F);
   //printf("alloc norm f and t\n");
   omp->E=(experiment*) malloc(sizeof(experiment)*C);
+  
 
   /* during burn-in, we slowly increase beta from 0 to 1; if no
    * burn-in is performed, beta needs to be 1.0
