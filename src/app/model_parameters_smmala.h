@@ -14,18 +14,18 @@ typedef struct {
   int T; // number of measurement time-points for NORMALISATION_BY_REFERENCE
   int U; // number of input parameters
   int C; // number of experimental conditions, excluding control (reference measurement)
-  int R; // number of reference measurements, either 1 or C
+  //int R; // number of reference measurements, should always be 1, but if necessary uncomment line
 } problem_size;
 
 typedef struct {
   double t0;
   gsl_vector *t;
-  gsl_matrix_view *data_block_view; // view of this experiments data block
+  gsl_matrix_view data_block_view; // view of this experiments data block
   gsl_matrix *data_block;
-  gsl_matrix_view *sd_data_block_view; // standard deviation of this data block
+  gsl_matrix_view sd_data_block_view; // standard deviation of this data block
   gsl_matrix *sd_data_block;
   gsl_vector_view *data_row; // for convenience, we define views for each row
-  gsl_vector **data;          
+  gsl_vector **data;        // data at time[j] is accessed as experiment[i]->data[j]
   gsl_vector_view *sd_data_row; // same for the standard deviations.
   gsl_vector **sd_data;
   gsl_vector **y; // y[t](i) vector of size T;
@@ -40,6 +40,7 @@ typedef struct {
 
 typedef struct {
   int D;
+  double t0;
   double beta; // inverse temperature for annealing or tempering; logPosterior= beta*logLikelihood+logPrior
   problem_size *size;
   gsl_vector *p; // memory for the ODE's parameters (they are

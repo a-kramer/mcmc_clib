@@ -655,10 +655,10 @@ int main (int argc, char* argv[]) {
   int N = ode_model_getN(odeModel);
   int P = ode_model_getP(odeModel);
   int F = ode_model_getF(odeModel);
-  problem_size ps;
-  ps.N=N;
-  ps.P=P;
-  ps.F=F;
+  omp->size=(problem_size*) malloc(sizeof(problem_size));
+  omp->size->N=N;
+  omp->size->P=P;
+  omp->size->F=F;
   double y[N];
   ode_model_get_initial_conditions(odeModel, y, N);
 	
@@ -672,7 +672,7 @@ int main (int argc, char* argv[]) {
   cnf=fopen(cfilename,"r");
   if (cnf!=NULL){
     printf("# reading configuration.\n");
-    parse_config(cnf,&omp,&ps,&cnf_options);
+    parse_config(cnf,&omp,&cnf_options);
   } else {
     fprintf(stderr,"# Could not open config file %s.\n",cfilename);
     exit(1);
@@ -700,8 +700,8 @@ int main (int argc, char* argv[]) {
 	
   smmala_model* model = smmala_model_alloc(Posterior, NULL, &omp); // ode_model_parameters
   /* initial parameter values */
-  double init_x[omp.D];
-  D=omp.D;
+  double init_x[omp.size->D];
+  D=omp.size->D;
   /* allocate a new RMHMC MCMC kernel */
   printf("# allocating memory for a new SMMALA MCMC kernel.\n");
   /*mcmc_kernel* smmala_kernel_alloc(
@@ -710,7 +710,7 @@ int main (int argc, char* argv[]) {
     smmala_model* model_function, 
     unsigned long int seed)
   */
-  mcmc_kernel* kernel = smmala_kernel_alloc(omp.D,
+  mcmc_kernel* kernel = smmala_kernel_alloc(D,
 					    cnf_options.initial_stepsize,
 					    model,
 					    seed,
@@ -718,7 +718,7 @@ int main (int argc, char* argv[]) {
   printf("# initializing MCMC.\n");
 
   /* initialise MCMC */
-  for (i=0;i<omp.D;i++) init_x[i]=gsl_sf_log(p[i]);
+  for (i=0;i<D;i++) init_x[i]=gsl_sf_log(p[i]);
   if (sampling_action==SMPL_RESUME){
     rFile=fopen(resume_filename,"r");
     if (rFile==NULL) {
@@ -735,8 +735,8 @@ int main (int argc, char* argv[]) {
   printf("# test evaluation of Posterior function.\n");
   /*inits*/
   double fx;
-  double dfx[omp.D];
-  double FI[omp.D*omp.D];
+  double dfx[D];
+  double FI[D*D];
   Posterior(init_x, &omp, &fx, dfx, FI);
   printf("# θ=θ₀; Posterior(θ|D)=%g;\n",fx);
 
