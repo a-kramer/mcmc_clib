@@ -1,5 +1,8 @@
+#include <stdlib.h>
+#include <gsl/gsl_matrix.h>
+#include <gsl/gsl_matrix_int.h>
+#include "model_parameters_smmala.h"
 #include "normalisation_sd.h"
-#include "read_cnf.h"
 /* All normalisation functions in this file use absolte values of
  * derivatives and add them weighted by individual sds. This works
  * under the assumption that the result's standard deviation is more
@@ -17,7 +20,7 @@ int normalise_by_timepoint_with_sd(ode_model_parameters *omp){
    * normalisation time index. Many of the operation are done in
    * place, so variable interpretation changes.
    */
-  int c,j,l;
+  int r,c,j,l;
   int C=omp->size->C;
   int T=omp->size->T;
   int F=omp->size->F;
@@ -25,10 +28,13 @@ int normalise_by_timepoint_with_sd(ode_model_parameters *omp){
   gsl_vector *tmp; // intermediate results
   tmp=gsl_vector_alloc(F);
   
-  
+  r=omp->norm_t->size1;
   // data vector at time t_j and under condition u_c: data[c*T+j] 
   for (c=0;c<C;c++){
-    l=gsl_matrix_int_get(omp->norm_t,c,0);
+    l=gsl_matrix_int_get(omp->norm_t,c%r,0);
+    T=omp->E[c]->t->size;
+    printf("l=%i\n",l);
+    fflush(stdout);
     for (j=0;j<T;j++) {
       d=omp->E[c]->data[j];
       sd_d=omp->E[c]->sd_data[j];
@@ -55,7 +61,7 @@ int normalise_by_timepoint_with_sd(ode_model_parameters *omp){
   return GSL_SUCCESS;  
 }
 
-int normalise_by_state_var_with_sd(ode_model_parameters *omp, problem_size *ps){
+int normalise_by_state_var_with_sd(ode_model_parameters *omp){
   /* here normalisation consists of two lines. Line 1 lists the state
    * variables to use for normalisation. Line 2 selects the time index
    * of that state variable to normalise at.
@@ -65,9 +71,9 @@ int normalise_by_state_var_with_sd(ode_model_parameters *omp, problem_size *ps){
   //gsl_vector_view D,SD;
   gsl_vector *r,*sd_r,*d,*sd_d;
   int i_f, i_t;
-  int C=ps->C;
-  int T=ps->T;
-  int F=ps->F;
+  int C=omp->size->C;
+  int T=omp->size->T;
+  int F=omp->size->F;
   // here, we need to allocate some memory for s and sd_s, because the
   // normalisation is more complex and different from state variable
   // to state variable.
@@ -81,6 +87,7 @@ int normalise_by_state_var_with_sd(ode_model_parameters *omp, problem_size *ps){
   //gsl_matrix_int_fprintf(stdout,omp->norm_t,"%i");
   
   for (c=0;c<C;c++) {
+    T=omp->E[c]->t->size;
     //printf("# [norm_f/norm_t] c=%i/%i\n",c,C);
     // s is defined per block of experimental conditions (c=const.)
     for (i=0;i<F;i++) {
@@ -93,8 +100,8 @@ int normalise_by_state_var_with_sd(ode_model_parameters *omp, problem_size *ps){
       i_t=gsl_matrix_int_get(omp->norm_t,c,i);
       //printf("i_t=%i\ti_f=%i\n",i_t,i_f);fflush(stdout);
       if (i_f<F && i_t<T){
-	d=omp->data[c*T+i_t];
-	sd_d=omp->sd_data[c*T+i_t];
+	d=omp->E[c]->data[i_t];
+	sd_d=omp->E[c]->sd_data[i_t];
 	gsl_vector_set(r,i,gsl_vector_get(d,i_f));
 	gsl_vector_set(sd_r,i,gsl_vector_get(sd_d,i_f));
       } else {
@@ -102,8 +109,8 @@ int normalise_by_state_var_with_sd(ode_model_parameters *omp, problem_size *ps){
       }
     }
     for (j=0;j<T;j++) { 
-      d=omp->data[c*T+j];
-      sd_d=omp->sd_data[c*T+j];
+      d=omp->E[c]->data[j];
+      sd_d=omp->E[c]->sd_data[j];
       // data will be scaled by 1/s
       gsl_vector_div(d,r);
       // calculate standard deviation of result:
@@ -155,9 +162,9 @@ int ratio_with_sd(gsl_matrix_sd *A, gsl_matrix_sd *B){
   gsl_matrix_memcpy(R,A->M); // copy: R=A'=A./B
   for (l=0;l<C;l++){
     a=gsl_matrix_submatrix(R,l*T,0,T,F);
-    gsl_matrix_mul_elements(&(a.matrix),B->sd); //R effectively ends up being A./B*sdB/B
+    gsl_matrix_mul_elements(&(a.matrix),B->sd); //R ends up being A./B*sd(B)/B
   }
-  gsl_matrix_add(A->sd,R);
+  gsl_matrix_add(A->sd,R); // sd(A)./B + A./B*sd(B)/B
   gsl_matrix_free(R);
   return EXIT_SUCCESS;
 }

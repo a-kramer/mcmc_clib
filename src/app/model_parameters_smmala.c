@@ -1,18 +1,18 @@
 #include "model_parameters_smmala.h"
 
-int ode_model_experiment_link(ode_model_parameters *omp){
-  int i,j;
+int ode_model_parameters_link(ode_model_parameters *omp){
+  int i,j,k=0;
   int T,C,F;
   C=omp->size->C;
   F=omp->size->F;
-  k=0;
+
   for (i=0;i<C;i++){
     T=omp->E[i]->t->size; // there is one data block per experiment, with T rows
     //data
     omp->E[i]->data_block_view=gsl_matrix_submatrix(omp->Data,k,0,T,F);
     omp->E[i]->data_block=&(omp->E[i]->data_block_view.matrix);
     //standard deviation
-    omp->E[i]->sd_data_block_view=gsl_matrix_submatrix(omp->Data,k,0,T,F);
+    omp->E[i]->sd_data_block_view=gsl_matrix_submatrix(omp->sdData,k,0,T,F);
     omp->E[i]->sd_data_block=&(omp->E[i]->sd_data_block_view.matrix);
     // next data block
     k+=T;
@@ -27,7 +27,8 @@ int ode_model_experiment_link(ode_model_parameters *omp){
       omp->E[i]->data[j]=&(omp->E[i]->data_row[j].vector);
       omp->E[i]->sd_data[j]=&(omp->E[i]->sd_data_row[j].vector);
     }
-  }  
+  }
+  printf("data rows linked.\n");
   // shortcuts for input rows;
   return GSL_SUCCESS;
 
@@ -61,12 +62,13 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
   //printf("alloc norm f and t\n");
   for (i=0;i<C;i++){
     T=omp->E[i]->t->size;
-    omp->E[i]->y=(gsl_vector **) malloc(sizeof(gsl_vector)*T);
-    omp->E[i]->fy=(gsl_vector **) malloc(sizeof(gsl_vector)*T);
-    omp->E[i]->yS=(gsl_matrix **) malloc(sizeof(gsl_matrix)*N*T);
-    omp->E[i]->fyS=(gsl_matrix **) malloc(sizeof(gsl_matrix)*F*T);
-    omp->E[i]->oS=(gsl_matrix **) malloc(sizeof(gsl_matrix)*F*T);
-    
+    omp->E[i]->y=(gsl_vector **) malloc(sizeof(gsl_vector*)*T);
+    omp->E[i]->fy=(gsl_vector **) malloc(sizeof(gsl_vector*)*T);
+    omp->E[i]->yS=(gsl_matrix **) malloc(sizeof(gsl_matrix*)*N*T);
+    omp->E[i]->fyS=(gsl_matrix **) malloc(sizeof(gsl_matrix*)*F*T);
+    omp->E[i]->oS=(gsl_matrix **) malloc(sizeof(gsl_matrix*)*F*T);
+    omp->E[i]->yS0=gsl_matrix_calloc(T,N);
+
     for (j=0;j<T;j++){
       omp->E[i]->y[j]=gsl_vector_alloc(N);
       omp->E[i]->fy[j]=gsl_vector_alloc(F);
@@ -75,18 +77,20 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
       omp->E[i]->oS[j]=gsl_matrix_alloc(T,F);
     }
   }
-  omp->ref_E->y=(gsl_vector **) malloc(sizeof(gsl_vector)*T);
-  omp->ref_E->fy=(gsl_vector **) malloc(sizeof(gsl_vector)*T);
-  omp->ref_E->yS=(gsl_matrix **) malloc(sizeof(gsl_vector)*N*T);
-  omp->ref_E->fyS=(gsl_matrix **) malloc(sizeof(gsl_vector)*F*T);
-  omp->ref_E->oS=(gsl_matrix **) malloc(sizeof(gsl_matrix)*F*T);
-    for (j=0;j<T;j++){
-      omp->ref_E->y[j]=gsl_vector_alloc(N);
-      omp->ref_E->fy[j]=gsl_vector_alloc(F);
-      omp->ref_E->yS[j]=gsl_matrix_alloc(T,N);
-      omp->ref_E->fyS[j]=gsl_matrix_alloc(T,F);
-      omp->ref_E->oS[j]=gsl_matrix_alloc(T,F);
-    }
+  omp->ref_E->y=(gsl_vector **) malloc(sizeof(gsl_vector*)*T);
+  omp->ref_E->fy=(gsl_vector **) malloc(sizeof(gsl_vector*)*T);
+  omp->ref_E->yS=(gsl_matrix **) malloc(sizeof(gsl_vector*)*N*T);
+  omp->ref_E->fyS=(gsl_matrix **) malloc(sizeof(gsl_vector*)*F*T);
+  omp->ref_E->oS=(gsl_matrix **) malloc(sizeof(gsl_matrix*)*F*T);
+  omp->ref_E->yS0=gsl_matrix_calloc(T,N);
+
+  for (j=0;j<T;j++){
+    omp->ref_E->y[j]=gsl_vector_alloc(N);
+    omp->ref_E->fy[j]=gsl_vector_alloc(F);
+    omp->ref_E->yS[j]=gsl_matrix_alloc(T,N);
+    omp->ref_E->fyS[j]=gsl_matrix_alloc(T,F);
+    omp->ref_E->oS[j]=gsl_matrix_alloc(T,F);
+  }
   
   
   
@@ -106,6 +110,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
 }
 
 int ode_model_parameters_free(ode_model_parameters *omp){
+  int i,j,k;
   int C=omp->size->C;
   int T=omp->size->T;
   for (i=0;i<C;i++){
@@ -130,7 +135,7 @@ int ode_model_parameters_free(ode_model_parameters *omp){
     gsl_matrix_free(omp->ref_E->fyS[j]);
     gsl_matrix_free(omp->ref_E->oS[j]);
   }
-  free(ref_E);
+  free(omp->ref_E);
   gsl_vector_free(omp->prior_tmp_a);
   gsl_vector_free(omp->prior_tmp_b);
   gsl_vector_free(omp->prior_mu);

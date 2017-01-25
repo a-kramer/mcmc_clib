@@ -39,18 +39,18 @@ typedef struct {
 } experiment;
 
 typedef struct {
-  int D;
+  //  int D;
   double t0;
   double beta; // inverse temperature for annealing or tempering; logPosterior= beta*logLikelihood+logPrior
   problem_size *size;
   gsl_vector *p; // memory for the ODE's parameters (they are
 		 // exponential) and input parameters, appended
-  experiment **E; // an experiment (data, initial conditions, inputs)
+  experiment **E; // an experiment (data, initial conditions, inputs, simulation results)
   experiment *ref_E;
   int normalisation_type;
   gsl_matrix_int *norm_f; // (1|C) × F matrix
   gsl_matrix_int *norm_t; // (1|C) × F matrix
-  gsl_matrix *Data; // this is a block of size T*F for each experiment
+  gsl_matrix *Data; // this is a block of size C*T*F, contains all data.
   gsl_matrix *sdData; // standard deviation of the datapoints
   gsl_vector *tmpF;
   gsl_vector *prior_tmp_a; // some memory allocation ..
@@ -61,5 +61,5 @@ typedef struct {
 } ode_model_parameters;
 
 int ode_model_parameters_alloc(ode_model_parameters *omp);
-int ode_model_experiment_link(ode_model_parameters *omp);
+int ode_model_parameters_link(ode_model_parameters *omp);
 int ode_model_parameters_free(ode_model_parameters *omp);

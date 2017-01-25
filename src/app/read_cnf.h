@@ -5,7 +5,10 @@
 #include <regex.h>
 #include <ctype.h>
 #include <math.h>
+#include <string.h>
 #include "model_parameters_smmala.h"
+#include "normalisation_sd.h"
+#include "dynamic_array.h"
 
 // normalisation methods
 #define DATA_IS_ABSOLUTE 0
@@ -30,13 +33,6 @@
 #define i_initial_conditions 9
 #define i_norm_f 10
 #define i_norm_t 11
-
-
-typedef struct cnf_block_value_t cnf_block_value;
-typedef struct cnf_block_value_t {
-  value_t value;
-  cnf_block_value *next;
-};
 
 typedef struct {
   char *library_file;
@@ -64,7 +60,6 @@ struct field_expression_t {
 };
 
 
-
 field_expression* field_expression_stack(int id,
 					 field_expression *top,
 					 regex_t *open,
@@ -74,14 +69,11 @@ field_expression* field_expression_init(field_names *fn);
 
 int parse_config(FILE *cnf,
 		 ode_model_parameters *omp,
-		 problem_size *ps,
 		 main_options *cnf_options);
 
 
 int read_problem_definition(FILE *cnf,
 			    ode_model_parameters *omp,
-			    gsl_matrix_sd *RD,
 			    const field_expression *fe,
 			    const regex_t *comment,
-			    problem_size *ps,
 			    main_options *cnf_options);

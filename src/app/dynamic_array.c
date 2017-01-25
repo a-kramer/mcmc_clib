@@ -1,4 +1,9 @@
+#include <stdlib.h>
+#include <gsl/gsl_matrix.h>
+#include <gsl/gsl_matrix_int.h>
+#include "model_parameters_smmala.h"
 #include "dynamic_array.h"
+
 
 var_ndim_array* nda_alloc(){
   var_ndim_array *new_nda;
@@ -7,10 +12,12 @@ var_ndim_array* nda_alloc(){
   new_nda->N=0;
   new_nda->nd=0;
   new_nda->size=NULL;
+  new_nda->is_double=0;
+  new_nda->is_int=0;
   return new_nda;
 }
 
-int nda_free(var_dim_array *nda){
+int nda_free(var_ndim_array *nda){
   if (nda->root == NULL){
     free(nda->size);
     free(nda);
@@ -23,15 +30,13 @@ int nda_free(var_dim_array *nda){
 
 int nda_push(var_ndim_array* nda, value_t* value){
   cnf_block_value *p;
-  p=nda->root;
-  
   p=(cnf_block_value*) malloc(sizeof(cnf_block_value));
-  if (nda->btype==DOUBLE_BLOCK){
-    p->value->d=value->d;
-  }else if (nda->btype==INTEGER_BLOCK){
-    p->value->i=value->i;
+  if (nda->is_double){
+    p->value.d=value->d;
+  }else if (nda->is_int){
+    p->value.i=value->i;
   } else {
-    fprintf(stderr,"nda_push: error for target type: %i\n",nda->btype);
+    fprintf(stderr,"nda_push: error typeof(nda) is neither double nor int\n");
     exit(-3);
   }
   nda->N++;
@@ -43,12 +48,12 @@ int nda_pop(var_ndim_array* nda, value_t* value){
   cnf_block_value *p;
   p=nda->root;
   if (p!=NULL){
-    if (nda->btype==DOUBLE_BLOCK){
-      value->d=p->value->d;
-    }else if (nda->btype==INTEGER_BLOCK){
-      value->i=p->value->i;
+    if (nda->is_double){
+      value->d=p->value.d;
+    }else if (nda->is_int){
+      value->i=p->value.i;
     } else {
-      fprintf(stderr,"nda_pop: error for target type: %i\n",nda->btype);
+      fprintf(stderr,"nda_pop: error typeof(nda) is neither double nor int\n");
       exit(-3);
     }
   }else{
@@ -57,11 +62,8 @@ int nda_pop(var_ndim_array* nda, value_t* value){
   nda->root=p->next;
   free(p);
   nda->N--;
-  return GSL_SUCCESS;
+  return EXIT_SUCCESS;
 }
-
-
-
 
 /* nda_to_gsl gets a variable length n-dim array and copies the
  * contents, which it allocates itself.  This matrix directly
@@ -71,39 +73,47 @@ int nda_pop(var_ndim_array* nda, value_t* value){
  * because C=1 and T=1 have only one row but are expected to be a
  * matrix nontheless.
  */
-int nda_to_gsl(var_dim_array *nda, gsl_object *G){
+int nda_to_gsl(var_ndim_array *nda, gsl_object *G){
   int i,N=nda->N;
   int nd=nda->nd;
   int r,c;
-  //  gsl_object *G;
-
   value_t value;
-  if (nda->btype==DOUBLE_BLOCK){
-    double *data;
-    G->gsl->is_double++;
+  if (nd==2){
     r=nda->size[0];
     c=nda->size[1];
+  } else {
+    r=1;
+    c=nda->size[0];
+    //perror("dynamic array is not two dimensional.\n");
+    //exit(-1);
+  }
+  printf("# converting dynamic array with %i entries to a (%i×%i) gsl matrix.\n",nda->N,r,c);
+  fflush(stdout);
+  fflush(stderr);
+  if (nda->is_double){
+    double *data;
+    G->is_double++;
     G->gsl->matrix=gsl_matrix_alloc(r,c);
-    G->gsl->is_matrix++;
+    G->is_matrix++;
     data=G->gsl->matrix->data;
     for (i=1;i<=N;i++) {
-      if (nda_pop(nda,value)!= GSL_EINVAL){
+      if (nda_pop(nda,&value)!= GSL_EINVAL){
 	data[N-i]=value.d;
       } else {
 	fprintf(stderr,"[nda_to_gsl] array contained fewer values than expected\n");
 	exit(-3);	
       }
     }
-  } else if (nda->btype==INTEGER_BLOCK){
+  } else if (nda->is_int){
     int *data;
-    G->gsl->is_int++;
+    G->is_int++;
     r=nda->size[0];
     c=nda->size[1];
     G->gsl->matrix_int=gsl_matrix_int_alloc(r,c);
     G->is_matrix++;
     data=G->gsl->matrix_int->data;
     for (i=1;i<=N;i++) {
-      if (nda_pop(nda,value)!= GSL_EINVAL){
+      if (nda_pop(nda,&value)!= GSL_EINVAL){
 	data[N-i]=value.i;
       } else {
 	perror("[nda_to_gsl] array contained fewer values than expected");
@@ -111,10 +121,10 @@ int nda_to_gsl(var_dim_array *nda, gsl_object *G){
       }
     }
   } else {
-    perror("nda_to_gsl: unknown block type: %i\n",nda->btype);
+    perror("nda_to_gsl: unknown block type\n");
     exit(-3);    
   }
-  return GSL_SUCCESS;
+  return EXIT_SUCCESS;
 }
 
 /* Same as nda_to_gsl but checks whether nda represents a matrix or a
@@ -125,42 +135,42 @@ int nda_to_gsl(var_dim_array *nda, gsl_object *G){
  * setup.
  */
 
-int nda_to_gsl_a(var_dim_array *nda, gsl_object *G){
+int nda_to_gsl_a(var_ndim_array *nda, gsl_object *G){
   int i,N=nda->N;
   int nd=nda->nd;
   int r,c;
   //  gsl_object *G;
 
   value_t value;
-  if (nda->btype==DOUBLE_BLOCK){
+  if (nda->is_double){
     double *data;
-    G->gsl->is_double++;
+    G->is_double++;
     if (nd==2) {
       r=nda->size[0];
       c=nda->size[1];
       G->gsl->matrix=gsl_matrix_alloc(r,c);
-      G->gsl->is_matrix++;
+      G->is_matrix++;
       data=G->gsl->matrix->data;
     } else if (nd==1) {
       r=nda->size[0];
       G->gsl->vector=gsl_vector_alloc(r);
-      G->gsl->is_vector++;
+      G->is_vector++;
       data=G->gsl->vector->data;
     } else {
       fprintf(stderr,"[nda_to_gsl] cannot tell if data is vector or matrix: nd=%i\n",nda->nd);
       exit(-3);    
     }
     for (i=1;i<=N;i++) {
-      if (nda_pop(nda,value)!= GSL_EINVAL){
+      if (nda_pop(nda,&value)!= GSL_EINVAL){
 	data[N-i]=value.d;
       } else {
 	fprintf(stderr,"[nda_to_gsl] array contained fewer values than expected\n");
 	exit(-3);	
       }
     }
-  } else if (nda->btype==INTEGER_BLOCK){
+  } else if (nda->is_int){
     int *data;
-    G->gsl->is_int++;
+    G->is_int++;
     if (nd==2) {
       r=nda->size[0];
       c=nda->size[1];
@@ -170,14 +180,14 @@ int nda_to_gsl_a(var_dim_array *nda, gsl_object *G){
     } else if (nd==1) {
       r=nda->size[0];
       G->gsl->vector_int=gsl_vector_int_alloc(r);
-      G->gsl->is_vector++;
+      G->is_vector++;
       data=G->gsl->vector_int->data;
     } else {
       fprintf(stderr,"[nda_to_gsl] cannot tell if int_data is vector or matrix: nd=%i\n",nda->nd);
       exit(-3);    
     }
     for (i=1;i<=N;i++) {
-      if (nda_pop(nda,value)!= GSL_EINVAL){
+      if (nda_pop(nda,&value)!= GSL_EINVAL){
 	data[N-i]=value.i;
       } else {
 	perror("[nda_to_gsl] array contained fewer values than expected");
@@ -185,8 +195,8 @@ int nda_to_gsl_a(var_dim_array *nda, gsl_object *G){
       }
     }
   } else {
-    perror("nda_to_gsl: unknown block type: %i\n",nda->btype);
+    perror("nda_to_gsl: unknown block type.\n");
     exit(-3);    
   }
-  return GSL_SUCCESS;
+  return EXIT_SUCCESS;
 }
