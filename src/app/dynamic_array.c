@@ -87,34 +87,31 @@ int nda_to_gsl(var_ndim_array *nda, gsl_object *G){
     //perror("dynamic array is not two dimensional.\n");
     //exit(-1);
   }
-  printf("# converting dynamic array with %i entries to a (%i×%i) gsl matrix.\n",nda->N,r,c);
-  fflush(stdout);
-  fflush(stderr);
+  //printf("# converting dynamic array with %i entries to a (%i×%i) gsl matrix.\n",nda->N,r,c);
+  //printf("[");
+  //fflush(stdout);
+
   if (nda->is_double){
-    double *data;
     G->is_double++;
     G->gsl->matrix=gsl_matrix_alloc(r,c);
     G->is_matrix++;
-    data=G->gsl->matrix->data;
     for (i=1;i<=N;i++) {
       if (nda_pop(nda,&value)!= GSL_EINVAL){
-	data[N-i]=value.d;
+	//printf(" %g ",value.d);
+	G->gsl->matrix->data[N-i]=value.d;
       } else {
 	fprintf(stderr,"[nda_to_gsl] array contained fewer values than expected\n");
 	exit(-3);	
       }
     }
   } else if (nda->is_int){
-    int *data;
     G->is_int++;
-    r=nda->size[0];
-    c=nda->size[1];
     G->gsl->matrix_int=gsl_matrix_int_alloc(r,c);
     G->is_matrix++;
-    data=G->gsl->matrix_int->data;
     for (i=1;i<=N;i++) {
       if (nda_pop(nda,&value)!= GSL_EINVAL){
-	data[N-i]=value.i;
+	G->gsl->matrix_int->data[N-i]=value.i;
+	//printf(" %i ",value.i);
       } else {
 	perror("[nda_to_gsl] array contained fewer values than expected");
 	exit(-3);	
@@ -124,6 +121,7 @@ int nda_to_gsl(var_ndim_array *nda, gsl_object *G){
     perror("nda_to_gsl: unknown block type\n");
     exit(-3);    
   }
+  //printf("]\n");
   return EXIT_SUCCESS;
 }
 

@@ -78,12 +78,17 @@ typedef struct {
 int gsl_printf(const char *name, void *gsl_thing, int is_matrix){
   gsl_matrix *A;
   gsl_vector *x;
-  
+  int i,j,r,c;
   printf("[%s]",name);
   if (is_matrix){
     A=(gsl_matrix*) gsl_thing;
-    printf(" %i × %i elements\n",(int) A->size1,(int) A->size2);
-    gsl_matrix_fprintf(stdout, A, "%g");
+    r=(int) A->size1;
+    c=(int) A->size2;
+    printf(" %i × %i elements\n",r,c);
+    for (i=0;i<r;i++){
+      for (j=0;j<c;j++) printf("%g\t",gsl_matrix_get(A,i,j));
+      printf("\n");
+    }    
   }else{
     x=(gsl_vector*) gsl_thing;
     printf(" %i elements\n",(int) x->size);
@@ -238,6 +243,7 @@ int normalise_by_state_var(ode_model_parameters *mp){
    *  index. So, fy[c*T+j](i)/fy[c*T+ti](si)
    */
   int c,i,j,k,ti,si;
+  int rows_f, rows_t;
   int C=mp->size->C;
   int T=mp->size->T;
   int F=mp->size->F;
@@ -254,14 +260,16 @@ int normalise_by_state_var(ode_model_parameters *mp){
   gsl_vector *r_fyS_k; // the raw r_fy sensitivity for one parameter k
   gsl_vector_view oS_k_view; // 
   gsl_vector *oS_k; // the normalised output sensitivity for one parameter k
-
+  rows_f=mp->norm_f->size1;
+  rows_t=mp->norm_t->size1;
+  
   for (c=0;c<C;c++){
     tmp=mp->tmpF;
     r_fy=mp->ref_E->fy[0];   // these can be used as temporary storage
     r_fyS=mp->ref_E->fyS[0]; // because there is no reference experiment
     for (i=0;i<F;i++){
-      si=gsl_matrix_int_get(mp->norm_f,c,i); // normalising state index: si
-      ti=gsl_matrix_int_get(mp->norm_t,c,i); // time idx ti: fy[c*T+ti](si)
+      si=gsl_matrix_int_get(mp->norm_f,c%rows_f,i); // normalising state index: si
+      ti=gsl_matrix_int_get(mp->norm_t,c%rows_t,i); // time idx ti: fy[ti](si)
       gsl_vector_set(r_fy,i,gsl_vector_get(mp->E[c]->fy[ti],si));
       si_col_view=gsl_matrix_subcolumn(mp->E[c]->fyS[ti],si,0,D);
       si_col=&(si_col_view.vector);
@@ -396,21 +404,23 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
   /* calculate reference model output if necessary:
    */
   input_part=gsl_vector_subvector(mp->p,D,U);
-
+  printf("[likelihood] start (normalisation type: %i).\n",mp->normalisation_type); fflush(stdout);
   if (mp->normalisation_type==DATA_NORMALISED_BY_REFERENCE){
+    printf("<>\n");fflush(stdout);
     t=mp->ref_E->t;
     T=t->size;
     gsl_vector_memcpy(&(input_part.vector),mp->ref_E->input_u);
     ode_solver_reinit(solver, mp->t0, mp->ref_E->init_y->data, N,
 		      mp->p->data,
 		      mp->p->size);
-    //gsl_printf("reference exp_x_u",mp->exp_x_u,0);
+    gsl_printf("reference p",mp->p,0); fflush(stdout);
     ode_solver_reinit_sens(solver, mp->ref_E->yS0->data, P, N);
     for (j=0; j<T; j++){
-      y=mp->ref_E->y[j];
-      fy=mp->ref_E->fy[j];
-      yS=mp->ref_E->yS[j];
-      fyS=mp->ref_E->fyS[j];
+
+      y=mp->ref_E->y[j];  printf("y: %i, %i\n",mp->size->N,y->size); fflush(stdout);
+      fy=mp->ref_E->fy[j]; printf("fy: %i, %i\n",mp->size->F,fy->size);fflush(stdout);
+      yS=mp->ref_E->yS[j];  printf("yS: %i, %i\n",mp->size->N*P,yS->size1*yS->size2);fflush(stdout);
+      fyS=mp->ref_E->fyS[j];  printf("fyS: %i, %i\n",mp->size->F*P,fyS->size1*fyS->size2);fflush(stdout);
       ode_solver_step(solver, gsl_vector_get(t,j), y, fy, yS, fyS);
     }
 
@@ -418,22 +428,27 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
   for (c=0; c<C; c++){// loop over different experimental conditions
     // write inputs into the ode parameter vector
     gsl_vector_memcpy(&(input_part.vector),mp->E[c]->input_u);
-    //gsl_printf("exp_x_u",mp->exp_x_u,0);
+    //gsl_printf("p",mp->p,0); fflush(stdout);
     ode_solver_reinit(solver, mp->t0, mp->E[c]->init_y->data, N,
 		      mp->p->data,
 		      mp->p->size);
-    
+    //printf("[Likelihood] reinit done.\n"); fflush(stdout);
     ode_solver_reinit_sens(solver, mp->E[c]->yS0->data, P, N);
+    //printf("[Likelihood] reinit sens done.\n"); fflush(stdout);
     t=mp->E[c]->t;
     T=t->size;
+    //printf("[Likelihood] ode step: T=%i\n",T); fflush(stdout);
     for (j=0; j<T; j++){
-      y=mp->E[c]->y[j];
-      fy=mp->E[c]->fy[j];
-      yS=mp->E[c]->yS[j];
-      fyS=mp->E[c]->fyS[j];
+      //printf("[Likelihood] needed size, actual size: \n");
+      y=mp->E[c]->y[j]; //printf("y: %i, %i\n",mp->size->N,y->size);
+      fy=mp->E[c]->fy[j]; //printf("fy: %i, %i\n",mp->size->F,fy->size);
+      yS=mp->E[c]->yS[j]; //printf("yS: %i, %i\n",mp->size->N*P,yS->size1*yS->size2);
+      fyS=mp->E[c]->fyS[j]; //printf("fyS: %i, %i\n",mp->size->F*P,fyS->size1*fyS->size2);
+      //printf("[Likelihood] ode step: %i/%i\n",j,T); fflush(stdout);
       i_flag=ode_solver_step(solver, gsl_vector_get(t,j), y, fy, yS, fyS);
     }
   }
+  //printf("ode step done.\n"); fflush(stdout);
   switch (mp->normalisation_type){
   case DATA_NORMALISED_BY_TIMEPOINT:
     normalise_by_timepoint(mp);
@@ -672,9 +687,22 @@ int main (int argc, char* argv[]) {
   /* gsl_printf("sd data",omp.sdData,1); */
   /* gsl_printf("u",omp.input_u,1); */
   /* gsl_printf("t",omp.t,0); */
+ 
+  // unspecified initial conditions
+  if (omp.ref_E->init_y==NULL){
+    omp.ref_E->init_y=gsl_vector_alloc(N);
+    gsl_vector_set_all(omp.ref_E->init_y,y);
+  }
+  for (i=0;i<omp.size->C;i++){
+    if (omp.E[i]->init_y==NULL){
+      omp.E[i]->init_y=gsl_vector_alloc(N);
+      gsl_vector_set_all(omp.E[i]->init_y,y);
+    }
+  }
   
   printf("# init ivp: t0=%g\n",omp.t0); fflush(stdout);
   ode_solver_init(solver, omp.t0, y, N, p, P);
+  printf("# solver initialised.\n"); fflush(stdout);
   ode_solver_setErrTol(solver, solver_param[1], &solver_param[0], 1);
   if (ode_model_has_sens(odeModel)) {
     ode_solver_init_sens(solver, omp.ref_E->yS0->data, P, N);
@@ -682,28 +710,21 @@ int main (int argc, char* argv[]) {
   }
 
   printf("# allocating memory for the SMMALA model.\n");
-	
+  fflush(stdout);
   smmala_model* model = smmala_model_alloc(Posterior, NULL, &omp); // ode_model_parameters
   /* initial parameter values */
-  double init_x[omp.size->D];
   D=omp.size->D;
+  double init_x[D];
+  for (i=0;i<D;i++) init_x[i]=gsl_sf_log(p[i]);
   /* allocate a new RMHMC MCMC kernel */
   printf("# allocating memory for a new SMMALA MCMC kernel.\n");
-  /*mcmc_kernel* smmala_kernel_alloc(
-    int N, 
-    double step_size,
-    smmala_model* model_function, 
-    unsigned long int seed)
-  */
   mcmc_kernel* kernel = smmala_kernel_alloc(D,
 					    cnf_options.initial_stepsize,
 					    model,
 					    seed,
 					    cnf_options.target_acceptance);
-  printf("# initializing MCMC.\n");
-
   /* initialise MCMC */
-  for (i=0;i<D;i++) init_x[i]=gsl_sf_log(p[i]);
+  //for (i=0;i<D;i++) init_x[i]=gsl_sf_log(p[i]);
   if (sampling_action==SMPL_RESUME){
     rFile=fopen(resume_filename,"r");
     if (rFile==NULL) {
@@ -715,9 +736,15 @@ int main (int argc, char* argv[]) {
       if (resume_count!=D) fprintf(stderr,"Reading from resume file returned a wrong number of values.");
     }
   }
+  printf("# initializing MCMC.\n");
+  gsl_printf("Normalised Data",omp.Data,1);
+  gsl_printf("standard deviation",omp.sdData,1); //exit(0);
+  fflush(stdout);
+
   mcmc_init(kernel, init_x);
 
   printf("# test evaluation of Posterior function.\n");
+  fflush(stdout);
   /*inits*/
   double fx;
   double dfx[D];
@@ -875,9 +902,8 @@ int Posterior(const double* x,  void* model_params, double* fx, double* dfx, dou
   
   fx[0]=0;
   for (i=0;i<D;i++) gsl_vector_set(omp->p,i,gsl_sf_exp(x[i]));
-  //for (i=0;i<D*D;i++) FI[i]=0;
- 
   logL_stat=LikelihoodComplexNorm(omp, fx, dfx, FI);
+  printf("likelihood: %g\n",fx[0]);
   gsl_vector_memcpy(prior_diff,x_v);
   gsl_vector_sub(prior_diff,omp->prior_mu);
 

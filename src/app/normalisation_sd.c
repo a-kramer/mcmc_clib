@@ -29,18 +29,23 @@ int normalise_by_timepoint_with_sd(ode_model_parameters *omp){
   tmp=gsl_vector_alloc(F);
   
   r=omp->norm_t->size1;
-  // data vector at time t_j and under condition u_c: data[c*T+j] 
+  /*printf("r=%i\nnorm_t=[\n",r);
+  for (c=0;c<r;c++){
+    for (j=0;j<(omp->norm_t->size2);j++) printf("%i",gsl_matrix_int_get(omp->norm_t,c,j));
+    printf("\n");
+  }
+  printf("]\n");
+  */
   for (c=0;c<C;c++){
     l=gsl_matrix_int_get(omp->norm_t,c%r,0);
     T=omp->E[c]->t->size;
-    printf("l=%i\n",l);
+    //printf("l=%i\n",l);
     fflush(stdout);
     for (j=0;j<T;j++) {
       d=omp->E[c]->data[j];
       sd_d=omp->E[c]->sd_data[j];
       s=omp->E[c]->data[l];
       sd_s=omp->E[c]->sd_data[l];
-      // data will be scaled by 1/s
       gsl_vector_div(d,s);
       // calculate standard deviation of result:
       gsl_vector_set_zero(tmp);
@@ -67,6 +72,7 @@ int normalise_by_state_var_with_sd(ode_model_parameters *omp){
    * of that state variable to normalise at.
    */
   int c,i,j;
+  int rows_f, rows_t;
   gsl_vector *tmp; // intermediate results
   //gsl_vector_view D,SD;
   gsl_vector *r,*sd_r,*d,*sd_d;
@@ -80,6 +86,9 @@ int normalise_by_state_var_with_sd(ode_model_parameters *omp){
   tmp=omp->tmpF;
   r=omp->ref_E->fy[0];
   sd_r=gsl_vector_alloc(F);
+  rows_t=omp->norm_t->size1;
+  rows_f=omp->norm_f->size1;
+  printf("normalising with state and time index (rows_f=%i, rows_t=%i)\n",rows_f,rows_t); fflush(stdout);
   //printf("\n");
   //printf("# norm_f:\n");
   //gsl_matrix_int_fprintf(stdout,omp->norm_f,"%i");
@@ -94,10 +103,9 @@ int normalise_by_state_var_with_sd(ode_model_parameters *omp){
       //printf("# [norm_f/norm_t] i=%i/%i\n",i,F);
 
       // fill s with the appropriate data point:
-      // that is, state variable with index i_d
-      i_f=gsl_matrix_int_get(omp->norm_f,c,i); 
+      i_f=gsl_matrix_int_get(omp->norm_f,c%rows_f,i); 
       // at time index i_t, as specified by the normalisation matrix
-      i_t=gsl_matrix_int_get(omp->norm_t,c,i);
+      i_t=gsl_matrix_int_get(omp->norm_t,c%rows_t,i);
       //printf("i_t=%i\ti_f=%i\n",i_t,i_f);fflush(stdout);
       if (i_f<F && i_t<T){
 	d=omp->E[c]->data[i_t];

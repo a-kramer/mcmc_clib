@@ -63,3 +63,4 @@ typedef struct {
 int ode_model_parameters_alloc(ode_model_parameters *omp);
 int ode_model_parameters_link(ode_model_parameters *omp);
 int ode_model_parameters_free(ode_model_parameters *omp);
+int init_E(ode_model_parameters *omp);

@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_vector.h>
+#include <gsl/gsl_errno.h>
 #include <regex.h>
 #include <ctype.h>
 #include <math.h>

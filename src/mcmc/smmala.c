@@ -136,7 +136,7 @@ static int smmala_kernel_init(mcmc_kernel* kernel, const double* x){
   /* TODO: write a proper error handler */
   if (res != 0){
     fprintf(stderr,"smmala_kernel_init: Likelihood function failed\n");
-    return 1;
+    exit(-1);
   }
   kernel->fx = &(params->fx);	
   gsl_matrix_view Hfx = gsl_matrix_view_array(params->Hfx,n,n); 

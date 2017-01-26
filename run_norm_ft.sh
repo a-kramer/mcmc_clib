@@ -24,11 +24,10 @@ $0
           Sample = fread(fid,[NumOfParameters+1,SampleSize],'double');
                    fclose(fid);
 
- use «tailf $ModelCFG.out» to see progress (press «Ctrl-C» to exit tailf)
+ use «tailf $ModelCFG.out» to see progress (press «Ctrl-c» to exit tailf)
 
  sampling now ...
 EOF
 
 #echo "run -b -o $SampleFile -s ${SampleSize} -l ./$ModelSO.so -c ./$ModelCFG.cfg"
-bin/ode_smmala  -b -o $SampleFile -s ${SampleSize} -w ${SampleSize} -l ./$ModelSO.so -c ./$ModelCFG.cfg
-#1> $ModelCGF.out 2> $ModelCFG.err
+bin/ode_smmala  -b -o $SampleFile -s ${SampleSize} -w ${SampleSize} -l ./$ModelSO.so -c ./$ModelCFG.cfg > $ModelCFG.out 
