@@ -6,7 +6,7 @@
 # -c ODEmodel11S26P4U.cfg   configurations
 Model=ODEmodel11S26P4U
 SampleFile="sample/${Model}_`date +%Y-%m-%dT%Hh%Mm`.double"
-
+SampleSize=$((1024**2))
 cat<<EOF
 $0
  redirecting standard output to $Model.out
@@ -16,7 +16,7 @@ $0
  to load the sample in matlab or GNU Octave:
 
  NumOfParameters = 26;
-      SampleSize = 1e6;
+      SampleSize = ${SampleSize};
              fid = fopen('${SampleFile}','r');
           Sample = fread(fid,[NumOfParameters+1,SampleSize],'double');
                    fclose(fid);
@@ -27,4 +27,4 @@ $0
  sampling now ...
 EOF
 
-bin/ode_smmala  -b -o $SampleFile -l ./$Model.so -c ./$Model.cfg 1> $Model.out 2> $Model.err
+bin/ode_smmala  -b -s ${SampleSize} -p -o $SampleFile -l ./$Model.so -c ./$Model.cfg 1> $Model.out 2> $Model.err

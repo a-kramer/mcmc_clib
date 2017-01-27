@@ -32,7 +32,7 @@ vfgen:
 	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread
 
 ODE%_cvs.c: ODE%.xml
-	./vfgen cvodes:sens=yes,func=yes ODE%.xml
+	./vfgen cvodes:sens=yes,func=yes ODE$*.xml
 
 ODE%.so: ODE%_cvs.c
 	$(CC) -shared -fPIC $(CFLAGS) -o $@  ODE$*_cvs.c

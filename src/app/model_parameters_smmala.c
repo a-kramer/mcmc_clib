@@ -135,7 +135,7 @@ int ode_model_parameters_free(ode_model_parameters *omp){
     free(omp->E[i]->data_row);
     free(omp->E[i]->sd_data_row);
     free(omp->E[i]->data);
-    free(omp->E[i]->data);
+    free(omp->E[i]->sd_data);
     for (j=0;j<T;j++){
       gsl_vector_free(omp->E[i]->y[j]);
       gsl_vector_free(omp->E[i]->fy[j]);
