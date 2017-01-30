@@ -1,0 +1,37 @@
+<?xml version="1.0" ?>
+<VectorField
+    Name="pendulum"
+    Description="Pendulum Vector Field">
+<Parameter
+    Name="g"
+    Description="gravitational constant"
+    DefaultValue="9.81" />
+<Parameter
+    Name="b"
+    Description="friction constant"
+    DefaultValue="0.0" />
+<Parameter
+    Name="L"
+    Description="pendulum length"
+    DefaultValue="1.0" />
+<Parameter
+    Name="m"
+    Description="mass"
+    DefaultValue="1.0" />
+<StateVariable
+    Name="theta"
+    Description="Angle, measured from straight down"
+    Formula="v"
+    PeriodFrom="0"
+    PeriodTo="2*Pi"
+    DefaultInitialCondition="Pi-0.01" />
+<StateVariable
+    Name="v"
+    Description="angular velocity"
+    Formula="-b*v/(m*L^2)-(g/L)*sin(theta)"
+    DefaultInitialCondition="0.0" />
+<Function
+    Name="energy"
+    Description="total energy (kinetic plus potential)"
+    Formula="m*L^2*v^2/2 - m*g*L*cos(theta)" />
+</VectorField>

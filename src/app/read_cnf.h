@@ -32,8 +32,10 @@
 #define i_prior_mu 7
 #define i_prior_icov 8
 #define i_initial_conditions 9
-#define i_norm_f 10
-#define i_norm_t 11
+#define i_ref_initial_conditions 10
+#define i_norm_f 11
+#define i_norm_t 12
+#define NumberOfFields 13
 
 typedef struct {
   char *library_file;

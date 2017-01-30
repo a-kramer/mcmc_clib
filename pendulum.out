@@ -1,0 +1,837 @@
+# Library ./pendulum.so loaded.
+# Solver for ./pendulum.so created.
+# reading configuration.
+# [cfg] {C} ← {3}
+# 3+1 experiment structures allocated.
+# [cfg] {t0} ← {0}
+# t0 = 0
+# measurement time(s) read.
+# reference input read.
+# input read.
+# reference initial conditions read.
+# standard deviation of reference data read.
+# reference data read.
+# standard deviation of data read.
+# data read.
+# initial conditions read.
+# prior mean read.
+# prior inverse covariance matrix read.
+# EOF
+# calculating relative data.
+# normalisation type: 1.
+# taking ratios of Data and Refrence Data...done.
+# temporary Data matrices free.....done.
+# configuration read.
+# init ivp: t0=0
+# solver initialised.
+# sensitivity analysis initiated.
+# allocating memory for the SMMALA model.
+# allocating memory for a new SMMALA MCMC kernel.
+# setting initial mcmc vector to prior mean.
+# initializing MCMC.
+pre normalisation
+[p] 4 elements
+1	1	1	4	
+[/p]
+Reference Experiment
+[ref y init] 2 elements
+2	0	
+[/ref y init]
+t[0]
+[ref fy(t0)] 1 elements
+0.268229	
+[/ref fy(t0)]
+[ref fyS(t0)] 4 × 2 elements
+-0.350821	-0.623966	
+0.097149	0.251596	
+0.156523	0.120774	
+-0.097149	-0.251596	
+[/ref fyS(t0)]
+t[1]
+[ref fy(t1)] 1 elements
+-0.28252	
+[/ref fy(t1)]
+[ref fyS(t1)] 4 × 2 elements
+-1.05691	-0.636794	
+0.499347	0.493471	
+0.0582201	-0.350149	
+-0.499347	-0.493471	
+[/ref fyS(t1)]
+t[2]
+[ref fy(t2)] 1 elements
+-0.813763	
+[/ref fy(t2)]
+[ref fyS(t2)] 4 × 2 elements
+-1.31617	0.191769	
+0.893332	0.205635	
+-0.47049	-0.60304	
+-0.893332	-0.205635	
+[/ref fyS(t2)]
+t[3]
+[ref fy(t3)] 1 elements
+-0.967917	
+[/ref fy(t3)]
+[ref fyS(t3)] 4 × 2 elements
+-0.773645	0.765948	
+0.845991	-0.277667	
+-0.918336	-0.210614	
+-0.845991	0.277667	
+[/ref fyS(t3)]
+t[4]
+[ref fy(t4)] 1 elements
+-0.974217	
+[/ref fy(t4)]
+[ref fyS(t4)] 4 × 2 elements
+-0.0321821	0.623889	
+0.437154	-0.47974	
+-0.842126	0.33559	
+-0.437154	0.47974	
+[/ref fyS(t4)]
+Experiment 0
+[y_init] 2 elements
+2	0	
+[/y_init]
+t[0]
+[fy(t0)] 1 elements
+0.626992	
+[/fy(t0)]
+[data(t0)] 1 elements
+2.00007	
+[/data(t0)]
+[sd data(t0)] 1 elements
+0.0519645	
+[/sd data(t0)]
+[fyS(t0)] 4 × 1 elements
+0.411994	
+-0.134884	
+1.11176	
+0.380938	
+[/fyS(t0)]
+[oS(t0)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t0)]
+t[1]
+[fy(t1)] 1 elements
+-0.367237	
+[/fy(t1)]
+[data(t1)] 1 elements
+2.0001	
+[/data(t1)]
+[sd data(t1)] 1 elements
+0.0519705	
+[/sd data(t1)]
+[fyS(t1)] 4 × 1 elements
+-1.38889	
+-0.497793	
+1.65	
+0.0652779	
+[/fyS(t1)]
+[oS(t1)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t1)]
+t[2]
+[fy(t2)] 1 elements
+-1.35144	
+[/fy(t2)]
+[data(t2)] 1 elements
+2.00045	
+[/data(t2)]
+[sd data(t2)] 1 elements
+0.0519901	
+[/sd data(t2)]
+[fyS(t2)] 4 × 1 elements
+-1.72111	
+-0.794307	
+0.60684	
+-0.278566	
+[/fyS(t2)]
+[oS(t2)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t2)]
+t[3]
+[fy(t3)] 1 elements
+-1.51319	
+[/fy(t3)]
+[data(t3)] 1 elements
+2.00097	
+[/data(t3)]
+[sd data(t3)] 1 elements
+0.0520261	
+[/sd data(t3)]
+[fyS(t3)] 4 × 1 elements
+-1.05616	
+-0.915744	
+-0.138728	
+-0.298722	
+[/fyS(t3)]
+[oS(t3)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t3)]
+t[4]
+[fy(t4)] 1 elements
+-1.6052	
+[/fy(t4)]
+[data(t4)] 1 elements
+2.0017	
+[/data(t4)]
+[sd data(t4)] 1 elements
+0.0520848	
+[/sd data(t4)]
+[fyS(t4)] 4 × 1 elements
+-1.74689	
+-0.750615	
+0.0377145	
+-0.427293	
+[/fyS(t4)]
+[oS(t4)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t4)]
+Experiment 1
+[y_init] 2 elements
+2	0	
+[/y_init]
+t[0]
+[fy(t0)] 1 elements
+1.01787	
+[/fy(t0)]
+[data(t0)] 1 elements
+3.00002	
+[/data(t0)]
+[sd data(t0)] 1 elements
+0.0692848	
+[/sd data(t0)]
+[fyS(t0)] 4 × 1 elements
+0.776541	
+-0.176228	
+1.61165	
+0.398032	
+[/fyS(t0)]
+[oS(t0)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t0)]
+t[1]
+[fy(t1)] 1 elements
+-0.217149	
+[/fy(t1)]
+[data(t1)] 1 elements
+3.00033	
+[/data(t1)]
+[sd data(t1)] 1 elements
+0.0692974	
+[/sd data(t1)]
+[fyS(t1)] 4 × 1 elements
+-1.41659	
+-0.862506	
+2.70731	
+0.215119	
+[/fyS(t1)]
+[oS(t1)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t1)]
+t[2]
+[fy(t2)] 1 elements
+-1.47495	
+[/fy(t2)]
+[data(t2)] 1 elements
+3.00076	
+[/data(t2)]
+[sd data(t2)] 1 elements
+0.0693229	
+[/sd data(t2)]
+[fyS(t2)] 4 × 1 elements
+-1.68372	
+-1.46916	
+1.67214	
+-0.00193062	
+[/fyS(t2)]
+[oS(t2)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t2)]
+t[3]
+[fy(t3)] 1 elements
+-1.66109	
+[/fy(t3)]
+[data(t3)] 1 elements
+3.0018	
+[/data(t3)]
+[sd data(t3)] 1 elements
+0.069377	
+[/sd data(t3)]
+[fyS(t3)] 4 × 1 elements
+-0.888424	
+-1.57722	
+0.720687	
+-0.0279563	
+[/fyS(t3)]
+[oS(t3)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t3)]
+t[4]
+[fy(t4)] 1 elements
+-1.86846	
+[/fy(t4)]
+[data(t4)] 1 elements
+3.00359	
+[/data(t4)]
+[sd data(t4)] 1 elements
+0.0694694	
+[/sd data(t4)]
+[fyS(t4)] 4 × 1 elements
+-2.24811	
+-1.50004	
+1.51128	
+-0.122806	
+[/fyS(t4)]
+[oS(t4)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t4)]
+Experiment 2
+[y_init] 2 elements
+2	0	
+[/y_init]
+t[0]
+[fy(t0)] 1 elements
+1.41991	
+[/fy(t0)]
+[data(t0)] 1 elements
+3.99997	
+[/data(t0)]
+[sd data(t0)] 1 elements
+0.086605	
+[/sd data(t0)]
+[fyS(t0)] 4 × 1 elements
+1.16391	
+-0.200767	
+2.07745	
+0.40517	
+[/fyS(t0)]
+[oS(t0)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t0)]
+t[1]
+[fy(t1)] 1 elements
+0.0379385	
+[/fy(t1)]
+[data(t1)] 1 elements
+4.00038	
+[/data(t1)]
+[sd data(t1)] 1 elements
+0.0866212	
+[/sd data(t1)]
+[fyS(t1)] 4 × 1 elements
+-1.26415	
+-1.11099	
+3.56201	
+0.287233	
+[/fyS(t1)]
+[oS(t1)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t1)]
+t[2]
+[fy(t2)] 1 elements
+-1.39926	
+[/fy(t2)]
+[data(t2)] 1 elements
+4.00107	
+[/data(t2)]
+[sd data(t2)] 1 elements
+0.0866557	
+[/sd data(t2)]
+[fyS(t2)] 4 × 1 elements
+-1.49674	
+-1.95559	
+2.60939	
+0.139082	
+[/fyS(t2)]
+[oS(t2)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t2)]
+t[3]
+[fy(t3)] 1 elements
+-1.6107	
+[/fy(t3)]
+[data(t3)] 1 elements
+4.00264	
+[/data(t3)]
+[sd data(t3)] 1 elements
+0.0867278	
+[/sd data(t3)]
+[fyS(t3)] 4 × 1 elements
+-0.597847	
+-2.0704	
+1.51724	
+0.114924	
+[/fyS(t3)]
+[oS(t3)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t3)]
+t[4]
+[fy(t4)] 1 elements
+-1.89139	
+[/fy(t4)]
+[data(t4)] 1 elements
+4.00531	
+[/data(t4)]
+[sd data(t4)] 1 elements
+0.086851	
+[/sd data(t4)]
+[fyS(t4)] 4 × 1 elements
+-2.40771	
+-2.13513	
+2.89519	
+0.0609352	
+[/fyS(t4)]
+[oS(t4)] 4 × 1 elements
+0	
+0	
+0	
+0	
+[/oS(t4)]
+post normalisation
+[p] 4 elements
+1	1	1	4	
+[/p]
+Reference Experiment
+[ref y init] 2 elements
+2	0	
+[/ref y init]
+t[0]
+[ref fy(t0)] 1 elements
+0.268229	
+[/ref fy(t0)]
+[ref fyS(t0)] 4 × 2 elements
+-0.350821	-0.623966	
+0.097149	0.251596	
+0.156523	0.120774	
+-0.097149	-0.251596	
+[/ref fyS(t0)]
+t[1]
+[ref fy(t1)] 1 elements
+-0.28252	
+[/ref fy(t1)]
+[ref fyS(t1)] 4 × 2 elements
+-1.05691	-0.636794	
+0.499347	0.493471	
+0.0582201	-0.350149	
+-0.499347	-0.493471	
+[/ref fyS(t1)]
+t[2]
+[ref fy(t2)] 1 elements
+-0.813763	
+[/ref fy(t2)]
+[ref fyS(t2)] 4 × 2 elements
+-1.31617	0.191769	
+0.893332	0.205635	
+-0.47049	-0.60304	
+-0.893332	-0.205635	
+[/ref fyS(t2)]
+t[3]
+[ref fy(t3)] 1 elements
+-0.967917	
+[/ref fy(t3)]
+[ref fyS(t3)] 4 × 2 elements
+-0.773645	0.765948	
+0.845991	-0.277667	
+-0.918336	-0.210614	
+-0.845991	0.277667	
+[/ref fyS(t3)]
+t[4]
+[ref fy(t4)] 1 elements
+-0.974217	
+[/ref fy(t4)]
+[ref fyS(t4)] 4 × 2 elements
+-0.0321821	0.623889	
+0.437154	-0.47974	
+-0.842126	0.33559	
+-0.437154	0.47974	
+[/ref fyS(t4)]
+Experiment 0
+[y_init] 2 elements
+2	0	
+[/y_init]
+t[0]
+[fy(t0)] 1 elements
+2.33752	
+[/fy(t0)]
+[data(t0)] 1 elements
+2.00007	
+[/data(t0)]
+[sd data(t0)] 1 elements
+0.0519645	
+[/sd data(t0)]
+[fyS(t0)] 4 × 1 elements
+0.411994	
+-0.134884	
+1.11176	
+0.380938	
+[/fyS(t0)]
+[oS(t0)] 4 × 1 elements
+0.549731	
+-0.0209901	
+-0.507751	
+0	
+[/oS(t0)]
+t[1]
+[fy(t1)] 1 elements
+1.29986	
+[/fy(t1)]
+[data(t1)] 1 elements
+2.0001	
+[/data(t1)]
+[sd data(t1)] 1 elements
+0.0519705	
+[/sd data(t1)]
+[fyS(t1)] 4 × 1 elements
+-1.38889	
+-0.497793	
+1.65	
+0.0652779	
+[/fyS(t1)]
+[oS(t1)] 4 × 1 elements
+0.622732	
+1.75264	
+-4.12801	
+0	
+[/oS(t1)]
+t[2]
+[fy(t2)] 1 elements
+1.66073	
+[/fy(t2)]
+[data(t2)] 1 elements
+2.00045	
+[/data(t2)]
+[sd data(t2)] 1 elements
+0.0519901	
+[/sd data(t2)]
+[fyS(t2)] 4 × 1 elements
+-1.72111	
+-0.794307	
+0.60684	
+-0.278566	
+[/fyS(t2)]
+[oS(t2)] 4 × 1 elements
+-0.625973	
+1.07932	
+-1.53267	
+0	
+[/oS(t2)]
+t[3]
+[fy(t3)] 1 elements
+1.56335	
+[/fy(t3)]
+[data(t3)] 1 elements
+2.00097	
+[/data(t3)]
+[sd data(t3)] 1 elements
+0.0520261	
+[/sd data(t3)]
+[fyS(t3)] 4 × 1 elements
+-1.05616	
+-0.915744	
+-0.138728	
+-0.298722	
+[/fyS(t3)]
+[oS(t3)] 4 × 1 elements
+-0.4864	
+0.775953	
+-1.06551	
+0	
+[/oS(t3)]
+t[4]
+[fy(t4)] 1 elements
+1.64768	
+[/fy(t4)]
+[data(t4)] 1 elements
+2.0017	
+[/data(t4)]
+[sd data(t4)] 1 elements
+0.0520848	
+[/sd data(t4)]
+[fyS(t4)] 4 × 1 elements
+-1.74689	
+-0.750615	
+0.0377145	
+-0.427293	
+[/fyS(t4)]
+[oS(t4)] 4 × 1 elements
+0.231015	
+0.552315	
+-1.33564	
+0	
+[/oS(t4)]
+Experiment 1
+[y_init] 2 elements
+2	0	
+[/y_init]
+t[0]
+[fy(t0)] 1 elements
+3.79477	
+[/fy(t0)]
+[data(t0)] 1 elements
+3.00002	
+[/data(t0)]
+[sd data(t0)] 1 elements
+0.0692848	
+[/sd data(t0)]
+[fyS(t0)] 4 × 1 elements
+0.776541	
+-0.176228	
+1.61165	
+0.398032	
+[/fyS(t0)]
+[oS(t0)] 4 × 1 elements
+1.29398	
+0.125281	
+-1.54454	
+0	
+[/oS(t0)]
+t[1]
+[fy(t1)] 1 elements
+0.768616	
+[/fy(t1)]
+[data(t1)] 1 elements
+3.00033	
+[/data(t1)]
+[sd data(t1)] 1 elements
+0.0692974	
+[/sd data(t1)]
+[fyS(t1)] 4 × 1 elements
+-1.41659	
+-0.862506	
+2.70731	
+0.215119	
+[/fyS(t1)]
+[oS(t1)] 4 × 1 elements
+2.47545	
+3.04739	
+-8.57022	
+0	
+[/oS(t1)]
+t[2]
+[fy(t2)] 1 elements
+1.8125	
+[/fy(t2)]
+[data(t2)] 1 elements
+3.00076	
+[/data(t2)]
+[sd data(t2)] 1 elements
+0.0693229	
+[/sd data(t2)]
+[fyS(t2)] 4 × 1 elements
+-1.68372	
+-1.46916	
+1.67214	
+-0.00193062	
+[/fyS(t2)]
+[oS(t2)] 4 × 1 elements
+-0.922409	
+1.91805	
+-2.91369	
+0	
+[/oS(t2)]
+t[3]
+[fy(t3)] 1 elements
+1.71614	
+[/fy(t3)]
+[data(t3)] 1 elements
+3.0018	
+[/data(t3)]
+[sd data(t3)] 1 elements
+0.069377	
+[/sd data(t3)]
+[fyS(t3)] 4 × 1 elements
+-0.888424	
+-1.57722	
+0.720687	
+-0.0279563	
+[/fyS(t3)]
+[oS(t3)] 4 × 1 elements
+-0.813887	
+1.44272	
+-2.07156	
+0	
+[/oS(t3)]
+t[4]
+[fy(t4)] 1 elements
+1.91791	
+[/fy(t4)]
+[data(t4)] 1 elements
+3.00359	
+[/data(t4)]
+[sd data(t4)] 1 elements
+0.0694694	
+[/sd data(t4)]
+[fyS(t4)] 4 × 1 elements
+-2.24811	
+-1.50004	
+1.51128	
+-0.122806	
+[/fyS(t4)]
+[oS(t4)] 4 × 1 elements
+0.489315	
+1.28579	
+-3.0609	
+0	
+[/oS(t4)]
+Experiment 2
+[y_init] 2 elements
+2	0	
+[/y_init]
+t[0]
+[fy(t0)] 1 elements
+5.29365	
+[/fy(t0)]
+[data(t0)] 1 elements
+3.99997	
+[/data(t0)]
+[sd data(t0)] 1 elements
+0.086605	
+[/sd data(t0)]
+[fyS(t0)] 4 × 1 elements
+1.16391	
+-0.200767	
+2.07745	
+0.40517	
+[/fyS(t0)]
+[oS(t0)] 4 × 1 elements
+2.10574	
+0.342787	
+-2.79131	
+0	
+[/oS(t0)]
+t[1]
+[fy(t1)] 1 elements
+-0.134286	
+[/fy(t1)]
+[data(t1)] 1 elements
+4.00038	
+[/data(t1)]
+[sd data(t1)] 1 elements
+0.0866212	
+[/sd data(t1)]
+[fyS(t1)] 4 × 1 elements
+-1.26415	
+-1.11099	
+3.56201	
+0.287233	
+[/fyS(t1)]
+[oS(t1)] 4 × 1 elements
+4.91809	
+3.93341	
+-12.7849	
+0	
+[/oS(t1)]
+t[2]
+[fy(t2)] 1 elements
+1.71949	
+[/fy(t2)]
+[data(t2)] 1 elements
+4.00107	
+[/data(t2)]
+[sd data(t2)] 1 elements
+0.0866557	
+[/sd data(t2)]
+[fyS(t2)] 4 × 1 elements
+-1.49674	
+-1.95559	
+2.60939	
+0.139082	
+[/fyS(t2)]
+[oS(t2)] 4 × 1 elements
+-0.998675	
+2.51002	
+-4.02137	
+0	
+[/oS(t2)]
+t[3]
+[fy(t3)] 1 elements
+1.66409	
+[/fy(t3)]
+[data(t3)] 1 elements
+4.00264	
+[/data(t3)]
+[sd data(t3)] 1 elements
+0.0867278	
+[/sd data(t3)]
+[fyS(t3)] 4 × 1 elements
+-0.597847	
+-2.0704	
+1.51724	
+0.114924	
+[/fyS(t3)]
+[oS(t3)] 4 × 1 elements
+-1.06157	
+1.95791	
+-2.85426	
+0	
+[/oS(t3)]
+t[4]
+[fy(t4)] 1 elements
+1.94145	
+[/fy(t4)]
+[data(t4)] 1 elements
+4.00531	
+[/data(t4)]
+[sd data(t4)] 1 elements
+0.086851	
+[/sd data(t4)]
+[fyS(t4)] 4 × 1 elements
+-2.40771	
+-2.13513	
+2.89519	
+0.0609352	
+[/fyS(t4)]
+[oS(t4)] 4 × 1 elements
+0.630817	
+1.93458	
+-4.49997	
+0	
+[/oS(t4)]
+likelihood: -3460.06
+gradient of likelihood: D=3
+ 0  0  0 fisher information: 3×3
+ 0  0  0 
+ 0  0  0 
+ 0  0  0 

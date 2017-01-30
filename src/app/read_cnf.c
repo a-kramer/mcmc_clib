@@ -321,6 +321,18 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
 	  //	  read_block(ps->C,ps->N,cnf,DOUBLE_BLOCK,omp->initial_conditions_y->data,comment);
 	  printf("# initial conditions read.\n");
 	  break;
+	case i_ref_initial_conditions:
+	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
+	  gsl_object_init(G);
+	  nda_to_gsl(nda,G);
+	  r=G->gsl->matrix->size1;
+	  c=G->gsl->matrix->size2;
+	  omp->ref_E->init_y=gsl_vector_alloc(c);
+	  gsl_matrix_get_row(omp->ref_E->init_y,G->gsl->matrix,i%r);
+	  nda_free(nda);	  
+	  //	  read_block(ps->C,ps->N,cnf,DOUBLE_BLOCK,omp->initial_conditions_y->data,comment);
+	  printf("# reference initial conditions read.\n");
+	  break;
 	case i_data: // data possibly needs to be normalised, so we
 	  // set it aside for now;
 	  nda=read_block_nd(cnf,DOUBLE_BLOCK,current->closing_bracket,comment);
@@ -523,8 +535,8 @@ int field_names_init(field_names *fn){
   // field names should not be longer than 128 characters.
   // n fields are known to the parser
   int i; 
-  fn->n=12;
-  fn->max_length=72;
+  fn->n=NumberOfFields;
+  fn->max_length=128;
   fn->name=(char **) calloc(fn->n,sizeof(char*));
   for (i=0;i<fn->n;i++) {
     fn->name[i]=(char*) calloc(fn->max_length,sizeof(char));
@@ -540,6 +552,7 @@ int field_names_init(field_names *fn){
   strcpy(fn->name[i_prior_mu],"prior_mu");
   strcpy(fn->name[i_prior_icov],"prior_inv(erse)?_cov(ariance)?");
   strcpy(fn->name[i_initial_conditions],"init(ial_conditions)?");
+  strcpy(fn->name[i_ref_initial_conditions],"ref(erence)?_init(ial_conditions)?");
   strcpy(fn->name[i_norm_f],"norm_f");
   strcpy(fn->name[i_norm_t],"norm_t");
 
