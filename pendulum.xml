@@ -9,7 +9,7 @@
 <Parameter
     Name="b"
     Description="friction constant"
-    DefaultValue="0.0" />
+    DefaultValue="0.1" />
 <Parameter
     Name="L"
     Description="pendulum length"

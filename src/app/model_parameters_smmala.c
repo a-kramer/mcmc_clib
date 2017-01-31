@@ -92,7 +92,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
       omp->E[i]->fy[j]=gsl_vector_alloc(F);
       omp->E[i]->yS[j]=gsl_matrix_alloc(P,N);
       omp->E[i]->fyS[j]=gsl_matrix_alloc(P,F);
-      omp->E[i]->oS[j]=gsl_matrix_alloc(P,F);
+      omp->E[i]->oS[j]=gsl_matrix_alloc(D,F);
     }
   }
   omp->ref_E->y=(gsl_vector **) malloc(sizeof(gsl_vector*)*T);
@@ -107,7 +107,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
     omp->ref_E->fy[j]=gsl_vector_alloc(F);
     omp->ref_E->yS[j]=gsl_matrix_alloc(P,N);
     omp->ref_E->fyS[j]=gsl_matrix_alloc(P,F);
-    omp->ref_E->oS[j]=gsl_matrix_alloc(P,F);
+    omp->ref_E->oS[j]=gsl_matrix_alloc(D,F);
   }
   
   
@@ -121,8 +121,6 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
   // prior 
   omp->prior_tmp_a=gsl_vector_alloc(D);
   omp->prior_tmp_b=gsl_vector_alloc(D);
-  omp->prior_mu=gsl_vector_alloc(D);
-  omp->prior_inverse_cov=gsl_matrix_alloc(D,D);
 
   return EXIT_SUCCESS;
 }

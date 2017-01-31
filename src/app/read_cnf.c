@@ -217,7 +217,7 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
 	else if (cnf_options->initial_stepsize<0 && strcmp(buffer,"step_size")==0)
 	  cnf_options->initial_stepsize=strtod(var_value,NULL);
 	else if (strcmp(buffer,"C")==0){
-	  C=strtod(var_value,NULL);
+	  C=strtol(var_value,NULL,10);
 	  omp->size->C=C;
 	  init_E(omp);
 	}
@@ -366,7 +366,8 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
 	  c=G->gsl->matrix->size2;
 	  omp->size->D=(r>c?r:c);
 	  omp->prior_mu=gsl_vector_alloc(omp->size->D);
-	  memcpy(omp->prior_mu->data,G->gsl->matrix->data,omp->size->D*sizeof(double));
+	  //	  for (i=0;i<omp->size->D;i++) gsl_vector_set(omp->prior_mu,i,G->gsl->matrix->data[i]);
+	  memcpy(omp->prior_mu->data,G->gsl->matrix->data,(omp->size->D)*sizeof(double));
 	  nda_free(nda);
 	  //read_block(ps->D,1,cnf,DOUBLE_BLOCK,omp->prior_mu->data,comment);
 	  printf("# prior mean read.\n");
