@@ -119,11 +119,12 @@ static void smmala_params_free(smmala_params* params){
 }
 
 
+
 static int smmala_kernel_init(mcmc_kernel* kernel, const double* x){
   int res,i,n;
   n = kernel->N;
 	
-  smmala_params* params = (smmala_params*)kernel->kernel_params;
+  smmala_params* params = (smmala_params*) kernel->kernel_params;
   /* copy x to the kernel x state */
   for ( i=0; i < n; i++)
 	  kernel->x[i] = x[i];
@@ -135,9 +136,9 @@ static int smmala_kernel_init(mcmc_kernel* kernel, const double* x){
   /* TODO: write a proper error handler */
   if (res != 0){
     fprintf(stderr,"smmala_kernel_init: Likelihood function failed\n");
-    return 1;
+    exit(-1);
   }
-	
+  kernel->fx = &(params->fx);	
   gsl_matrix_view Hfx = gsl_matrix_view_array(params->Hfx,n,n); 
   res = gsl_linalg_cholesky_decomp( &Hfx.matrix );
   if (res != 0){
@@ -261,10 +262,10 @@ static int smmala_kernel_sample(mcmc_kernel* kernel, int* acc){
     if ( (mh_ratio > 0.0)||(mh_ratio > rand_dec) ) {
       *acc = 1;
       double* tmp;
-      SWAP(kernel->x,state->new_x, tmp)
+        SWAP(kernel->x,state->new_x, tmp)
 	SWAP(state->dfx, state->new_dfx, tmp)
 	SWAP(state->Hfx, state->new_Hfx, tmp)
-	state->fx  = new_fx;
+      state->fx  = new_fx;
     }else{
       *acc = 0;
     }

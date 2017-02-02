@@ -7,11 +7,18 @@
 \usepackage{amsmath,amssymb}
 \usepackage{microtype}
 \usepackage{tikz}
-
+\usepackage{booktabs}
+\newcommand{\noise}{\ensuremath{\varkappa}}
 
 \newcommand{\ode}{\textsc{ode}}
 \addtokomafont{title}{\rmfamily}
 \addtokomafont{section}{\rmfamily}
+\frenchspacing
+\setcapindent{0em}
+\addtokomafont{captionlabel}{\bfseries}
+\addtokomafont{pagenumber}{\sffamily}
+\pagestyle{headings}
+
 
 \title{Documentation for the RMHMC Source}
 \author{Andrei Kramer}
@@ -40,14 +47,14 @@ modifications to the system, e.g. inhibitions to some of the
 interactions. The known time derivative of $x(t)$ defines the model:
 \begin{align}
   \dot x &= f(t,x;\theta,u)\,,\\
-  y(t_j;\theta,u)&=C x(t_j;\theta,u) + \epsilon(t_j)\,,
+  y(t_j;\theta,u)&=C x(t_j;\theta,u) + \noise(t_j)\,,
 \end{align}
 where $y(t;\theta,u)\in\mathbb{R}^k$ is the output of the measurement
 process, which is recorded at $T$ time points. The linear output
 function, characterised by the real matrix $C\in\mathbb{R}^{k\times
   n}$, models the capabilities of the measurement setup. The elements
 of this matrix are typically unknown. The measurements are obscured by
-the noise process $\epsilon_i(t_j)\sim\mathcal{N}(0,\sigma^2_{ij})$
+the noise process $\noise_i(t_j)\sim\mathcal{N}(0,\sigma^2_{ij})$
 ($i=1,\dots,n; j=1,\dots,T$). In addition, the observations might be
 done in unknown units, such that a reference Experiment might be
 needed to interpret any numerical values of $y(t_j)$. A typical
@@ -56,7 +63,7 @@ example of $C$ is:
   C=
   \begin{pmatrix}
     c_1&2c_1&0\\
-    0&c_2&-c_2\\
+    0&c_2&c_2\\
   \end{pmatrix}\,.
 \end{equation}
 Assuming that $C$ is always scaled equally per row (in this way),
@@ -89,12 +96,42 @@ and in this case:
   \left|\frac{\tilde
       y_i(t_j;\theta,u_b)}{y_i(t_j;\theta,u_0)}\right|\sigma_{ij,0}\,.
 \end{align}
-
+Alternatively, a time series measurement can be normalised at one of
+the points:
+\begin{equation}
+  \label{eq:norm_t}
+  \tilde y_i(t_j;\theta,u_b):=\frac{y_i(t_j;\theta,u_b)}{y_i(t_{k(b)};\theta,u_b)}\,,
+\end{equation}
+where $k$ is the given normalisation time index for each experiment
+$b$. In this method, there is no control $u_0$. An example with $k=3$ is listed in Table~\ref{tab:norm_t}. Similar consequences apply here with regard to measurement error. Even more generally, each $y_i$ can be normalised by another state variable, e.g.:
+\begin{equation}
+  \label{eq:norm_ft}
+  \tilde y_i(t_j;\theta,u_b):=\frac{y_i(t_j;\theta,u_b)}{y_{l(i,b)}(t_{k(i,b)};\theta,u_b)}\,.
+\end{equation}
+Both $k$ and $l$ must be specified, for each output $i$ and each
+experiment $b$.
+\begin{table}
+  \centering\ttfamily
+  \begin{tabular}{crcc}
+    \toprule
+    $k$&$t/$h&$y$&$\tilde y$\\
+    \midrule
+    0&0&20(4)&0.5(2)\\
+    1&4&30(5)&0.8(3)\\
+    2&9&35(6)&0.9(3)\\
+   3&12&37(6)&1.00\\
+    \bottomrule
+  \end{tabular}
+  \caption{Example data table for time-point normalisation, where the last measurement was used to define $100\%$. Here, $y$ has never been fully quantified, but the ratios $\tilde y$ between the measurements $j=0,\dots,2$ and $k=3$ are reproducible by a replicated experiment.}
+  \label{tab:norm_t}
+\end{table}
 
 \section{Sensitivities}
 \label{sec:sens}
 
-The sensitivity of $\tilde y(t)$ in terms of the (known) $y(t;\theta,u)$ sensitivities $S(t;\theta,u)$ is:
+Given reference experiment normalisation method, the sensitivity of
+$\tilde y(t)$ in terms of the (known) $y(t;\theta,u)$ sensitivities
+$S(t;\theta,u)$ is:
 \begin{align}
   \partial_{\theta_j} \tilde y_i(t;\theta,u_b) 
   &= \frac{S_i^{~j}(t;\theta,u_b)y_i(t;\theta,u_0)
@@ -108,6 +145,7 @@ The code for this operation is located in the function
 absolute and does not require normalization, then
 $S_i^{~j}(t;\theta,u_0)$ is set to $0$ for all $i,j$ and the reference
 $y_i(t;\theta,u_0)=1$ for all $i$.
+Similar calculations apply for the other two methods.
 
 \section{Sensitivity Gradient}
 \label{sec:dS}

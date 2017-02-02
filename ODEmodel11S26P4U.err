@@ -1,1 +1,2 @@
-./run_test.sh: line 27: mmala: command not found
+Warning: matrix not positive definite in smmala_sample.
+ Will replace matrix with I (gsl_matrix_set_identity).

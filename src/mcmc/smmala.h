@@ -12,8 +12,10 @@ extern "C" {
 #include <gsl/gsl_rng.h>
 #include "mcmc_kernel.h"
 
-  typedef int (*fptrPosterior_smmala)(const double* x, const void* model_params, double* fx,
-								double* dfx, double* FIx);
+  typedef int (*fptrPosterior_smmala)(const double* x,
+				      const void* model_params,
+				      double* fx,
+				      double* dfx, double* FIx);
 	
   /*typedef int (*fptrModelGrad)(const double* x, const void* model_params,
 							   double* dfx, double* Hfx);*/

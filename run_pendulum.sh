@@ -4,7 +4,7 @@
 # -b                        binary output 
 # -l ODEmodel11S26P4U.so    shared library of model
 # -c ODEmodel11S26P4U.cfg   configurations
-Model=ODEmodel11S26P4U
+Model=pendulum
 SampleFile="sample/${Model}_`date +%Y-%m-%dT%Hh%Mm`.double"
 SampleSize=$((1024**2))
 cat<<EOF
@@ -15,7 +15,7 @@ $0
  output will be binary (${SampleFile})
  to load the sample in matlab or GNU Octave:
 
- NumOfParameters = 26;
+ NumOfParameters = 3;
       SampleSize = ${SampleSize};
              fid = fopen('${SampleFile}','r');
           Sample = fread(fid,[NumOfParameters+1,SampleSize],'double');

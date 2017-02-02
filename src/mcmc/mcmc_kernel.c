@@ -23,21 +23,21 @@
 void mcmc_print_sample(mcmc_kernel* kernel, FILE* s){
   int n = kernel->N;
   double* x = kernel->x;
-  double* fx= (double*) kernel->kernel_params;
+  double fx = kernel->fx[0];
   int i;
   for (i = 0; i < n; i++) {
     fprintf(s, "%12.5e ", x[i]);
   }
-  fprintf(s," %12.5e ",fx[0]);
+  fprintf(s," %12.5e ",fx);
   fprintf(s, "\n");
 }
 
 int mcmc_write_sample(mcmc_kernel *kernel, FILE *s){
   int n = kernel->N;
   double* x = kernel->x;
-  double* fx= (double*) kernel->kernel_params;
+  double fx = kernel->fx[0];
   fwrite(x,sizeof(double),n,s);
-  fwrite(fx,sizeof(double),1,s);
+  fwrite(&fx,sizeof(double),1,s);
   return EXIT_SUCCESS;
 }
 

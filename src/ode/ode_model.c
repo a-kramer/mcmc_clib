@@ -221,12 +221,14 @@ void ode_solver_init(ode_solver* solver, const double t0,  double* y0, int lenY,
   
   /* initialise */
   flag = CVodeInit(solver->cvode_mem, solver->odeModel->vf_eval, t0, solver->y);
-  flag = CVodeSetUserData(solver->cvode_mem, solver->params);
-  flag = CVDense(solver->cvode_mem, solver->odeModel->N);
-  flag = CVDlsSetDenseJacFn(solver->cvode_mem, solver->odeModel->vf_jac);
-  flag = CVodeSStolerances(solver->cvode_mem, ODE_SOLVER_REL_ERR, ODE_SOLVER_ABS_ERR);
-  flag = CVodeSetMaxNumSteps(solver->cvode_mem, ODE_SOLVER_MX_STEPS);
-  
+  flag &= CVodeSetUserData(solver->cvode_mem, solver->params);
+  flag &= CVDense(solver->cvode_mem, solver->odeModel->N);
+  flag &= CVDlsSetDenseJacFn(solver->cvode_mem, solver->odeModel->vf_jac);
+  flag &= CVodeSStolerances(solver->cvode_mem, ODE_SOLVER_REL_ERR, ODE_SOLVER_ABS_ERR);
+  flag &= CVodeSetMaxNumSteps(solver->cvode_mem, ODE_SOLVER_MX_STEPS);
+  if (flag!=CV_SUCCESS) {
+    fprintf(stderr,"[CV] ode_solver_init failed, flag=%i\n",flag);
+  }
 }
 
 void ode_solver_reinit(ode_solver* solver, const double t0,  double* y0, int lenY,  const double* p, int lenP ){
@@ -260,12 +262,14 @@ void ode_solver_reinit(ode_solver* solver, const double t0,  double* y0, int len
 		
     flag = CVodeSetUserData(solver->cvode_mem, solver->params);
   }
-  
+  if (flag!=CV_SUCCESS) {
+    fprintf(stderr,"[CV] ode_solver_init failed, flag=%i\n",flag);
+  }
 }
 
 /* yS0 in row major order */
 void ode_solver_init_sens(ode_solver* solver,  double* yS0, int lenP, int lenY){
-  /* change: lenP may now be shorter than P if you dpn't want to
+  /* change: lenP may now be shorter than P if you don't want to
    * calculate all sensitivities.  This is important for the correct
    * treatment of input parameters, i.e. experimental conditions u
    * (since we don't require sensitivities with repsect to them).
@@ -273,7 +277,7 @@ void ode_solver_init_sens(ode_solver* solver,  double* yS0, int lenP, int lenY){
   int i,flag;
   
   int N = solver->odeModel->N;
-  int P = solver->odeModel->P;
+  //int P = solver->odeModel->P;
   
   if (solver->odeModel->vf_sens == 0) {
     fprintf(stderr,"ode_solver_init_sens: no sensitivities defined for this model.\n");
@@ -320,7 +324,9 @@ void ode_solver_init_sens(ode_solver* solver,  double* yS0, int lenP, int lenY){
     
   }
   flag = CVodeSetSensParams(solver->cvode_mem, solver->params, scale_p, NULL);
-  
+  if (flag!=CV_SUCCESS) {
+    fprintf(stderr,"[CV] ode_solver_init failed, flag=%i\n",flag);
+  }
 }
 
 void ode_solver_disable_sens(ode_solver* solver){
@@ -339,7 +345,7 @@ void ode_solver_reinit_sens(ode_solver* solver,  double* yS0, int lenP, int lenY
 
   int i,flag;
   int N = solver->odeModel->N;
-  int P = solver->odeModel->P;
+  //int P = solver->odeModel->P;
   
   if (solver->odeModel->vf_sens == 0) {
     fprintf(stderr,"ode_solver_init_sens: no sensitivities defined for this model.\n");
@@ -382,6 +388,10 @@ void ode_solver_reinit_sens(ode_solver* solver,  double* yS0, int lenP, int lenY
   
   flag = CVodeSensReInit(solver->cvode_mem, CV_STAGGERED1, solver->yS);
   flag = CVodeSetSensParams(solver->cvode_mem, solver->params, scale_p, NULL);
+  if (flag!=CV_SUCCESS){
+    fprintf(stderr,"reinit_sens failed.\n");
+    exit(-1);
+  }
 }
 
 int ode_solver_solve(ode_solver* solver, const double t, double* y, double* tout){
@@ -498,7 +508,9 @@ void ode_solver_print_stats(const ode_solver* solver, FILE* outF){
   
   fprintf(outF,"\n# Jacobian Statistics\n");
   fprintf(outF,"# JacEvals  = %5ld    RhsEvals  = %5ld\n", nje, nfeLS);
-  
+  if (flag!=CV_SUCCESS) {
+    fprintf(stderr,"[CV] ode_solver_init failed, flag=%i\n",flag);
+  }
 }
 
 

@@ -18,7 +18,7 @@ plot(D(m+1,:),"-;log posterior;");
 #pause;
 
 LP=zeros(3,1); % log posterior
-tau=zeros(2,1); % auto-correlation length
+tau_int=zeros(2,1); % auto-correlation length
 
 [LP(1),LP(2),LP(3),tau_int(1),tau_int(2)]=UWerr(D(m+1,:)');
 tau_int
