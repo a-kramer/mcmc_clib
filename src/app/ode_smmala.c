@@ -80,24 +80,30 @@ int gsl_printf(const char *name, void *gsl_thing, int is_matrix){
   gsl_matrix *A;
   gsl_vector *x;
   int i,j,r,c;
+  fflush(stdout);
   printf("[%s]",name);
-  if (is_matrix){
-    A=(gsl_matrix*) gsl_thing;
-    r=(int) A->size1;
-    c=(int) A->size2;
-    printf(" %i × %i elements\n",r,c);
-    for (i=0;i<r;i++){
-      for (j=0;j<c;j++) printf("%g\t",gsl_matrix_get(A,i,j));
+  if (gsl_thing!=NULL){
+    if (is_matrix){
+      A=(gsl_matrix*) gsl_thing;
+      r=(int) A->size1;
+      c=(int) A->size2;
+      printf(" %i × %i elements\n",r,c);
+      for (i=0;i<r;i++){
+	for (j=0;j<c;j++) printf("%g\t",gsl_matrix_get(A,i,j));
+	printf("\n");
+      }    
+    }else{
+      x=(gsl_vector*) gsl_thing;
+      c=(int) x->size;
+      printf(" %i elements\n",c);
+      for (j=0;j<c;j++) printf("%g\t",gsl_vector_get(x,j));
       printf("\n");
-    }    
-  }else{
-    x=(gsl_vector*) gsl_thing;
-    c=(int) x->size;
-    printf(" %i elements\n",c);
-    for (j=0;j<c;j++) printf("%g\t",gsl_vector_get(x,j));
-    printf("\n");
+    }
+    printf("[/%s]\n",name);
+  } else {
+    printf("not set\n");
   }
-  printf("[/%s]\n",name);
+  fflush(stdout);
   return GSL_SUCCESS;
 }
 
@@ -394,20 +400,23 @@ int printf_omp(ode_model_parameters *mp){
   printf("Reference Experiment\n");
   gsl_printf("ref y init",mp->ref_E->init_y,0);
   t=mp->ref_E->t;
-  T=t->size;
-  for (j=0; j<T; j++){
-    printf("t[%i]\n",j);
-    sprintf(name,"ref fy(t[%i])",j);
-    //gsl_printf(sprintf("ref y(%i)",j),mp->ref_E->y[j],0);
-    gsl_printf(name,mp->ref_E->fy[j],0);
-    //gsl_printf(sprintf("ref yS(%i)",j),mp->ref_E->yS[j],1);
-    sprintf(name,"ref fyS(t[%i])",j);
-    gsl_printf(name,mp->ref_E->fyS[j],1);
+  if (t!=NULL){
+    T=t->size;
+    for (j=0; j<T; j++){
+      printf("t[%i]\n",j);
+      sprintf(name,"ref fy(t[%i])",j);
+      //gsl_printf(sprintf("ref y(%i)",j),mp->ref_E->y[j],0);
+      gsl_printf(name,mp->ref_E->fy[j],0);
+      //gsl_printf(sprintf("ref yS(%i)",j),mp->ref_E->yS[j],1);
+      sprintf(name,"ref fyS(t[%i])",j);
+      gsl_printf(name,mp->ref_E->fyS[j],1);
+    }
   }
   for (c=0;c<C;c++){
     printf("Experiment %i\n",c);
     gsl_printf("y_init",mp->E[c]->init_y,0);
     t=mp->E[c]->t;
+    if (t!=NULL){
     T=t->size;
     for (j=0; j<T; j++){
       printf("t[%i]\n",j);
@@ -424,6 +433,9 @@ int printf_omp(ode_model_parameters *mp){
       sprintf(name,"E[%i] oS(t[%i])",c,j);
       gsl_printf(name,mp->E[c]->oS[j],1);
     }
+    } else {
+      printf("E[%i] not properly defined; t missing\n",c);
+    }    
   }
   fflush(stdout);
   return EXIT_SUCCESS;
@@ -550,6 +562,7 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
     for (j=0; j<T; j++){
       /* Calculate log-likelihood value
        */
+      
       gsl_vector_sub(mp->E[c]->fy[j],mp->E[c]->data[j]);
       gsl_vector_div(mp->E[c]->fy[j],mp->E[c]->sd_data[j]); // (fy-data)/sd_data
       if (gsl_blas_ddot (mp->E[c]->fy[j],mp->E[c]->fy[j], &l_t_j)!=GSL_SUCCESS){
@@ -809,7 +822,7 @@ int main (int argc, char* argv[]) {
 					    seed,
 					    cnf_options.target_acceptance);
   /* initialise MCMC */
-  gsl_printf("prior mean",omp.prior_mu,0);  
+  //gsl_printf("prior mean",omp.prior_mu,0);  
   if (sampling_action==SMPL_RESUME){
     rFile=fopen(resume_filename,"r");
     if (rFile==NULL) {

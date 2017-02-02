@@ -461,43 +461,48 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
   printf("# normalisation type: %i.\n",omp->normalisation_type);
   fflush(stdout);
   
-  if (omp->normalisation_type>0){
-    switch (omp->normalisation_type){
-    case DATA_NORMALISED_BY_REFERENCE:
-      printf("# taking ratios of Data and Refrence Data...");
-      // all experiments, must be congruent
-      // i.e.: omp->E[i]->t must all match, as well as all F
-      // this can be done, by simply having just one time row
-      T=omp->E[0]->t->size;
-      omp->ref_E->t=gsl_vector_alloc(T);
-      gsl_vector_memcpy(omp->ref_E->t,omp->E[0]->t);
-      ratio_with_sd(&Data,&ReferenceData); //Data/ReferenceData.
-      status=gsl_matrix_memcpy(omp->Data,Data.M);
-      if (status!=GSL_SUCCESS) {
-	printf("gsl_matrix_memcpy error: %s",status);
-	exit(-1);
-      }
-      gsl_matrix_memcpy(omp->sdData,Data.sd);
-      printf("done.\n");
-      break;
-    case DATA_NORMALISED_BY_TIMEPOINT:
-      printf("# normalising using one time instance...",gsl_matrix_int_get(omp->norm_t,0,0));
-      fflush(stdout);
-      gsl_matrix_memcpy(omp->Data,Data.M);
-      gsl_matrix_memcpy(omp->sdData,Data.sd);
-      normalise_by_timepoint_with_sd(omp);
-      printf("done.\n");
-      break;
-    case DATA_NORMALISED_BY_STATE_VAR:
-      printf("# normalising using another state variable at specified time instance...");
-      gsl_matrix_memcpy(omp->Data,Data.M);
-      gsl_matrix_memcpy(omp->sdData,Data.sd);
-      normalise_by_state_var_with_sd(omp);
-      printf("done.\n");
-      break;
+  switch (omp->normalisation_type){
+  case DATA_NORMALISED_BY_REFERENCE:
+    printf("# taking ratios of Data and Refrence Data...");
+    // all experiments, must be congruent
+    // i.e.: omp->E[i]->t must all match, as well as all F
+    // this can be done, by simply having just one time row
+    T=omp->E[0]->t->size;
+    omp->ref_E->t=gsl_vector_alloc(T);
+    gsl_vector_memcpy(omp->ref_E->t,omp->E[0]->t);
+    ratio_with_sd(&Data,&ReferenceData); //Data/ReferenceData.
+    status=gsl_matrix_memcpy(omp->Data,Data.M);
+    if (status!=GSL_SUCCESS) {
+      printf("gsl_matrix_memcpy error: %s",status);
+      exit(-1);
     }
-  } else {
-    printf("# Data is absolute (fully quantified).\n");
+    gsl_matrix_memcpy(omp->sdData,Data.sd);
+    printf("done.\n");
+    break;
+  case DATA_NORMALISED_BY_TIMEPOINT:
+    printf("# normalising using one time instance...",gsl_matrix_int_get(omp->norm_t,0,0));
+    fflush(stdout);
+    gsl_matrix_memcpy(omp->Data,Data.M);
+    gsl_matrix_memcpy(omp->sdData,Data.sd);
+    normalise_by_timepoint_with_sd(omp);
+    printf("done.\n");
+    break;
+  case DATA_NORMALISED_BY_STATE_VAR:
+    printf("# normalising using another state variable at specified time instance...");
+    gsl_matrix_memcpy(omp->Data,Data.M);
+    gsl_matrix_memcpy(omp->sdData,Data.sd);
+    normalise_by_state_var_with_sd(omp);
+    printf("done.\n");
+    break;
+  case DATA_IS_ABSOLUTE:
+    printf("# Data remains unmodified ...\n");
+    gsl_matrix_memcpy(omp->Data,Data.M);
+    gsl_matrix_memcpy(omp->sdData,Data.sd);
+    break;
+  default:
+    fprintf(stderr,"[read_cnf.c] unknown normalisation method: %i\n",omp->normalisation_type);
+    exit(-1);
+    break;
   }
   // cleanup
   printf("# temporary Data matrices free.");
