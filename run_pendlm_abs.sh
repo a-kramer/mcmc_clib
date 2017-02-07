@@ -7,7 +7,7 @@
 ModelCFG=pendlm_abs
 ModelSO=pendulum
 SampleFile="sample/${ModelCFG}_`date +%Y-%m-%dT%Hh%Mm`.double"
-SampleSize=$((1024**2))
+SampleSize=$((2**16))
 cat<<EOF
 $0
  redirecting standard output to $ModelCFG.out
@@ -28,4 +28,4 @@ $0
  sampling now ...
 EOF
 
-bin/ode_smmala  -b -s ${SampleSize} -w $((SampleSize/8)) -o $SampleFile -l ./$ModelSO.so -c ./$ModelCFG.cfg 1> $ModelCFG.out 2> $ModelCFG.err
+bin/ode_smmala -a 0.25 -b -s ${SampleSize} -w $((SampleSize/4)) -o $SampleFile -l ./$ModelSO.so -c ./$ModelCFG.cfg 1> $ModelCFG.out 2> $ModelCFG.err

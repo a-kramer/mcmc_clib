@@ -34,4 +34,8 @@
     Name="energy"
     Description="total energy (kinetic plus potential)"
     Formula="m*L^2*v^2/2 - m*g*L*cos(theta)" />
+<Function
+    Name="momentum"
+    Description="momentum"
+    Formula="m*v*L" />
 </VectorField>

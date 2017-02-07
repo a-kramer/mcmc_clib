@@ -101,6 +101,11 @@ void VectorField::PrintCVODES(map<string,string> options){
 	fout << "                     DlsMat, void*," << endl;
 	fout << "                     N_Vector, N_Vector, N_Vector);" << endl;
 	fout << endl;
+	fout << "typedef int (*jacp_f)(int, realtype," << endl;
+	fout << "                     N_Vector, N_Vector," << endl;
+	fout << "                     DlsMat, void*," << endl;
+	fout << "                     N_Vector, N_Vector, N_Vector);" << endl;
+	fout << endl;
 	fout << "typedef int (*rhs_sens)(int, realtype, N_Vector, N_Vector," << endl;
 	fout << "                        int, N_Vector, N_Vector," << endl;
 	fout << "                        void *, N_Vector, N_Vector);" << endl;
@@ -116,6 +121,7 @@ void VectorField::PrintCVODES(map<string,string> options){
 	fout << "const double* p;" << endl;
 	fout << "rhs_f vf_eval;" << endl;
 	fout << "jac_f vf_jac;" << endl;
+	fout << "jacp_f vf_jacp;" << endl;
 	fout << "rhs_sens vf_sens;" << endl;
 	fout << "func vf_func;" << endl;
 	fout << "func_sens vf_func_sens;" << endl;
@@ -248,8 +254,66 @@ void VectorField::PrintCVODES(map<string,string> options){
 	/* end of jacobian function */
 	fout << "    return 0;\n";
     fout << "    }" << endl;
-	
-	
+
+    // print Parameter Derivative, dvf/dp:
+    fout << "/*" << endl;
+    fout << " *  The Parameter Derivative." << endl;
+    fout << " */" << endl;
+    fout << endl;
+    fout << func_return_type << " " << Name() << "_jacp(int N_, realtype t," << endl;
+    fout << "                N_Vector y_, N_Vector fy_," << endl;
+	fout << "                DlsMat jacp_, void *params," << endl;
+    fout << "                N_Vector tmp1, N_Vector tmp2, N_Vector tmp3)" << endl;
+
+    pout << func_return_type << " " << Name() << "_jacp(int, realtype," << endl;
+    pout << "                N_Vector, N_Vector," << endl;
+	pout << "                DlsMat, void *," << endl;
+    pout << "                N_Vector, N_Vector, N_Vector);" << endl;
+    fout << "    {" << endl;
+
+    if (HasPi)
+        {
+        fout << "    const realtype Pi = RCONST(M_PI);\n";
+        }
+    for (int i = 0; i < nc; ++i)
+        {
+        fout << "    const realtype " << conname_list[i] << " = RCONST(" << convalue_list[i] << ");" << endl;
+        }
+    CDeclare(fout,"realtype",varname_list);
+    CDeclare(fout,"realtype",parname_list);
+    fout << "    realtype *p_;" << endl;
+    fout << endl;
+    fout << "    p_ = (realtype *) params;" << endl;
+    fout << endl;
+    // GetFromVector(fout,"    ",varname_list,"y_","[]",0,";");
+    for (int i = 0; i < nv; ++i)
+        {
+        fout << "    ";
+        fout.width(10);
+        fout << varname_list[i];
+        fout.width(0);
+        fout << " = NV_Ith_S(y_," << i << ");" << endl;
+        }
+    fout << endl;
+    GetFromVector(fout,"    ",parname_list,"p_","[]",0,";");
+    fout << endl;
+    for (int i = 0; i < nv; ++i)
+        {
+        ex f = iterated_subs(varvecfield_list[i],expreqn_list);
+        for (int j = 0; j < np; ++j)
+            {
+	    symbol p = ex_to<symbol>(parname_list[j]);
+            ex df = f.diff(p);
+            // Skip zero elements.  CVODE initializes jac_ to zero before calling the Jacobian function.
+            if (df != 0)
+                fout << "    DENSE_ELEM(jacp_, " << i << ", " << j << ") = " << df << ";" << endl;
+            }
+        }
+    if (options["version"] != "2.3.0")
+        fout << "    return 0;\n";
+    fout << "    }" << endl;
+    
+
 	if (options["sens"] == "yes"){
 		
 		/* ==================================
@@ -566,7 +630,7 @@ void VectorField::PrintCVODES(map<string,string> options){
 	/* ode_model data structure */
 	fout << "ode_model  " << Name() << "_odeModel = {"<< nv <<", "<< np <<", "<< nf <<",\n";
 	fout << "                     "<< Name() <<"_init_v, "<< Name() <<"_init_p,\n";
-	fout << "                     &"<< Name() <<"_vf, &"<< Name() <<"_jac,\n";
+	fout << "                     &"<< Name() <<"_vf, &"<< Name() <<"_jac, &" << Name() <<"_jacp,\n";
 	if(options["sens"] == "yes")
 		fout << "                     &"<< Name() <<"_sens,\n";
 	else 

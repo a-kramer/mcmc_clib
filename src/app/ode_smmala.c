@@ -168,7 +168,7 @@ int normalise_by_reference(ode_model_parameters *mp){
       gsl_vector_div(fy,r_fy);
       //printf("E[%i] t[%i]",c,j);
       //gsl_printf("fy/=r_fy",fy,0);
-
+      
       for (k=0;k<D;k++){
 	// set up vector views for the sensitivity of:
 	// the raw output functions
@@ -375,17 +375,57 @@ int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy,
   }
   else {
     fprintf(stderr,"ode model has no output functions");
+    exit(-1);
   }
   
   if (ode_model_has_sens(model)){
     ode_solver_get_sens(solver, tout, yS->data);
-    if (ode_model_has_funcs_sens(model)){
-      ode_solver_get_func_sens(solver, tout, y->data, yS->data, fyS->data);
-    } // end if has func sens
+  }  else {
+    // approximate sensitivities using steady state assumptions;
+    gsl_matrix *jacobian_y;
+    gsl_matrix *jacobian_p;
+    gsl_matrix *eJt;
+    gsl_matrix *Jt;
+    gsl_vector_view eJt_diag;
+    gsl_permutation *permutation;
+    gsl_vector_view yS_row;
+    gsl_vector_view jacp_row;
+    int signum;
+    int N=ode_model_getN(model);
+    int P=ode_model_getP(model);
+    int i;
+    permutation=gsl_permutation_alloc(N);
+    jacobian_y=gsl_matrix_alloc(N,N);
+    jacobian_p=gsl_matrix_alloc(P,N);
+    eJt=gsl_matrix_alloc(N,N);
+    Jt=gsl_matrix_alloc(M,N);
+    
+    // get jacobian
+    model->vf_jac(N,t,y->data,fy->data,jacobian_y->data,solver->params,NULL,NULL,NULL); // df[i]/dy[j]=jacobian_y[j*N+i]; cvode stores matrices column-wise (i is dense in memory);
+    gsl_matrix_transpose(jacobian_y); // now jacobian_y(i,j)=df[i]/df[j];
+    gsl_matrix_memcpy(Jt,jacobian_y);
+    gsl_matrix_scale(Jt,t);           // this is now Jacobian*t
+    // get derivative df/dp (parameter jacobian)
+    model->vf_jacp(N,t,y->data,fy->data,jacobian_p->data,solver->params,NULL,NULL,NULL); // we access this matrix as a list of row-vectors, so no need to transpose.
+    // each row of jacp is a different parameter; row1 is df[i]/dp1
+    gsl_linalg_LU_decomp(jacobian_y, permutation, &signum);
+ 
+    for (i=0;i<P;i++){
+      yS_row=gsl_matrix_row(yS,i);
+      jacp_row=gsl_matrix_row(jacobian_p,i);
+      // solve in place; jac_p will contain the solution
+      gsl_linalg_LU_solve_svx(jacobian_y, permutation, &jacp_row.vector); 
+    }
+    gsl_linalg_exponential_ss(Jt,eJt,GSL_PREC_SINGLE); // this is not yet considered stable :/
+    eJt_diag=gsl_matrix_diagonal(eJt);
+    gsl_vector_add(&eJt_diag.vector,-1.0);
+    gsl_blas_dgemm(CblasNoTrans, CblasTrans,1.0,jac_p,eJt,1.0,yS);
   } // end if has sens
-  else{
-    fprintf(stderr,"ode model has no sensitivities.");
-  }
+  
+  if (ode_model_has_funcs_sens(model)){
+    ode_solver_get_func_sens(solver, tout, y->data, yS->data, fyS->data);
+  } // end if has func sens
+
   return GSL_SUCCESS;
 }
 
@@ -491,7 +531,9 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
 		      mp->p->size);
     //gsl_printf("reference p",mp->p,0); fflush(stdout);
     //gsl_printf("ref yS0",mp->ref_E->yS0,1);
-    ode_solver_reinit_sens(solver, mp->ref_E->yS0->data, P, N);
+    if (ode_model_has_sens(model)){      
+      ode_solver_reinit_sens(solver, mp->ref_E->yS0->data, P, N);
+    }
     t=mp->ref_E->t;
     T=t->size;
     for (j=0; j<T; j++){
@@ -502,7 +544,7 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
       fyS=mp->ref_E->fyS[j]; //printf("fyS: %i, %i\n",mp->size->F*P,fyS->size1*fyS->size2);fflush(stdout);
       ode_solver_step(solver, gsl_vector_get(t,j), y, fy, yS, fyS);
     }
-
+    
   }
  
   for (c=0; c<C; c++){// loop over different experimental conditions
@@ -511,7 +553,9 @@ int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, doubl
     ode_solver_reinit(solver, mp->t0, mp->E[c]->init_y->data, N,
 		      mp->p->data,
 		      mp->p->size);
-    ode_solver_reinit_sens(solver, mp->E[c]->yS0->data, P, N);
+    if (ode_model_has_sens(model)){
+      ode_solver_reinit_sens(solver, mp->E[c]->yS0->data, P, N);
+    }
     t=mp->E[c]->t;
     T=t->size;
     for (j=0; j<T; j++){
@@ -695,7 +739,7 @@ int main (int argc, char* argv[]) {
   gsl_error_handler_t *gsl_error_handler;
   int start_from_prior=0;
   gsl_error_handler = gsl_set_error_handler_off();
-
+  int sensitivity_approximation=0;
   //  strcpy(sample_file,"sample.dat");
   main_options cnf_options;
   cnf_options.output_file=sample_file;
@@ -709,6 +753,7 @@ int main (int argc, char* argv[]) {
     else if (strcmp(argv[i],"-p")==0 || strcmp(argv[i],"--prior-start")==0) start_from_prior=1;
     else if (strcmp(argv[i],"-w")==0 || strcmp(argv[i],"--warm-up")==0) warm_up=strtol(argv[i+1],NULL,10);
     else if (strcmp(argv[i],"--resume")==0 || strcmp(argv[i],"-r")==0) sampling_action=SMPL_RESUME;
+    else if (strcmp(argv[i],"--sens-approx")==0) sensitivity_approximation=1;
     else if (strcmp(argv[i],"-l")==0) strcpy(cnf_options.library_file,argv[i+1]);
     //    else if (strcmp(argv[i],"-n")==0) Tuning=0;
     else if (strcmp(argv[i],"-s")==0) cnf_options.sample_size=strtol(argv[i+1],NULL,0);
@@ -729,6 +774,10 @@ int main (int argc, char* argv[]) {
     exit(1);
   } else printf( "# Library %s loaded.\n",lib_name);
 
+
+    
+  
+  
   sprintf(resume_filename,"%s_resume.double",lib_name);
   
   ode_solver* solver = ode_solver_alloc(odeModel); /* alloc */
@@ -738,6 +787,10 @@ int main (int argc, char* argv[]) {
     exit(1);
   } else printf("# Solver for %s created.\n",lib_name);
 
+  if (sensitivity_approximation){
+    ode_solver_disable_sens(solver);
+    model->vf_sens=NULL; // make sens function unavailable; ode_model_has_sens(model) will return «False»;
+  }
   /* init solver */
   realtype solver_param[3] = {ODE_SOLVER_ABS_ERR, ODE_SOLVER_REL_ERR, 0};
   
@@ -865,7 +918,7 @@ int main (int argc, char* argv[]) {
 
   /* print first sample, initial values in init_x */
   mcmc_print_sample(kernel, stdout);
-
+  ode_solver_print_stats(kernel, stdout);
   size_t acc_c = 0;
   double acc_rate;
   size_t it;

@@ -25,15 +25,9 @@ extern "C" {
 #define	ODE_SOLVER_MX_STEPS		5000
 	
 typedef int (*rhs_f)(realtype, N_Vector, N_Vector, void *);
-typedef int (*jac_f)(int, realtype,
-						N_Vector, N_Vector,
-						DlsMat, void*,
-						N_Vector, N_Vector, N_Vector);
-	
-typedef int (*rhs_sens)(int, realtype, N_Vector, N_Vector,
-						int, N_Vector, N_Vector,
-						void *, N_Vector, N_Vector);
-	
+typedef int (*jac_f)(int, realtype, N_Vector, N_Vector, DlsMat, void*, N_Vector, N_Vector, N_Vector);
+typedef int (*jacp_f)(int, realtype, N_Vector, N_Vector, DlsMat, void*,	N_Vector, N_Vector, N_Vector);
+typedef int (*rhs_sens)(int, realtype, N_Vector, N_Vector, int, N_Vector, N_Vector, void *, N_Vector, N_Vector);
 typedef int (*func)(realtype, N_Vector, realtype *, void *);
 typedef int (*func_sens)(realtype, N_Vector, N_Vector *, double *, void *);
 	
@@ -44,7 +38,8 @@ typedef struct{
 	double*		v;				/* initial conditions */
 	double*		p;				/* default parameters */
 	rhs_f		vf_eval;		/* function pointer for ode RHS */
-	jac_f		vf_jac;			/* function pointer for jacobian */
+	jac_f		vf_jac;			/* function pointer for jacobian dvf/dx */
+	jacp_f		vf_jacp;	        /* function pointer for parameter jacobian dvf/dp*/
 	rhs_sens	vf_sens;		/* function pointer for ode sensitivities */
 	func		vf_func;		/* function pointer for functions RHS */
 	func_sens	vf_func_sens;	/* function pointer for functions sensitivities */
