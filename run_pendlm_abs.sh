@@ -6,8 +6,13 @@
 # -c ODEmodel11S26P4U.cfg   configurations
 ModelCFG=pendlm_abs
 ModelSO=pendulum
+ModelXML=${ModelCFG}
+
 SampleFile="sample/${ModelCFG}_`date +%Y-%m-%dT%Hh%Mm`.double"
 SampleSize=$((2**16))
+P=`grep '<Parameter ' ${ModelXML}.xml | wc -l`
+U=`grep 'Input' ${ModelXML}.xml | wc -l`
+
 cat<<EOF
 $0
  redirecting standard output to $ModelCFG.out
@@ -16,7 +21,7 @@ $0
  output will be binary (${SampleFile})
  to load the sample in matlab or GNU Octave:
 
- NumOfParameters = 3;
+ NumOfParameters = $((P-U));
       SampleSize = ${SampleSize};
              fid = fopen('${SampleFile}','r');
           Sample = fread(fid,[NumOfParameters+1,SampleSize],'double');

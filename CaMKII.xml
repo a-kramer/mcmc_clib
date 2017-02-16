@@ -1,0 +1,201 @@
+<?xml version="1.0" ?>
+<VectorField Name="CaMKII">
+<Parameter  Name="kf__CaM__Ca" Description="independent parameter" DefaultValue="0.0021524"/>
+<Parameter  Name="kf__CaM_Ca1__Ca" Description="independent parameter" DefaultValue="0.0088968"/>
+<Parameter  Name="kf__CaM_Ca2__Ca" Description="independent parameter" DefaultValue="0.028311"/>
+<Parameter  Name="kf__CaM_Ca3__Ca" Description="independent parameter" DefaultValue="0.041046"/>
+<Parameter  Name="kf__CaM__PP2B" Description="independent parameter" DefaultValue="0.046"/>
+<Parameter  Name="kf__CaM_Ca1__PP2B" Description="independent parameter" DefaultValue="0.046"/>
+<Parameter  Name="kf__CaM_Ca2__PP2B" Description="independent parameter" DefaultValue="0.046"/>
+<Parameter  Name="kf__CaM_Ca3__PP2B" Description="independent parameter" DefaultValue="0.046"/>
+<Parameter  Name="kf__CaM_Ca4__PP2B" Description="independent parameter" DefaultValue="0.046"/>
+<Parameter  Name="kf__PP2B_CaM__Ca" Description="independent parameter" DefaultValue="0.0016667"/>
+<Parameter  Name="kf__PP2B_CaM_Ca1__Ca" Description="independent parameter" DefaultValue="0.016667"/>
+<Parameter  Name="kf__PP2B_CaM_Ca2__Ca" Description="independent parameter" DefaultValue="0.008125"/>
+<Parameter  Name="kf__PP2B_CaM_Ca3__Ca" Description="independent parameter" DefaultValue="0.092857"/>
+<Parameter  Name="KD__CaM_Ca3__Ca" Description="independent parameter" DefaultValue="15836"/>
+<Parameter  Name="KD__CaM_Ca2__Ca" Description="independent parameter" DefaultValue="22959"/>
+<Parameter  Name="KD__CaM_Ca1__Ca" Description="independent parameter" DefaultValue="1124"/>
+<Parameter  Name="KD__CaM__Ca" Description="independent parameter" DefaultValue="4646"/>
+<Parameter  Name="KD__CaM_Ca4__PP2B" Description="independent parameter" DefaultValue="0.028"/>
+<Parameter  Name="KD__PP2B_CaM_Ca3__Ca" Description="independent parameter" DefaultValue="70"/>
+<Parameter  Name="KD__PP2B_CaM_Ca2__Ca" Description="independent parameter" DefaultValue="800"/>
+<Parameter  Name="KD__PP2B_CaM_Ca1__Ca" Description="independent parameter" DefaultValue="60"/>
+<Parameter  Name="KD__PP2B_CaM__Ca" Description="independent parameter" DefaultValue="600"/>
+<Parameter  Name="kf__CaM__CaMKII" Description="independent parameter" DefaultValue="0.021"/>
+<Parameter  Name="kf__CaMKII_CaM_Ca3__Ca" Description="independent parameter" DefaultValue="0.04"/>
+<Parameter  Name="kf__CaMKII_CaM_Ca2__Ca" Description="independent parameter" DefaultValue="0.02"/>
+<Parameter  Name="kf__CaMKII_CaM_Ca1__Ca" Description="independent parameter" DefaultValue="0.002"/>
+<Parameter  Name="kf__CaMKII_CaM__Ca" Description="independent parameter" DefaultValue="0.0044"/>
+<Parameter  Name="kf__CaM_Ca1__CaMKII" Description="independent parameter" DefaultValue="0.021"/>
+<Parameter  Name="kf__CaM_Ca2__CaMKII" Description="independent parameter" DefaultValue="0.021"/>
+<Parameter  Name="kf__CaM_Ca3__CaMKII" Description="independent parameter" DefaultValue="0.021"/>
+<Parameter  Name="kf__CaM_Ca4__CaMKII" Description="independent parameter" DefaultValue="0.021"/>
+<Parameter  Name="KD__CaM_Ca4__CaMKII" Description="independent parameter" DefaultValue="52"/>
+<Parameter  Name="KD__CaMKII_CaM_Ca3__Ca" Description="independent parameter" DefaultValue="2000"/>
+<Parameter  Name="KD__CaMKII_CaM_Ca2__Ca" Description="independent parameter" DefaultValue="4000"/>
+<Parameter  Name="KD__CaMKII_CaM_Ca1__Ca" Description="independent parameter" DefaultValue="5000"/>
+<Parameter  Name="KD__CaMKII_CaM__Ca" Description="independent parameter" DefaultValue="2272.7"/>
+<Parameter  Name="kf__pCaMKII_Ca3__Ca" Description="independent parameter" DefaultValue="0.04"/>
+<Parameter  Name="kf__CaM__pCaMKIIaut" Description="independent parameter" DefaultValue="0.011"/>
+<Parameter  Name="kf__CaM_Ca1__pCaMKIIaut" Description="independent parameter" DefaultValue="0.011"/>
+<Parameter  Name="kf__CaM_Ca2__pCaMKIIaut" Description="independent parameter" DefaultValue="0.011"/>
+<Parameter  Name="kf__CaM_Ca3__pCaMKIIaut" Description="independent parameter" DefaultValue="0.011"/>
+<Parameter  Name="kf__pCaMKII_Ca2__Ca" Description="independent parameter" DefaultValue="0.02"/>
+<Parameter  Name="kf__pCaMKII_Ca1__Ca" Description="independent parameter" DefaultValue="0.002"/>
+<Parameter  Name="kf__CaM_Ca4__pCaMKIIaut" Description="independent parameter" DefaultValue="0.011"/>
+<Parameter  Name="kf__pCaMKII_Ca0__Ca" Description="independent parameter" DefaultValue="0.0044"/>
+<Parameter  Name="KD__pCaMKII_Ca3__Ca" Description="independent parameter" DefaultValue="2000"/>
+<Parameter  Name="KD__pCaMKII_Ca2__Ca" Description="independent parameter" DefaultValue="4000"/>
+<Parameter  Name="KD__pCaMKII_Ca1__Ca" Description="independent parameter" DefaultValue="5000"/>
+<Parameter  Name="KD__pCaMKII_Ca0__Ca" Description="independent parameter" DefaultValue="2272.7"/>
+<Parameter  Name="KD__CaM_Ca4__pCaMKIIaut" Description="independent parameter" DefaultValue="0.73"/>
+<Parameter  Name="kp__pairedCaMKIIc__CaMKIIc" Description="independent parameter" DefaultValue="0.05"/>
+<Parameter  Name="kf__PP1__pCaMKIIaut" Description="independent parameter" DefaultValue="3.9e-05"/>
+<Parameter  Name="kr__PP1__pCaMKIIaut" Description="independent parameter" DefaultValue="0.34"/>
+<Parameter  Name="kcat__PP1__pCaMKIIaut" Description="independent parameter" DefaultValue="0.086"/>
+<Expression Name="KD__CaM_Ca3__PP2B" Description="Assignment" Formula="(KD__CaM_Ca3__Ca * KD__CaM_Ca4__PP2B) / KD__PP2B_CaM_Ca3__Ca"/>
+<Expression Name="KD__CaM_Ca2__PP2B" Description="Assignment" Formula="(KD__CaM_Ca2__Ca * KD__CaM_Ca3__PP2B) / KD__PP2B_CaM_Ca2__Ca"/>
+<Expression Name="KD__CaM_Ca1__PP2B" Description="Assignment" Formula="(KD__CaM_Ca1__Ca * KD__CaM_Ca2__PP2B) / KD__PP2B_CaM_Ca1__Ca"/>
+<Expression Name="KD__CaM__PP2B" Description="Assignment" Formula="(KD__CaM__Ca * KD__CaM_Ca1__PP2B) / KD__PP2B_CaM__Ca"/>
+<Expression Name="KD__CaM_Ca3__CaMKII" Description="Assignment" Formula="(KD__CaM_Ca3__Ca * KD__CaM_Ca4__CaMKII) / KD__CaMKII_CaM_Ca3__Ca"/>
+<Expression Name="KD__CaM_Ca2__CaMKII" Description="Assignment" Formula="(KD__CaM_Ca2__Ca * KD__CaM_Ca3__CaMKII) / KD__CaMKII_CaM_Ca2__Ca"/>
+<Expression Name="KD__CaM_Ca1__CaMKII" Description="Assignment" Formula="(KD__CaM_Ca1__Ca * KD__CaM_Ca2__CaMKII) / KD__CaMKII_CaM_Ca1__Ca"/>
+<Expression Name="KD__CaM__CaMKII" Description="Assignment" Formula="(KD__CaM__Ca * KD__CaM_Ca1__CaMKII) / KD__CaMKII_CaM__Ca"/>
+<Expression Name="KD__CaM_Ca3__pCaMKIIaut" Description="Assignment" Formula="(KD__CaM_Ca3__Ca * KD__CaM_Ca4__pCaMKIIaut) / KD__pCaMKII_Ca3__Ca"/>
+<Expression Name="KD__CaM_Ca2__pCaMKIIaut" Description="Assignment" Formula="(KD__CaM_Ca2__Ca * KD__CaM_Ca3__pCaMKIIaut) / KD__pCaMKII_Ca2__Ca"/>
+<Expression Name="KD__CaM_Ca1__pCaMKIIaut" Description="Assignment" Formula="(KD__CaM_Ca1__Ca * KD__CaM_Ca2__pCaMKIIaut) / KD__pCaMKII_Ca1__Ca"/>
+<Expression Name="KD__CaM__pCaMKIIaut" Description="Assignment" Formula="(KD__CaM__Ca * KD__CaM_Ca1__pCaMKIIaut) / KD__pCaMKII_Ca0__Ca"/>
+<Expression Name="kr__CaM_Ca3__Ca" Description="Assignment" Formula="KD__CaM_Ca3__Ca*kf__CaM_Ca3__Ca"/>
+<Expression Name="kr__CaM_Ca2__Ca" Description="Assignment" Formula="KD__CaM_Ca2__Ca * kf__CaM_Ca2__Ca"/>
+<Expression Name="kr__CaM_Ca1__Ca" Description="Assignment" Formula="KD__CaM_Ca1__Ca * kf__CaM_Ca1__Ca"/>
+<Expression Name="kr__CaM__Ca" Description="Assignment" Formula="KD__CaM__Ca * kf__CaM__Ca"/>
+<Expression Name="kr__CaM_Ca4__PP2B" Description="Assignment" Formula="KD__CaM_Ca4__PP2B * kf__CaM_Ca4__PP2B"/>
+<Expression Name="kr__CaM_Ca3__PP2B" Description="Assignment" Formula="KD__CaM_Ca3__PP2B * kf__CaM_Ca3__PP2B"/>
+<Expression Name="kr__CaM_Ca2__PP2B" Description="Assignment" Formula="KD__CaM_Ca2__PP2B * kf__CaM_Ca2__PP2B"/>
+<Expression Name="kr__CaM_Ca1__PP2B" Description="Assignment" Formula="KD__CaM_Ca1__PP2B * kf__CaM_Ca1__PP2B"/>
+<Expression Name="kr__CaM__PP2B" Description="Assignment" Formula="KD__CaM__PP2B * kf__CaM__PP2B"/>
+<Expression Name="kr__PP2B_CaM_Ca3__Ca" Description="Assignment" Formula="KD__PP2B_CaM_Ca3__Ca *kf__PP2B_CaM_Ca3__Ca"/>
+<Expression Name="kr__PP2B_CaM_Ca2__Ca" Description="Assignment" Formula="KD__PP2B_CaM_Ca2__Ca * kf__PP2B_CaM_Ca2__Ca"/>
+<Expression Name="kr__PP2B_CaM_Ca1__Ca" Description="Assignment" Formula="KD__PP2B_CaM_Ca1__Ca * kf__PP2B_CaM_Ca1__Ca"/>
+<Expression Name="kr__PP2B_CaM__Ca" Description="Assignment" Formula="KD__PP2B_CaM__Ca * kf__PP2B_CaM__Ca"/>
+<Expression Name="kr__CaM_Ca4__CaMKII" Description="Assignment" Formula="KD__CaM_Ca4__CaMKII * kf__CaM_Ca4__CaMKII"/>
+<Expression Name="kr__CaM_Ca3__CaMKII" Description="Assignment" Formula="KD__CaM_Ca3__CaMKII * kf__CaM_Ca3__CaMKII"/>
+<Expression Name="kr__CaM_Ca2__CaMKII" Description="Assignment" Formula="KD__CaM_Ca2__CaMKII * kf__CaM_Ca2__CaMKII"/>
+<Expression Name="kr__CaM_Ca1__CaMKII" Description="Assignment" Formula="KD__CaM_Ca1__CaMKII * kf__CaM_Ca1__CaMKII"/>
+<Expression Name="kr__CaM__CaMKII" Description="Assignment" Formula="KD__CaM__CaMKII * kf__CaM__CaMKII"/>
+<Expression Name="kr__CaMKII_CaM_Ca3__Ca" Description="Assignment" Formula="KD__CaMKII_CaM_Ca3__Ca * kf__CaMKII_CaM_Ca3__Ca"/>
+<Expression Name="kr__CaMKII_CaM_Ca2__Ca" Description="Assignment" Formula="KD__CaMKII_CaM_Ca2__Ca * kf__CaMKII_CaM_Ca2__Ca"/>
+<Expression Name="kr__CaMKII_CaM_Ca1__Ca" Description="Assignment" Formula="KD__CaMKII_CaM_Ca1__Ca * kf__CaMKII_CaM_Ca1__Ca"/>
+<Expression Name="kr__CaMKII_CaM__Ca" Description="Assignment" Formula="KD__CaMKII_CaM__Ca * kf__CaMKII_CaM__Ca"/>
+<Expression Name="kr__pCaMKII_Ca3__Ca" Description="Assignment" Formula="KD__pCaMKII_Ca3__Ca * kf__pCaMKII_Ca3__Ca"/>
+<Expression Name="kr__pCaMKII_Ca2__Ca" Description="Assignment" Formula="KD__pCaMKII_Ca2__Ca * kf__pCaMKII_Ca2__Ca"/>
+<Expression Name="kr__pCaMKII_Ca1__Ca" Description="Assignment" Formula="KD__pCaMKII_Ca1__Ca * kf__pCaMKII_Ca1__Ca"/>
+<Expression Name="kr__pCaMKII_Ca0__Ca" Description="Assignment" Formula="KD__pCaMKII_Ca0__Ca * kf__pCaMKII_Ca0__Ca"/>
+<Expression Name="kr__CaM_Ca4__pCaMKIIaut" Description="Assignment" Formula="KD__CaM_Ca4__pCaMKIIaut * kf__CaM_Ca4__pCaMKIIaut"/>
+<Expression Name="kr__CaM_Ca3__pCaMKIIaut" Description="Assignment" Formula="KD__CaM_Ca3__pCaMKIIaut * kf__CaM_Ca3__pCaMKIIaut"/>
+<Expression Name="kr__CaM_Ca2__pCaMKIIaut" Description="Assignment" Formula="KD__CaM_Ca2__pCaMKIIaut * kf__CaM_Ca2__pCaMKIIaut"/>
+<Expression Name="kr__CaM_Ca1__pCaMKIIaut" Description="Assignment" Formula="KD__CaM_Ca1__pCaMKIIaut * kf__CaM_Ca1__pCaMKIIaut"/>
+<Expression Name="kr__CaM__pCaMKIIaut" Description="Assignment" Formula="KD__CaM__pCaMKIIaut * kf__CaM__pCaMKIIaut"/>
+<Expression Name="totalCaMKII" Description="Assignment" Formula="(CaMKII_CaM + CaMKII_CaM_Ca1 + CaMKII + CaMKII_CaM_Ca2 + CaMKII_CaM_Ca3 + CaMKIIc + pCaMKII + pCaMKIIaut + pCaMKII_Ca3 + pCaMKII_Ca2 + pCaMKII_Ca1 + pCaMKII_Ca0)"/>
+<Constant Name="a" Description="gnuplot fit constant, uncertainty: +-0.035" Value="3.90264"/>
+<Constant Name="b" Description="gnuplot fit constant, uncertainty: +-0.033" Value="2.86972"/>
+<Constant Name="s" Description="small, non-zero number: 0 \gt eps \ll 1" Value="1e-2"/>
+<Expression Name="r" Formula="(CaMKIIc+pCaMKII)/(s+totalCaMKII)"/> 
+<Expression Name="pairedCaMKIIc" Description="Assignment" Formula="a*(r*r)/(1+b*r)"/>
+<!-- Ca is set to some concentration, to be applied at t=0 -->
+<Parameter Name="Ca_set" Description="Input Parameter" DefaultValue="0.0"/>
+<Expression Name="logistic" Formula="1.0/(1+exp(-10*t))"/>
+<Expression Name="Ca" Formula="logistic*Ca_set"/>
+<!-- Output -->
+<Function Name="MolCaPerMolCaM" Description="Output" Formula="((1.0 * CaM_Ca1) + (2.0 * CaM_Ca2) + (3.0 * CaM_Ca3) + (4.0 * CaM_Ca4) + (1.0 * PP2B_CaM_Ca1) + (2.0 * PP2B_CaM_Ca2) + (3.0 * PP2B_CaM_Ca3) + (4.0 * PP2Bc) + (1.0 * (CaMKII_CaM_Ca1 + pCaMKII_Ca1)) + (2.0 * (CaMKII_CaM_Ca2 + pCaMKII_Ca2)) + (3.0 * (CaMKII_CaM_Ca3 + pCaMKII_Ca3)) + (4.0 * (CaMKIIc + pCaMKII))) / (CaM + CaM_Ca1 + CaM_Ca2 + CaM_Ca3 + CaM_Ca4 + PP2B_CaM + PP2B_CaM_Ca1 + PP2B_CaM_Ca2 + PP2B_CaM_Ca3 + PP2Bc + CaMKII_CaM + CaMKII_CaM_Ca1 + CaMKII_CaM_Ca2 + CaMKII_CaM_Ca3 + CaMKIIc + pCaMKII_Ca0 + pCaMKII_Ca1 + pCaMKII_Ca2 + pCaMKII_Ca3 + pCaMKII)"/>
+<Function Name="AutoCamkiiPercentage" Description="Output" Formula="((pCaMKII + pCaMKIIaut + pCaMKII_Ca3 + pCaMKII_Ca2 + pCaMKII_Ca1 + pCaMKII_Ca0) / totalCaMKII) * 100"/>
+<Function Name="MolCaMPerMolPP2B" Description="Output" Formula="1.0 * (PP2B_CaM + PP2B_CaM_Ca1 + PP2B_CaM_Ca2 + PP2B_CaM_Ca3 + PP2Bc) / (PP2B + PP2B_CaM + PP2B_CaM_Ca1 + PP2B_CaM_Ca2 + PP2B_CaM_Ca3 + PP2Bc)"/>
+<Function Name="ActivePP2BPercentage" Description="Output" Formula="100 * ((PP2Bc) / (PP2B + PP2B_CaM + PP2B_CaM_Ca1 + PP2B_CaM_Ca2 + PP2B_CaM_Ca3 + PP2Bc))"/>
+
+<Expression Name="ActiveCaMKII" Description="Assignment" Formula="pCaMKII + pCaMKIIaut + pCaMKII_Ca3 + pCaMKII_Ca2 + pCaMKII_Ca1 + pCaMKII_Ca0 + CaMKIIc"/>
+<Expression Name="ReactionFlux1" Description="Flux" Formula="(kf__CaM__Ca*Ca*CaM)-(kr__CaM__Ca*CaM_Ca1)"/>
+<Expression Name="ReactionFlux2" Description="Flux" Formula="(kf__CaM_Ca1__Ca*Ca*CaM_Ca1)-(kr__CaM_Ca1__Ca*CaM_Ca2)"/>
+<Expression Name="ReactionFlux3" Description="Flux" Formula="(kf__CaM_Ca2__Ca*Ca*CaM_Ca2)-(kr__CaM_Ca2__Ca*CaM_Ca3)"/>
+<Expression Name="ReactionFlux4" Description="Flux" Formula="(kf__CaM_Ca3__Ca*CaM_Ca3*Ca)-(kr__CaM_Ca3__Ca*CaM_Ca4)"/>
+<Expression Name="ReactionFlux5" Description="Flux" Formula="(kf__CaM__PP2B*CaM*PP2B)-(kr__CaM__PP2B*PP2B_CaM)"/>
+<Expression Name="ReactionFlux6" Description="Flux" Formula="(kf__CaM_Ca1__PP2B*CaM_Ca1*PP2B)-(kr__CaM_Ca1__PP2B*PP2B_CaM_Ca1)"/>
+<Expression Name="ReactionFlux7" Description="Flux" Formula="(kf__CaM_Ca2__PP2B*CaM_Ca2*PP2B)-(kr__CaM_Ca2__PP2B*PP2B_CaM_Ca2)"/>
+<Expression Name="ReactionFlux8" Description="Flux" Formula="(kf__CaM_Ca3__PP2B*CaM_Ca3*PP2B)-(kr__CaM_Ca3__PP2B*PP2B_CaM_Ca3)"/>
+<Expression Name="ReactionFlux9" Description="Flux" Formula="(kf__CaM_Ca4__PP2B*CaM_Ca4*PP2B)-(kr__CaM_Ca4__PP2B*PP2Bc)"/>
+<Expression Name="ReactionFlux10" Description="Flux" Formula="(kf__PP2B_CaM__Ca*PP2B_CaM*Ca)-(kr__PP2B_CaM__Ca*PP2B_CaM_Ca1)"/>
+<Expression Name="ReactionFlux11" Description="Flux" Formula="(kf__PP2B_CaM_Ca1__Ca*PP2B_CaM_Ca1*Ca)-(kr__PP2B_CaM_Ca1__Ca*PP2B_CaM_Ca2)"/>
+<Expression Name="ReactionFlux12" Description="Flux" Formula="(kf__PP2B_CaM_Ca2__Ca*PP2B_CaM_Ca2*Ca)-(kr__PP2B_CaM_Ca2__Ca*PP2B_CaM_Ca3)"/>
+<Expression Name="ReactionFlux13" Description="Flux" Formula="(kf__PP2B_CaM_Ca3__Ca*PP2B_CaM_Ca3*Ca)-(kr__PP2B_CaM_Ca3__Ca*PP2Bc)"/>
+<Expression Name="ReactionFlux14" Description="Flux" Formula="(kf__CaM__CaMKII*CaM*CaMKII)-(kr__CaM__CaMKII*CaMKII_CaM)"/>
+<Expression Name="ReactionFlux15" Description="Flux" Formula="(kf__CaM_Ca1__CaMKII*CaM_Ca1*CaMKII)-(kr__CaM_Ca1__CaMKII*CaMKII_CaM_Ca1)"/>
+<Expression Name="ReactionFlux16" Description="Flux" Formula="(kf__CaM_Ca2__CaMKII*CaM_Ca2*CaMKII)-(kr__CaM_Ca2__CaMKII*CaMKII_CaM_Ca2)"/>
+<Expression Name="ReactionFlux17" Description="Flux" Formula="(kf__CaM_Ca3__CaMKII*CaM_Ca3*CaMKII)-(kr__CaM_Ca3__CaMKII*CaMKII_CaM_Ca3)"/>
+<Expression Name="ReactionFlux18" Description="Flux" Formula="(kf__CaM_Ca4__CaMKII*CaM_Ca4*CaMKII)-(kr__CaM_Ca4__CaMKII*CaMKIIc)"/>
+<Expression Name="ReactionFlux19" Description="Flux" Formula="(kf__CaMKII_CaM__Ca*Ca*CaMKII_CaM)-(kr__CaMKII_CaM__Ca*CaMKII_CaM_Ca1)"/>
+<Expression Name="ReactionFlux20" Description="Flux" Formula="(kf__CaMKII_CaM_Ca1__Ca*CaMKII_CaM_Ca1*Ca)-(kr__CaMKII_CaM_Ca1__Ca*CaMKII_CaM_Ca2)"/>
+<Expression Name="ReactionFlux21" Description="Flux" Formula="(kf__CaMKII_CaM_Ca2__Ca*CaMKII_CaM_Ca2*Ca)-(kr__CaMKII_CaM_Ca2__Ca*CaMKII_CaM_Ca3)"/>
+<Expression Name="ReactionFlux22" Description="Flux" Formula="(kf__CaMKII_CaM_Ca3__Ca*CaMKII_CaM_Ca3*Ca)-(kr__CaMKII_CaM_Ca3__Ca*CaMKIIc)"/>
+<Expression Name="ReactionFlux23" Description="Flux" Formula="(kf__CaM_Ca4__pCaMKIIaut*CaM_Ca4*pCaMKIIaut)-(kr__CaM_Ca4__pCaMKIIaut*pCaMKII)"/>
+<Expression Name="ReactionFlux24" Description="Flux" Formula="(kf__CaM_Ca3__pCaMKIIaut*CaM_Ca3*pCaMKIIaut)-(kr__CaM_Ca3__pCaMKIIaut*pCaMKII_Ca3)"/>
+<Expression Name="ReactionFlux25" Description="Flux" Formula="(kf__CaM_Ca2__pCaMKIIaut*CaM_Ca2*pCaMKIIaut)-(kr__CaM_Ca2__pCaMKIIaut*pCaMKII_Ca2)"/>
+<Expression Name="ReactionFlux26" Description="Flux" Formula="(kf__CaM_Ca1__pCaMKIIaut*CaM_Ca1*pCaMKIIaut)-(kr__CaM_Ca1__pCaMKIIaut*pCaMKII_Ca1)"/>
+<Expression Name="ReactionFlux27" Description="Flux" Formula="(kf__CaM__pCaMKIIaut*CaM*pCaMKIIaut)-(kr__CaM__pCaMKIIaut*pCaMKII_Ca0)"/>
+<Expression Name="ReactionFlux28" Description="Flux" Formula="(kf__pCaMKII_Ca0__Ca*pCaMKII_Ca0*Ca)-(kr__pCaMKII_Ca0__Ca*pCaMKII_Ca1)"/>
+<Expression Name="ReactionFlux29" Description="Flux" Formula="(kf__pCaMKII_Ca1__Ca*pCaMKII_Ca1*Ca)-(kr__pCaMKII_Ca1__Ca*pCaMKII_Ca2)"/>
+<Expression Name="ReactionFlux30" Description="Flux" Formula="(kf__pCaMKII_Ca2__Ca*pCaMKII_Ca2*Ca)-(kr__pCaMKII_Ca2__Ca*pCaMKII_Ca3)"/>
+<Expression Name="ReactionFlux31" Description="Flux" Formula="(kf__pCaMKII_Ca3__Ca*pCaMKII_Ca3*Ca)-(kr__pCaMKII_Ca3__Ca*pCaMKII)"/>
+<Expression Name="ReactionFlux32" Description="Flux" Formula="(kp__pairedCaMKIIc__CaMKIIc*pairedCaMKIIc*CaMKIIc)"/>
+<Expression Name="ReactionFlux33" Description="Flux" Formula="(kf__PP1__pCaMKIIaut*pCaMKIIaut*PP1)-(kr__PP1__pCaMKIIaut*PP1__pCaMKIIaut)"/>
+<Expression Name="ReactionFlux34" Description="Flux" Formula="(kcat__PP1__pCaMKIIaut*PP1__pCaMKIIaut)"/>
+<StateVariable Name="CaM"
+	       Formula="(-ReactionFlux1 - ReactionFlux5 - ReactionFlux14 - ReactionFlux27)"/>
+<StateVariable Name="CaM_Ca1"
+	       Formula="(ReactionFlux1 - ReactionFlux2 - ReactionFlux6 - ReactionFlux15 - ReactionFlux26)"/>
+<StateVariable Name="CaM_Ca2"
+	       Formula="(ReactionFlux2 - ReactionFlux3 - ReactionFlux7 - ReactionFlux16 - ReactionFlux25)"/>
+<StateVariable Name="CaM_Ca3"
+	       Formula="(ReactionFlux3 - ReactionFlux4 - ReactionFlux8 - ReactionFlux17 - ReactionFlux24)"/>
+<StateVariable Name="CaM_Ca4"
+	       Formula="(ReactionFlux4 - ReactionFlux9 - ReactionFlux18 - ReactionFlux23)"/>
+<StateVariable Name="PP2B"
+	       Formula="(-ReactionFlux5 - ReactionFlux6 - ReactionFlux7 - ReactionFlux8 - ReactionFlux9)"/>
+<StateVariable Name="PP2B_CaM"
+	       Formula="(ReactionFlux5 - ReactionFlux10)"/>
+<StateVariable Name="PP2B_CaM_Ca1"
+	       Formula="(ReactionFlux6 + ReactionFlux10 - ReactionFlux11)"/>
+<StateVariable Name="PP2B_CaM_Ca2"
+	       Formula="(ReactionFlux7 + ReactionFlux11 - ReactionFlux12)"/>
+<StateVariable Name="PP2B_CaM_Ca3"
+	       Formula="(ReactionFlux8 + ReactionFlux12 - ReactionFlux13)"/>
+<StateVariable Name="PP2Bc"
+	       Formula="(ReactionFlux9 + ReactionFlux13)"/>
+<StateVariable Name="CaMKII_CaM"
+	       Formula="(ReactionFlux14 - ReactionFlux19)"/>
+<StateVariable Name="CaMKII_CaM_Ca1"
+	       Formula="(ReactionFlux15 + ReactionFlux19 - ReactionFlux20)"/>
+<StateVariable Name="CaMKII"
+	       Formula="(-ReactionFlux14 - ReactionFlux15 - ReactionFlux16 - ReactionFlux17 - ReactionFlux18 + ReactionFlux34)"/>
+<StateVariable Name="CaMKII_CaM_Ca2"
+	       Formula="(ReactionFlux16 + ReactionFlux20 - ReactionFlux21)"/>
+<StateVariable Name="CaMKII_CaM_Ca3"
+	       Formula="(ReactionFlux17 + ReactionFlux21 - ReactionFlux22)"/>
+<StateVariable Name="CaMKIIc"
+	       Formula="(ReactionFlux18 + ReactionFlux22 - ReactionFlux32)"/>
+<StateVariable Name="pCaMKII"
+	       Formula="(ReactionFlux23 + ReactionFlux31 + ReactionFlux32)"/>
+<StateVariable Name="pCaMKIIaut"
+	       Formula="(-ReactionFlux23 - ReactionFlux24 - ReactionFlux25 - ReactionFlux26 - ReactionFlux27 - ReactionFlux33)"/>
+<StateVariable Name="pCaMKII_Ca3"
+	       Formula="(ReactionFlux24 + ReactionFlux30 - ReactionFlux31)"/>
+<StateVariable Name="pCaMKII_Ca2"
+	       Formula="(ReactionFlux25 + ReactionFlux29 - ReactionFlux30)"/>
+<StateVariable Name="pCaMKII_Ca1"
+	       Formula="(ReactionFlux26 + ReactionFlux28 - ReactionFlux29)"/>
+<StateVariable Name="pCaMKII_Ca0"
+	       Formula="(ReactionFlux27 - ReactionFlux28)"/>
+<StateVariable Name="PP1__pCaMKIIaut"
+	       Formula="(ReactionFlux33 - ReactionFlux34)"/>
+<StateVariable Name="PP1"
+	       Formula="(-ReactionFlux33 + ReactionFlux34)"/>
+</VectorField>

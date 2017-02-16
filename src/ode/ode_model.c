@@ -171,9 +171,13 @@ ode_solver*	ode_solver_alloc(ode_model* model){
   int N = ode_model_getN(model);
   solver->odeModel = model;
   solver->y = N_VNewEmpty_Serial(N);												/* alloc */
+  int F = ode_model_getF(model);
+  solver->fy = N_VNewEmpty_Serial(F);
   NV_DATA_S(solver->y) = solver->odeModel->v;
   solver->yS = 0;
-  
+  /* allocate some storage for jacobian retrieval */
+  solver->jac=NewDenseMat(N,N);
+  solver->jacp=NewDenseMat(N,P);
   return solver;
 }
 
@@ -218,7 +222,6 @@ void ode_solver_init(ode_solver* solver, const double t0,  double* y0, int lenY,
     }
     NV_DATA_S(solver->y) = y0;
   }
-  
   /* initialise */
   flag = CVodeInit(solver->cvode_mem, solver->odeModel->vf_eval, t0, solver->y);
   flag &= CVodeSetUserData(solver->cvode_mem, solver->params);
@@ -436,9 +439,9 @@ void ode_solver_get_func(ode_solver* solver, const double t, double* y, double* 
 /* yS and fyS in row major order */
 void ode_solver_get_func_sens(ode_solver* solver, const double t,  double* y,  double* yS, double* fyS){
   int i;
-  int N = solver->odeModel->N;
-  int P = solver->odeModel->P;
-  
+  int N = ode_model_getN(solver->odeModel);
+  int P = ode_model_getP(solver->odeModel);
+
   NV_DATA_S(solver->y) = y;
   
   if ( solver->odeModel->vf_sens != 0 ){
@@ -450,6 +453,34 @@ void ode_solver_get_func_sens(ode_solver* solver, const double t,  double* y,  d
       solver->odeModel->vf_func_sens(t, solver->y, solver->yS , fyS, (void *) solver->params);
   }
 }
+
+
+void ode_solver_get_jacp(ode_solver* solver, const double t,  double* y,  double* fy, double *jacp){
+  int N = ode_model_getN(solver->odeModel);
+  int P = ode_model_getP(solver->odeModel);
+  
+  NV_DATA_S(solver->y) = y;
+  NV_DATA_S(solver->fy) = fy;
+  solver->odeModel->vf_jacp(N,t,solver->y,solver->fy,solver->jacp,solver->params,NULL,NULL,NULL);
+  /* df[i]/dy[j]=jacobian_y[j*N+i]; cvode stores matrices column-wise (i is dense in memory); */
+  /* here we make the assumption that SUNDIALS_DOUBLE_PRECISION is set */
+  memcpy(jacp,solver->jacp->data,sizeof(double)*N*P); 
+}
+
+void ode_solver_get_jac(ode_solver* solver, const double t,  double* y,  double* fy, double *jac){
+  int N = ode_model_getN(solver->odeModel);
+  int P = ode_model_getP(solver->odeModel);
+
+  NV_DATA_S(solver->y) = y;
+  NV_DATA_S(solver->fy) = fy;
+  solver->odeModel->vf_jac(N,t,solver->y,solver->fy,solver->jac,solver->params,NULL,NULL,NULL);
+
+  /* df[i]/dy[j]=jacobian_y[j*N+i]; cvode stores matrices column-wise (i is dense in memory); */
+  /* here we make the assumption that SUNDIALS_DOUBLE_PRECISION is set */
+  memcpy(jac,solver->jac->data,sizeof(double)*N*N); 
+}
+
+
 
 void ode_solver_print_stats(const ode_solver* solver, FILE* outF){
   long int nst;

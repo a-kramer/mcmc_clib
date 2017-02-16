@@ -32,14 +32,14 @@ typedef int (*func)(realtype, N_Vector, realtype *, void *);
 typedef int (*func_sens)(realtype, N_Vector, N_Vector *, double *, void *);
 	
 typedef struct{
-	int			N;				/* number of variables */
-	int			P;				/* number of parameters */
-	int			F;				/* number of functions */
+	int		N;				/* number of variables */
+	int		P;				/* number of parameters */
+	int		F;				/* number of functions */
 	double*		v;				/* initial conditions */
 	double*		p;				/* default parameters */
 	rhs_f		vf_eval;		/* function pointer for ode RHS */
 	jac_f		vf_jac;			/* function pointer for jacobian dvf/dx */
-	jacp_f		vf_jacp;	        /* function pointer for parameter jacobian dvf/dp*/
+	jacp_f		vf_jacp;	        /* function pointer for parameter jacobian df/dp*/
 	rhs_sens	vf_sens;		/* function pointer for ode sensitivities */
 	func		vf_func;		/* function pointer for functions RHS */
 	func_sens	vf_func_sens;	/* function pointer for functions sensitivities */
@@ -51,11 +51,14 @@ typedef struct{
 	
 
 typedef struct{
-	void*		cvode_mem;
-	ode_model*	odeModel;
+	void*       cvode_mem;
+	ode_model*  odeModel;
 	N_Vector    y;
-	N_Vector*	yS;
-	double*		params;
+	N_Vector*   yS;
+	N_Vector    fy;
+	DlsMat      jac;
+	DlsMat      jacp;
+	double*     params;
 }ode_solver;
 		
 
@@ -89,7 +92,7 @@ const char** ode_model_get_param_names(const ode_model* model);
 /* returns a constant pointer to a function names array */
 const char** ode_model_get_func_names(const ode_model* model);
 	
-
+ 
 #ifdef HAVE_INLINE
 /* inlined functions to allow access to the internals of the ode_model structure */
 extern inline double ode_model_getN(const ode_model* model){
@@ -164,15 +167,16 @@ void		ode_solver_reinit_sens(ode_solver* solver, double* yS0, int lenP, int lenY
 int		ode_solver_solve(ode_solver* solver, const double t, double* y, double* tout);
 /* Returns sensitivities for the current solution at t. This function must be called only after ode_solver_solve.
 */	
-  void		ode_solver_get_sens(ode_solver* solver, double t, double* yS);
+void		ode_solver_get_sens(ode_solver* solver, double t, double* yS);
 /* Returns functions of the carrent solution.
-*/	
+ */	
 void		ode_solver_get_func(ode_solver* solver, const double t, double* y, double* fy);
 /* Returns sensitivities of functions of the carrent solution.
-*/	
-  void		ode_solver_get_func_sens(ode_solver* solver, const double t, double* y, double* yS, double* fyS);
-
-	
+   */	
+void ode_solver_get_func_sens(ode_solver* solver, const double t, double* y, double* yS, double* fyS);
+void ode_solver_get_jac(ode_solver* solver, const double t,  double* y,  double* fy, double *jac);
+void ode_solver_get_jacp(ode_solver* solver, const double t,  double* y,  double* fy, double *jacp);
+  
 /* Prints to out solver statistics.
 */	
 void		ode_solver_print_stats(const ode_solver* solver, FILE* outF);

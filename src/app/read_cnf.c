@@ -328,7 +328,7 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
 	  r=G->gsl->matrix->size1;
 	  c=G->gsl->matrix->size2;
 	  omp->ref_E->init_y=gsl_vector_alloc(c);
-	  gsl_matrix_get_row(omp->ref_E->init_y,G->gsl->matrix,i%r);
+	  gsl_matrix_get_row(omp->ref_E->init_y,G->gsl->matrix,0);
 	  nda_free(nda);	  
 	  //	  read_block(ps->C,ps->N,cnf,DOUBLE_BLOCK,omp->initial_conditions_y->data,comment);
 	  printf("# reference initial conditions read.\n");
@@ -409,7 +409,7 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
 	  //gsl_matrix_int_fprintf(stdout,omp->norm_t,"%i");
 	  //gsl_matrix_int_fprintf(stdout,G->gsl->matrix_int,"%i");
 	  if (status!=GSL_SUCCESS) {
-	    printf("gsl_matrix_memcpy error: %s",gsl_strerror(status));
+	    printf("gsl_matrix_memcpy error: %s\n",gsl_strerror(status));
 	    exit(-1);
 	  }
 	  nda_free(nda);
@@ -473,14 +473,14 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
     ratio_with_sd(&Data,&ReferenceData); //Data/ReferenceData.
     status=gsl_matrix_memcpy(omp->Data,Data.M);
     if (status!=GSL_SUCCESS) {
-      printf("gsl_matrix_memcpy error: %s",status);
+      fprintf(stderr,"gsl_matrix_memcpy error: %i\n",status);
       exit(-1);
     }
     gsl_matrix_memcpy(omp->sdData,Data.sd);
     printf("done.\n");
     break;
   case DATA_NORMALISED_BY_TIMEPOINT:
-    printf("# normalising using one time instance...",gsl_matrix_int_get(omp->norm_t,0,0));
+    printf("# normalising using one time instance: t[%i] ...",gsl_matrix_int_get(omp->norm_t,0,0));
     fflush(stdout);
     gsl_matrix_memcpy(omp->Data,Data.M);
     gsl_matrix_memcpy(omp->sdData,Data.sd);
