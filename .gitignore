@@ -1,0 +1,14 @@
+*.o
+*.so
+./bin/*
+./vfgen
+./sample/*
+*.double
+*.out
+*.err
+*.toc
+*.aux
+*.bbl
+*.blg
+*.log
+*~
