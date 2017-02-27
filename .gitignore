@@ -1,0 +1,10 @@
+*.double
+*.out
+*.err
+*.aux
+*.log
+*.bbl
+*.blg
+*.run.xml
+*.toc
+*.asc
