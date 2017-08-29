@@ -1,4 +1,4 @@
-CC=cc
+CC=gcc
 CPP=c++
 
 CPPFLAGS = -Wall -O2
@@ -25,7 +25,7 @@ vfgen:
 	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread
 
 ODE%_cvs.c: ODE%.xml
-	./vfgen cvodes:sens=yes,func=yes ODE$*.xml
+	./vfgen cvodes:sens=yes,func=yes $<
 
 ODE%.so: ODE%_cvs.c
 	$(CC) -shared -fPIC $(CFLAGS) -o $@  $<
