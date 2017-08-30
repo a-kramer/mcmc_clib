@@ -28,4 +28,4 @@ $0
  sampling now ...
 EOF
 
-bin/ode_smmala  -b -s ${SampleSize} -p -o $SampleFile -l ./$Model.so -c ./$Model.cfg 1> $Model.out 2> $Model.err
+mpirun -np 2 bin/ode_smmala  -b -s ${SampleSize} -p -o $SampleFile -l ./$Model.so -c ./$Model.cfg 1> $Model.out 2> $Model.err

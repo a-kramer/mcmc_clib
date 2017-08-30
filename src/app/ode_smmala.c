@@ -1095,6 +1095,7 @@ int main (int argc, char* argv[]) {
   smmala_model_free(model);
   mcmc_free(kernel);
   ode_model_parameters_free(&omp);
+  MPI_Finalize();
   return EXIT_SUCCESS;
 }
 
@@ -1152,6 +1153,5 @@ int Posterior(const double* x,  void* model_params, double* fx, double* dfx, dou
     FI[i] *= gsl_pow_2(omp->beta);
     FI[i] += omp->prior_inverse_cov->data[i];
   }
-  MPI_Finalize();
   return logL_stat;
 }
