@@ -7,7 +7,7 @@
 Model=ODEmodel11S26P4U
 SampleFile="`date +%Y-%m-%dT%Hh%Mm`.double"
 #SampleSize=$((1024**2))
-SampleSize=$((2))
+SampleSize=$((10))
 cat<<EOF
 $0
  redirecting standard output to $Model.out
@@ -28,4 +28,4 @@ $0
  sampling now ...
 EOF
 
-mpirun -np 1 bin/ode_smmala  -b -s ${SampleSize} -p -o $SampleFile -l ./$Model.so -c ./$Model.cfg 1> $Model.out 2> $Model.err
+mpirun -np ${1:-1} bin/ode_smmala  -b -s ${SampleSize} -p -o $SampleFile -l ./$Model.so -c ./$Model.cfg 

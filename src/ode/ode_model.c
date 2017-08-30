@@ -39,7 +39,7 @@ ode_model* ode_model_loadFromFile(const char *filename){
 	
   void* odeLibrary = dlopen(filename, RTLD_NOW | RTLD_GLOBAL);				/* resource acc */
   
-  if (odeLibrary == 0){
+  if (odeLibrary == NULL){
     fprintf(stderr, "Library %s could not be loaded.\n",filename);
     char * err = dlerror();
     if(err!=0)
