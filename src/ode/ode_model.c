@@ -37,7 +37,7 @@ static char* get_vf_name(const char* filename){
 
 ode_model* ode_model_loadFromFile(const char *filename){
 	
-  void* odeLibrary = dlopen(filename, RTLD_LOCAL | RTLD_LAZY);				/* resource acc */
+  void* odeLibrary = dlopen(filename, RTLD_NOW | RTLD_GLOBAL);				/* resource acc */
   
   if (odeLibrary == 0){
     fprintf(stderr, "Library %s could not be loaded.\n",filename);

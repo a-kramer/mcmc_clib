@@ -42,6 +42,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <libgen.h>
 #include <unistd.h>
 #include <math.h>
 #include <time.h>
@@ -65,6 +66,8 @@
 #define SMPL_RESUME 1
 #define SMPL_FRESH 0
 #define SMPL_RESUME_TUNE 2
+
+#define BUFSZ 1024
 
 
 /* Auxiliary structure with working storage and aditional parameters for
@@ -766,16 +769,16 @@ int main (int argc, char* argv[]) {
   int i=0;
   int warm_up=0; // sets the number of burn in points at command line
   char *cfilename=NULL;
-  char lib_name[512];
+  char lib_name[BUFSZ];
   ode_model_parameters omp;
   FILE *cnf;   // configuration file, with file name: cfilename
-  char global_sample_filename_stem[512]="sample.dat"; // filename basis
-  char rank_sample_file[512]; // filename for sample output
+  char global_sample_filename_stem[BUFSZ]="sample.dat"; // filename basis
+  char rank_sample_file[BUFSZ]; // filename for sample output
   //char *x_sample_file=NULL; // filename for sample output x(t,p)
   //char *y_sample_file=NULL; // filename for sample output y(t,p)
   FILE *oFile; // will be the file named «sample_file»
   FILE *rFile; // last sampled value will be written to this file
-  char resume_filename[512]="resume.double";
+  char resume_filename[BUFSZ]="resume.double";
   int output_is_binary=0;
   double seed = 1;
   int sampling_action=SMPL_FRESH;
@@ -795,6 +798,7 @@ int main (int argc, char* argv[]) {
   int rank,R;
   MPI_Comm_size(MPI_COMM_WORLD,&R);
   MPI_Comm_rank(MPI_COMM_WORLD,&rank);
+
   for (i=0;i<argc;i++){
     if (strcmp(argv[i],"-c")==0) cfilename=argv[i+1];
     else if (strcmp(argv[i],"-p")==0 || strcmp(argv[i],"--prior-start")==0) start_from_prior=1;
@@ -823,13 +827,18 @@ int main (int argc, char* argv[]) {
     exit(1);
   } else printf( "# Library %s loaded.\n",lib_name);
 
-  sprintf(resume_filename,"%s_resume_%04l.double",lib_name,rank);
-  if (strcmp(cnf_options.output_file,global_sample_filename_stem)==0)
-    sprintf(rank_sample_file,"rank_%04l_of_%l_%s_%s",rank,R,lib_name,global_sample_filename_stem);
-  else
-    sprintf(rank_sample_file,"rank_%04l_of_%l_%s",rank,R,cnf_options.output_file);
+  char *dot;
+  char *lib_base;
+  lib_base=basename(lib_name);
+  dot=strchr(lib_base,'.');
+  dot[0]='\0';
+  
+  sprintf(resume_filename,"%s_resume_%04i.double",lib_base,rank);
+  sprintf(rank_sample_file,"rank_%04i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options.output_file));
   cnf_options.output_file=rank_sample_file;
 
+  printf("\tlib_name: %s\nrank_sammple_file: %s\n\tresume_filename: %s\n",lib_name,rank_sample_file,resume_filename);
+  
   ode_solver* solver = ode_solver_alloc(odeModel); /* alloc */
   if (solver == NULL) {
     fprintf(stderr, "# Solver %s could not be created.\n",lib_name);
