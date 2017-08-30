@@ -1118,6 +1118,7 @@ int Posterior(const double* x,  void* model_params, double* fx, double* dfx, dou
   for (i=0;i<D;i++) gsl_vector_set(omp->p,i,gsl_sf_exp(x[i]));
   logL_stat=LikelihoodComplexNorm(omp, fx, dfx, FI);
   //printf("likelihood: %g\n",fx[0]);
+
   gsl_vector_memcpy(prior_diff,x_v);
   gsl_vector_sub(prior_diff,omp->prior_mu);
 
