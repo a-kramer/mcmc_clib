@@ -6,7 +6,8 @@
 # -c ODEmodel11S26P4U.cfg   configurations
 Model=ODEmodel11S26P4U
 SampleFile="sample/${Model}_`date +%Y-%m-%dT%Hh%Mm`.double"
-SampleSize=$((1024**2))
+#SampleSize=$((1024**2))
+SampleSize=$((2))
 cat<<EOF
 $0
  redirecting standard output to $Model.out

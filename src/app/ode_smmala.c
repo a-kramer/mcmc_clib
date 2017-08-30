@@ -55,9 +55,11 @@
 #include <gsl/gsl_sort_vector.h>
 #include <gsl/gsl_statistics_double.h>
 #include <gsl/gsl_rng.h>
+#include <mpi.h>
 #include "read_cnf.h"
 #include "../mcmc/smmala.h"
 #include "../ode/ode_model.h"
+
 
 // sampling actions 
 #define SMPL_RESUME 1
@@ -764,15 +766,16 @@ int main (int argc, char* argv[]) {
   int i=0;
   int warm_up=0; // sets the number of burn in points at command line
   char *cfilename=NULL;
-  char lib_name[128];
+  char lib_name[512];
   ode_model_parameters omp;
   FILE *cnf;   // configuration file, with file name: cfilename
-  char sample_file[128]="sample.dat"; // filename for sample output
+  char global_sample_filename_stem[512]="sample.dat"; // filename basis
+  char rank_sample_file[512]; // filename for sample output
   //char *x_sample_file=NULL; // filename for sample output x(t,p)
   //char *y_sample_file=NULL; // filename for sample output y(t,p)
   FILE *oFile; // will be the file named «sample_file»
   FILE *rFile; // last sampled value will be written to this file
-  char resume_filename[128]="resume.double";
+  char resume_filename[512]="resume.double";
   int output_is_binary=0;
   double seed = 1;
   int sampling_action=SMPL_FRESH;
@@ -783,12 +786,15 @@ int main (int argc, char* argv[]) {
   int sensitivity_approximation=0;
   //  strcpy(sample_file,"sample.dat");
   main_options cnf_options;
-  cnf_options.output_file=sample_file;
+  cnf_options.output_file=global_sample_filename_stem;
   cnf_options.library_file=lib_name;
   cnf_options.target_acceptance=-0.5;
   cnf_options.initial_stepsize =-0.1; // not used here in smmala
   cnf_options.sample_size=-10;
-
+  MPI_Init(&argc,&argv);
+  int rank,R;
+  MPI_Comm_size(MPI_COMM_WORLD,&R);
+  MPI_Comm_rank(MPI_COMM_WORLD,&rank);
   for (i=0;i<argc;i++){
     if (strcmp(argv[i],"-c")==0) cfilename=argv[i+1];
     else if (strcmp(argv[i],"-p")==0 || strcmp(argv[i],"--prior-start")==0) start_from_prior=1;
@@ -808,6 +814,8 @@ int main (int argc, char* argv[]) {
     //else printf("unknown option {%s}.\n",argv[i]);
   }
 
+  seed=seed*137+13*rank;
+
   /* load model */
   ode_model *odeModel = ode_model_loadFromFile(lib_name);  /* alloc */
   if (odeModel == NULL) {
@@ -815,12 +823,13 @@ int main (int argc, char* argv[]) {
     exit(1);
   } else printf( "# Library %s loaded.\n",lib_name);
 
+  sprintf(resume_filename,"%s_resume_%04l.double",lib_name,rank);
+  if (strcmp(cnf_options.output_file,global_sample_filename_stem)==0)
+    sprintf(rank_sample_file,"rank_%04l_of_%l_%s_%s",rank,R,lib_name,global_sample_filename_stem);
+  else
+    sprintf(rank_sample_file,"rank_%04l_of_%l_%s",rank,R,cnf_options.output_file);
+  cnf_options.output_file=rank_sample_file;
 
-    
-  
-  
-  sprintf(resume_filename,"%s_resume.double",lib_name);
-  
   ode_solver* solver = ode_solver_alloc(odeModel); /* alloc */
   if (solver == NULL) {
     fprintf(stderr, "# Solver %s could not be created.\n",lib_name);
@@ -1143,6 +1152,6 @@ int Posterior(const double* x,  void* model_params, double* fx, double* dfx, dou
     FI[i] *= gsl_pow_2(omp->beta);
     FI[i] += omp->prior_inverse_cov->data[i];
   }
-
+  MPI_Finalize();
   return logL_stat;
 }
