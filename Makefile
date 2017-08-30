@@ -1,4 +1,4 @@
-CC=gcc
+CC=mpicc
 CPP=c++
 
 CPPFLAGS = -Wall -O2
@@ -25,10 +25,10 @@ bin/ode_smmala: ./src/app/ode_smmala.c $(MALA_SRC)
 vfgen: 
 	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread
 
-ODE%_cvs.c: ODE%.xml
+%_cvs.c: %.xml
 	./vfgen cvodes:sens=yes,func=yes $<
 
-ODE%.so: ODE%_cvs.c
+%.so: %_cvs.c
 	$(CC) -shared -fPIC $(CFLAGS) -o $@  $<
 
 
