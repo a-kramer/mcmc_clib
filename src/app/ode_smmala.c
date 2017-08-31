@@ -42,7 +42,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _GNU_SOURCE
 #include <libgen.h>
+#endif
 #include <unistd.h>
 #include <math.h>
 #include <time.h>

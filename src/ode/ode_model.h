@@ -91,7 +91,8 @@ const char** ode_model_get_param_names(const ode_model* model);
 	
 /* returns a constant pointer to a function names array */
 const char** ode_model_get_func_names(const ode_model* model);
-	
+  
+void ode_solver_disable_sens(ode_solver* solver);
  
 #ifdef HAVE_INLINE
 /* inlined functions to allow access to the internals of the ode_model structure */
