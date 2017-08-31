@@ -5,7 +5,7 @@
 # -l ODEmodel11S26P4U.so    shared library of model
 # -c ODEmodel11S26P4U.cfg   configurations
 Model=ODEmodel11S26P4U
-SampleFile="sample/${Model}_`date +%Y-%m-%dT%Hh%Mm`.double"
+SampleFile="`date +%Y-%m-%dT%Hh%Mm`.double"
 #SampleSize=$((1024**2))
 SampleSize=$((10))
 cat<<EOF
@@ -28,4 +28,4 @@ $0
  sampling now ...
 EOF
 
-bin/ode_smmala  -b -s ${SampleSize} -p -o $SampleFile -l ./$Model.so -c ./$Model.cfg 1> $Model.out 2> $Model.err
+mpirun -np ${1:-1} bin/ode_smmala  -b -s ${SampleSize} -p -o $SampleFile -l ./$Model.so -c ./$Model.cfg 

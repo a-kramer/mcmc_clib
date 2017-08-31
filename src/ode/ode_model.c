@@ -8,7 +8,9 @@
  */
 
 #include <dlfcn.h>
+#ifndef _GNU_SOURCE
 #include <libgen.h>
+#endif
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,24 +24,27 @@ static char* get_vf_name(const char* filename){
   char* _post = "_odeModel";
   char* lib_name = basename(filename);
   size_t len = strlen(lib_name);
-  size_t i;
+  int n;
+  char *dot;
   /* stop once a '_c' or '.' is found. Take that as the model name */
-  for (i = 0; i < len; i++)
-    if( ((lib_name[i] == '_') && (lib_name[i+1] == 'c')) || (lib_name[i] == '.') )
-      break;
-  
-  size_t new_size = i + strlen(_post) + 1;
-  char* ret = (char*) malloc( new_size * sizeof(char) );
-  strncat(ret, lib_name, i);
+  printf("[get_vf_name] lib_name: %s\n",lib_name);
+  dot=strchr(lib_name,'.');
+  n=strlen(lib_name);
+  n-=strlen(dot);
+  size_t new_size = n + strlen(_post) + 2;
+  char* ret = (char*) calloc( new_size , sizeof(char) );
+  strncat(ret, lib_name, n);
   strcat(ret, _post);
+  printf("[get_vf_name] vf_name: %s\n",ret);
   return ret;
 }
 
 ode_model* ode_model_loadFromFile(const char *filename){
-	
-  void* odeLibrary = dlopen(filename, RTLD_LOCAL | RTLD_LAZY);				/* resource acc */
+
+  printf("loading library from: %s\n",filename);
+  void* odeLibrary = dlopen(filename, RTLD_LAZY | RTLD_LOCAL);				/* resource acc */
   
-  if (odeLibrary == 0){
+  if (odeLibrary == NULL){
     fprintf(stderr, "Library %s could not be loaded.\n",filename);
     char * err = dlerror();
     if(err!=0)
@@ -50,10 +55,11 @@ ode_model* ode_model_loadFromFile(const char *filename){
   
   /* get lib name */
   char* model_name = get_vf_name(filename);
+  printf("\tdlsym([],%s);\n",model_name);
   ode_model* odeModel = (ode_model*)dlsym(odeLibrary, model_name);
   free(model_name);
   
-  if(odeModel==0){
+  if(odeModel==NULL){
     fprintf(stderr, "Could not find ode_model symbol in library %s.\n", filename);
     char * err = dlerror();
     if(err!=0)
@@ -61,7 +67,7 @@ ode_model* ode_model_loadFromFile(const char *filename){
     
     dlclose(odeLibrary);													/* resource free */
     /* exit(1); */
-    return 0;
+    return NULL;
   }
   
   /* store a pointer to the loaded library so we can close it later with dlclose */
@@ -333,9 +339,7 @@ void ode_solver_init_sens(ode_solver* solver,  double* yS0, int lenP, int lenY){
 }
 
 void ode_solver_disable_sens(ode_solver* solver){
-
   CVodeSensToggleOff(solver->cvode_mem);
-  
 }
 
 /* yS0 in row major order */

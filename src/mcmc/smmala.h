@@ -13,7 +13,7 @@ extern "C" {
 #include "mcmc_kernel.h"
 
   typedef int (*fptrPosterior_smmala)(const double* x,
-				      const void* model_params,
+				      void* model_params,
 				      double* fx,
 				      double* dfx, double* FIx);
 	
