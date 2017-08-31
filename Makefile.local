@@ -1,0 +1,35 @@
+CC=mpicc
+CPP=c++
+
+CPPFLAGS = -Wall -O2
+CFLAGS = -Wall -O2 -march=native -std=gnu11 -D_GNU_SOURCE
+LDFLAGS = `pkg-config --libs gsl`
+
+IFLAGS = `pkg-config --cflags gsl`
+
+MALA_SRC=./src/mcmc/smmala.c ./src/mcmc/mcmc_kernel.c			\
+./src/ode/ode_model.c ./src/app/read_cnf.c ./src/mcmc/mv_norm.c		\
+./src/app/model_parameters_smmala.c ./src/app/normalisation_sd.c	\
+./src/app/dynamic_array.c
+
+VFGEN_SOURCE = `ls ./src/vfgen/*.cpp`
+
+BIN=./bin
+.PHONY: all
+
+all: bin/ode_smmala ODE*cvs.c ODE*.so
+
+
+bin/ode_smmala: ./src/app/ode_smmala.c $(MALA_SRC)
+	$(CC)  $(MALA_SRC) -o $(BIN)/ode_smmala -lm -ldl $(IFLAGS) $(LDFLAGS) $(CFLAGS) -lsundials_cvodes -lsundials_nvecserial src/app/ode_smmala.c
+
+vfgen: 
+	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread
+
+%_cvs.c: %.xml
+	./vfgen cvodes:sens=yes,func=yes $<
+
+%.so: %_cvs.c
+	$(CC) -shared -fPIC $(CFLAGS) -lm -o $@  $<
+
+
