@@ -18,6 +18,16 @@ typedef struct {
 } problem_size;
 
 typedef struct {
+  gsl_matrix *jacobian_y;
+  gsl_matrix *jacobian_p;
+  gsl_matrix *eJt;
+  gsl_matrix *Jt;
+  gsl_vector *tau;
+  gsl_vector *x;
+  gsl_vector *r;
+} sensitivity_approximation; 
+
+typedef struct {
   double t0;
   gsl_vector *t;
   gsl_matrix_view data_block_view; // view of this experiments data block
@@ -57,6 +67,7 @@ typedef struct {
   gsl_vector *prior_tmp_b; // .. for calculation buffers
   gsl_vector *prior_mu; // prior parameter: the medians of log normal distributions;
   gsl_matrix *prior_inverse_cov; // prior parameter: the inverse covariance in log space (where the prior is a Gaussian distribution);
+  sensitivity_approximation *S_approx; 
   ode_solver *solver; // contains: cvode_mem; *odeModel; N_Vector y; N_Vector *yS; params;
 } ode_model_parameters;
 

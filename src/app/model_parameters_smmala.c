@@ -77,6 +77,15 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
    * time point t_j, like this: y[c*T+j]=gsl_vector(N)
    */
   omp->tmpF=gsl_vector_alloc(F);
+  omp->S_approx=malloc(sizeof(sensitivity_approximation));
+  omp->S_approx->jacobian_y=gsl_matrix_alloc(N,N);
+  omp->S_approx->jacobian_p=gsl_matrix_alloc(P,N);
+  omp->S_approx->tau=gsl_vector_alloc(N);
+  omp->S_approx->x=gsl_vector_alloc(N);
+  omp->S_approx->r=gsl_vector_alloc(N);
+  omp->S_approx->eJt=gsl_matrix_alloc(N,N);
+  omp->S_approx->Jt=gsl_matrix_alloc(N,N);
+
   //printf("alloc norm f and t\n");
   for (i=0;i<C;i++){
     T=omp->E[i]->t->size;
@@ -129,6 +138,16 @@ int ode_model_parameters_free(ode_model_parameters *omp){
   int i,j,k;
   int C=omp->size->C;
   int T=omp->size->T;
+
+  gsl_matrix_free(omp->S_approx->jacobian_y);
+  gsl_matrix_free(omp->S_approx->jacobian_p);
+  gsl_vector_free(omp->S_approx->tau);
+  gsl_vector_free(omp->S_approx->x);
+  gsl_vector_free(omp->S_approx->r);
+  gsl_matrix_free(omp->S_approx->Jt);
+  gsl_matrix_free(omp->S_approx->eJt);
+  free(omp->S_approx);
+  
   for (i=0;i<C;i++){
     free(omp->E[i]->data_row);
     free(omp->E[i]->sd_data_row);
