@@ -50,7 +50,17 @@ extern "C" {
  */
 typedef	int (*fptrMCMCSample)(mcmc_kernel* kernel, int* acc);
 int mcmc_sample(mcmc_kernel* kernel, int* acc);
-	
+
+/* This function is used for Parallel Tempering communication.
+ *
+ */
+typedef	int (*fptrMCMCExchangeInformation)(mcmc_kernel* kernel, const int DEST, double *fx, double *dfx, double *FI);
+int mcmc_exchange_information(mcmc_kernel* kernel, const int DEST, double *fx, double *dfx, double *FI);
+
+typedef	int (*fptrMCMCSwapChains)(mcmc_kernel* kernel, const int DEST, double *fx, double *dfx, double *FI);
+int mcmc_swap_chains(mcmc_kernel* kernel, const int DEST, double *fx, double *dfx, double *FI);
+
+  
 /* Initialise MCMC kernel with initial parameters x.
  * Arguments:
  *	kernel:		a pointer to the MCMC kernel structure.
@@ -115,12 +125,14 @@ struct mcmc_kernel_struct_ {
   void* rng;					/* pointer to random number generator */
   void* model_function;		/* pointer to structure with user defined functions for the model */
   void* kernel_params;		/* kernel specific parameters and working storage */
+  fptrMCMCExchangeInformation ExchangeInformation;
   fptrMCMCSample Sample;		/* sampling function for mcmc kernel */
   fptrMCMCInit Init;			/* initialisation function for mcmc kernel using predifined starting values for parameters */
   fptrMCMCInitRand InitR;		/* initialisation function for mcmc kernel using random sample from the prior */
   fptrMCMCFree Free;			/* de-allocation function for mcmc kernel. Frees all memory used by the mcmc kernel */ 
   fptrMCMCAdapt Adapt;		/* adaptation function for mcmc kernel. Addapts any tuning kernel parameters */
   fptrMCMCPrint PrintStats;	/* loging function for mcmc kernel. Prints to an output stream kernel statistics and loging information */
+  
 };
 
   /* Draw a radom sample from the prior.

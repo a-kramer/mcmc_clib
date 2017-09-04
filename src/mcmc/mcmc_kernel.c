@@ -41,6 +41,10 @@ int mcmc_write_sample(mcmc_kernel *kernel, FILE *s){
   return EXIT_SUCCESS;
 }
 
+int mcmc_exchange_information(mcmc_kernel* kernel, const int rank, const int size, double *fx, double *dfx, double *FI){
+  return kernel->ExchangeInformation(kernel, rank, size, fx, dfx, FI);
+}
+
 
 /* used only when the code is not compiled with the -DHAVE_INLINE flag */
 int mcmc_sample(mcmc_kernel* kernel, int* acc){

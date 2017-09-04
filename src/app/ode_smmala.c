@@ -506,7 +506,7 @@ int printf_omp(ode_model_parameters *mp){
 }
 
 
-int LikelihoodComplexNorm(ode_model_parameters *mp, double *l, double *dl, double *FI){
+int LogLikelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
 
   /* Here, the ode integration is done
    * 
@@ -817,7 +817,7 @@ int main (int argc, char* argv[]) {
   sprintf(rank_sample_file,"rank_%04i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options.output_file));
   cnf_options.output_file=rank_sample_file;
 
-  printf("\tlib_name: %s\nrank_sammple_file: %s\n\tresume_filename: %s\n",lib_name,rank_sample_file,resume_filename);
+  printf("#\tlib_name: %s\nrank_sammple_file: %s\n#\tresume_filename: %s\n",lib_name,rank_sample_file,resume_filename);
   
   ode_solver* solver = ode_solver_alloc(odeModel); /* alloc */
   if (solver == NULL) {
@@ -902,7 +902,8 @@ int main (int argc, char* argv[]) {
 
   printf("# allocating memory for the SMMALA model.\n");
   fflush(stdout);
-  smmala_model* model = smmala_model_alloc(Posterior, NULL, &omp); // ode_model_parameters
+  smmala_model* model = smmala_model_alloc(LogPosterior, NULL, &omp);
+  
   /* initial parameter values */
   D=omp.size->D;
   double init_x[D];
@@ -952,7 +953,7 @@ int main (int argc, char* argv[]) {
   double fx;
   double dfx[D];
   double FI[D*D];
-  Posterior(init_x, &omp, &fx, dfx, FI);
+  LogPosterior(init_x, &omp, &fx, dfx, FI);
   printf("# θ=θ₀; Posterior(θ|D)=%g;\n",fx);
 
   /* print first sample, initial values in init_x */
@@ -962,7 +963,10 @@ int main (int argc, char* argv[]) {
   double acc_rate;
   size_t it;
   int acc;
-	
+
+  /* From here on, we will use fx, dfx and FI as communication buffers
+   */
+  
   oFile=fopen(cnf_options.output_file,"w");
   if (oFile!=NULL){
     printf("# writing sample to output file.\n");
@@ -978,78 +982,34 @@ int main (int argc, char* argv[]) {
     BurnInSamples=warm_up;
   }
 
-  if (sampling_action==SMPL_FRESH){
-    fprintf(stdout, "# Burn-in phase.\n");
-    gsl_vector *lP;
-    gsl_matrix *X;
-    gsl_vector_view X_view, array_view;
-    size_t Chunk=100;
-    int beta_bar_width=60; //characters, on screen
-    int b,B;
-    lP=gsl_vector_alloc(Chunk);
-    X=gsl_matrix_alloc(D,Chunk);
-  
-    /* "find mode" Loop */
-    for (it = 0; it < BurnInSamples; it++) {
-      omp.beta=((double) it)/((double) BurnInSamples);
-      omp.beta=gsl_pow_6(omp.beta);
-      omp.beta=omp.beta/(gsl_pow_6(0.5)+omp.beta);
-      mcmc_sample(kernel, &acc);
-      acc_c += acc;
-      /* print sample */
-      //mcmc_print_sample(kernel, stdout);
-      //ptr=gsl_matrix_const_ptr(X,i,0);
-      X_view=gsl_matrix_column(X,it);
-      array_view=gsl_vector_view_array(kernel->x,D);
-      gsl_vector_memcpy(&(X_view.vector),&(array_view.vector));
-      //printf("accessing fx: %g.\n",fx);
-      fx=kernel->fx[0];
-      //printf("accessing fx: %g.\n",fx);
-      gsl_vector_set(lP,it,fx);
+  omp.beta=gsl_pow_4((double )rank / (double) (R-1));
 
-      /* Addapt MCMC parameters every 100 burn-in samples */
-      if ( ((it + 1) % Chunk) == 0 ) {
-	acc_rate = (double) acc_c / (double) Chunk;
-	fprintf(stdout, "# Iteration: %li\tAcceptance rate: %.2g\t",it, acc_rate);
-	/* print log and statistics */
-	mcmc_print_stats(kernel, stdout);
-	printf("beta: [\033[22;32m");
-	B=beta_bar_width;
-	b=B*omp.beta;
-	for (i=0;i<b;i++) printf("#");
-	for (i=b;i<B;i++) printf("¤");
-	printf("\033[0m]\n");
-	print_chunk_graph(X,lP);
-	/* adapt parameters */
-	mcmc_adapt(kernel, acc_rate);
-	acc_c = 0;
-	fflush(stdout);
-      }
+  /* Burn In Loop and Tuning*/
+  for (it = 0; it < BurnInSamples; it++) {
+    mcmc_sample(kernel, &acc);
+    acc_c += acc;
+    // omp: ODE model parameters, sometimes called just mp, in
+    // functions kernel contains a link to the model, and therein is a
+    // link to omp.  mcmc_sample updates the omp structure with
+    // current values of FI and fx and dfx (gradient of fx).
+    // But, we already have a link to omp directly;
+    if (rank<R-1 && it%rank==0){
+      mcmc_exchange_information(kernel,DEST,R,&fx,&dfx,&FI);
+      mcmc_swap_chains(kernel,beta,R,&fx,&dfx,&FI);
     }
-
-    omp.beta=1.0;
-
-    /* Burn In Loop and Tuning*/
-    for (it = 0; it < BurnInSamples; it++) {
-      mcmc_sample(kernel, &acc);
-      acc_c += acc;
-      /* print sample */
-      //mcmc_print_sample(kernel, stdout);
-      if ( ((it + 1) % 100) == 0 ) {
-	acc_rate = (double)acc_c / (double)100;
-	fprintf(stdout, "# Iteration: %li\tAcceptance rate: %.2g\t",it, acc_rate);
-	/* print log and statistics */
-	mcmc_print_stats(kernel, stdout);
-	/* adapt  parameters */
-	mcmc_adapt(kernel, acc_rate);
-	acc_c = 0;
-      }
+    //mcmc_print_sample(kernel, stdout);
+    if ( ((it + 1) % 100) == 0 ) {
+      acc_rate = (double) acc_c / 100.0;
+      fprintf(stdout, "# Iteration: %li\tAcceptance rate: %.2g\t",it, acc_rate);
+      mcmc_print_stats(kernel, stdout);
+      mcmc_adapt(kernel, acc_rate);
+      acc_c = 0;
     }
-    fprintf(stdout, "\n# Burn-in complete, sampling from the posterior.\n");
   }
+  fprintf(stdout, "\n# Burn-in complete, sampling from the posterior.\n");
+  
 
   /* full Posterior loop */
-  omp.beta=1.0;
   size_t Samples = cnf_options.sample_size;
   clock_t ct=clock();
   
@@ -1093,7 +1053,7 @@ int main (int argc, char* argv[]) {
 /* Calculates the unormalised log-posterior fx, the gradient dfx, the
  * Fisher information FI.
  */
-int Posterior(const double* x,  void* model_params, double* fx, double* dfx, double* FI){
+int LogPosterior(const double* x,  void* model_params, double* fx, double* dfx, double* FI){
 	
   ode_model_parameters* omp =  (ode_model_parameters*) model_params;
   double prior_value=0;            // the prior distribution related sum of squares
@@ -1115,14 +1075,19 @@ int Posterior(const double* x,  void* model_params, double* fx, double* dfx, dou
   
   fx[0]=0;
   for (i=0;i<D;i++) gsl_vector_set(omp->p,i,gsl_sf_exp(x[i]));
-  logL_stat=LikelihoodComplexNorm(omp, fx, dfx, FI);
-  //printf("likelihood: %g\n",fx[0]);
 
+  logL_stat=LogLikelihood(omp, fx, dfx, FI);
+  omp.lx=fx[0];
+  
+  //printf("likelihood: %g\n",fx[0]);
+  
   gsl_vector_memcpy(prior_diff,x_v);
   gsl_vector_sub(prior_diff,omp->prior_mu);
 
   gsl_blas_dsymv(CblasUpper,-0.5,inv_cov,prior_diff,0.0,prior_mv);
   gsl_blas_ddot(prior_diff,prior_mv,&prior_value);
+  omp.px=prior_value;
+  
   //  printf("PosteriorFI: prior_value=%f\n",prior_value);
   fx[0]*=omp->beta;
   fx[0]+=prior_value;

@@ -14,7 +14,6 @@ typedef struct {
   int T; // number of measurement time-points for NORMALISATION_BY_REFERENCE
   int U; // number of input parameters
   int C; // number of experimental conditions, excluding control (reference measurement)
-  //int R; // number of reference measurements, should always be 1, but if necessary uncomment line
 } problem_size;
 
 typedef struct {
@@ -49,9 +48,10 @@ typedef struct {
 } experiment;
 
 typedef struct {
-  //  int D;
   double t0;
   double beta; // inverse temperature for annealing or tempering; logPosterior= beta*logLikelihood+logPrior
+  double lx;
+  double px;
   problem_size *size;
   gsl_vector *p; // memory for the ODE's parameters (they are
 		 // exponential) and input parameters, appended
