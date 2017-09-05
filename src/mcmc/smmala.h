@@ -8,7 +8,7 @@
 #ifdef __cplusplus  /* wrapper to enable C++ usage */
 extern "C" {
 #endif
-	
+  
 #include <gsl/gsl_rng.h>
 #include "mcmc_kernel.h"
 
@@ -18,15 +18,22 @@ extern "C" {
 				      double* dfx, double* FIx);
 	
   /*typedef int (*fptrModelGrad)(const double* x, const void* model_params,
-							   double* dfx, double* Hfx);*/
+    double* dfx, double* Hfx);*/
 	
   typedef struct{
-	  fptrPosterior_smmala Likelihood;
-	  fptrPrior_rnd  Prior_rnd;
-	  void* m_params;
+    fptrPosterior_smmala Likelihood;
+    fptrPrior_rnd  Prior_rnd;
+    void* m_params;
   } smmala_model;
 		
-
+  typedef struct {
+    double *x;
+    double *lx;
+    double *fx;
+    double *dfx;
+    double *FI;
+  } smmala_comm_buffer;
+  
   smmala_model* smmala_model_alloc(fptrPosterior_smmala Lx, fptrPrior_rnd Prx, void* model_params);
 
   void smmala_model_free(smmala_model* model);

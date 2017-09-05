@@ -1,22 +1,7 @@
-#include <stdlib.h>
-#include <stdio.h>
+#include <regex.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_vector.h>
-#include <gsl/gsl_errno.h>
-#include <regex.h>
-#include <ctype.h>
-#include <math.h>
-#include <string.h>
-#include "model_parameters_smmala.h"
-#include "normalisation_sd.h"
-#include "dynamic_array.h"
-
-// normalisation methods
-#define DATA_IS_ABSOLUTE 0
-#define DATA_NORMALISED_BY_REFERENCE 1
-#define DATA_NORMALISED_BY_TIMEPOINT 2
-#define DATA_NORMALISED_BY_STATE_VAR 3
-
+#include "../mcmc/model_parameters_smmala.h"
 // define target block types
 #define INTEGER_BLOCK 1
 #define DOUBLE_BLOCK 2
@@ -62,21 +47,12 @@ struct field_expression_t {
   int id;
 };
 
-
-field_expression* field_expression_stack(int id,
-					 field_expression *top,
-					 regex_t *open,
-					 regex_t *close);
-
-field_expression* field_expression_init(field_names *fn);
-
-int parse_config(FILE *cnf,
-		 ode_model_parameters *omp,
-		 main_options *cnf_options);
-
-
 int read_problem_definition(FILE *cnf,
 			    ode_model_parameters *omp,
 			    const field_expression *fe,
 			    const regex_t *comment,
 			    main_options *cnf_options);
+
+int parse_config(FILE *cnf,
+		 ode_model_parameters *omp,
+		 main_options *cnf_options);

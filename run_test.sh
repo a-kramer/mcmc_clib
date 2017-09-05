@@ -7,7 +7,7 @@
 Model=ODEmodel11S26P4U
 SampleFile="`date +%Y-%m-%dT%Hh%Mm`.double"
 #SampleSize=$((1024**2))
-SampleSize=$((10))
+SampleSize=$((2**12))
 NP=${1:-1}
 cat<<EOF
 $0

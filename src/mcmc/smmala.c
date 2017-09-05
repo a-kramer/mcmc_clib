@@ -9,9 +9,12 @@
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_blas.h>
+#include <gsl/gsl_sf_exp.h>
+#include <string.h>
 #include <mpi.h>
 #include "smmala.h"
 #include "mv_norm.h"
+#include "model_parameters_smmala.h"
 
 
 #define SWAP(a, b, tmp)  tmp = a; a = b; b = tmp;
@@ -31,53 +34,54 @@ typedef struct{
   double target_acceptance;
 } smmala_params;
 
-int smmala_exchange_information(mcmc_kernel* kernel, const int DEST, double *x, double *lx, double *fx, double *dfx, double *FI){
-  MPI_status status; // MPI_Status contains: MPI_SOURCE, MPI_TAG, MPI_ERROR
+int smmala_exchange_information(mcmc_kernel* kernel, const int DEST, void *buffer){
+  MPI_Status status; // MPI_Status contains: MPI_SOURCE, MPI_TAG, MPI_ERROR
   int N=kernel->N; // size of x, dfx; N*N is size of FI;
   smmala_params* state = (smmala_params*) kernel->kernel_params;
   smmala_model* model = (smmala_model*) kernel->model_function;
   ode_model_parameters *omp = (ode_model_parameters*) model->m_params;  
   int TAG=0;
-  int SRC=DEST;
+  int SRC=DEST; // send to and receive from the same process
+  smmala_comm_buffer *buf=buffer;
   //error handling for nerr communication steps
   int nerr=5;
-  int i=0, ec[nerr], overall_error=MPI_SUCCESS;
+  int i, ec=MPI_SUCCESS, overall_error=MPI_SUCCESS;
   int len, error_class;
   char error_string[MPI_MAX_ERROR_STRING];
 
   //things to be communicated:
-  double *send_buffer[nerr]={kernel->x,kernel->fx,state->dfx,state->Hfx,&(omp->lx)};
-  double *recv_buffer[nerr]={        x,        fx,       dfx,        FI,        lx};
-  int            size[nerr]={        N,         1,         N,       N*N,         1};
+  double *send_buffer[]={kernel->x,kernel->fx,state->dfx,state->Hfx,&(omp->lx)};
+  double *recv_buffer[]={   buf->x,   buf->fx,  buf->dfx,   buf->FI,   buf->lx};
+  int            size[]={        N,         1,         N,       N*N,         1};
   
   // every kernel needs to know x and fx;
   for (i=0;i<nerr;i++){
-    ec[i]=MPI_Sendrecv(send_buffer[i], size[i], MPI_DOUBLE, DEST, TAG,
+    ec=MPI_Sendrecv(   send_buffer[i], size[i], MPI_DOUBLE, DEST, TAG,
 		       recv_buffer[i], size[i], MPI_DOUBLE, SRC, TAG,
 		       MPI_COMM_WORLD, &status);
-    overall_error|=ec[i++];
-    overall_error|=status.MPI_ERROR;
-    if (ec[i]!=MPI_SUCCESS || status.MPI_ERROR!=MPI_SUCCESS){
-     MPI_Error_string(error_class, error_string, &len);
-     MPI_Error_class(ec[i], &error_class);
-     MPI_Error_string(error_class, error_string, &len);
-     fprintf(stderr, "[Comm with rank %3d, part %i] class: %s\n", DEST, i, error_string);
-     MPI_Error_string(ec[i], error_string, &len);
-     fprintf(stderr, "[Comm with rank %3d, part %i] error: %s\n", DEST, i, error_string);
+    overall_error&=ec;
+    overall_error&=status.MPI_ERROR;
+    if (ec != MPI_SUCCESS){
+      MPI_Error_string(ec, error_string, &len);
+      fprintf(stderr, "[Comm with rank %3i, part %i] error: %s\n", DEST, i, error_string);
+      
+      MPI_Error_class(ec, &error_class);
+      MPI_Error_string(error_class, error_string, &len);
+      fprintf(stderr, "[Comm with rank %3i, part %i] class: %s\n", DEST, i, error_string);
     }
   }
   
   if (overall_error != MPI_SUCCESS){
-   fprintf(stderr, "[Comm with rank %3d] Some Communication error occured.\n", DEST);
+   fprintf(stderr, "[Comm with rank %3i] Some Communication error occured.\n", DEST);
    MPI_Error_string(overall_error, error_string, &len);
-   fprintf(stderr, "[Comm with rank %3d] %s\n", DEST, error_string);
+   fprintf(stderr, "[Comm with rank %3i] %s\n", DEST, error_string);
    MPI_Abort(MPI_COMM_WORLD, overall_error);
   }
   
   return overall_error;
 }
 
-int smmala_swap_chains(mcmc_kernel* kernel, const int other_rank, const double their_beta, const double *x, const double *lx, const double *fx, const double *dfx, const double *FI){
+int smmala_swap_chains(mcmc_kernel* kernel, const int master, const int rank, const int other_rank, const double their_beta, void *buffer){
   double a;
   int swap_accepted=0;
   int N=kernel->N; // size of x, dfx; N*N is size of FI;
@@ -85,22 +89,27 @@ int smmala_swap_chains(mcmc_kernel* kernel, const int other_rank, const double t
   smmala_params* state = (smmala_params*) kernel->kernel_params;
   smmala_model* model = (smmala_model*) kernel->model_function;
   ode_model_parameters *omp = (ode_model_parameters*) model->m_params;
-  int accept=0;
+
   int TAG=0;
+  smmala_comm_buffer *buf=buffer;
   //  log likelihood of x: omp->lx;
   //  log      prior of x: omp->px;
 
-
+  a=gsl_sf_exp((their_beta - omp->beta)*(omp->lx - buf->lx[0]));
   if (master){
-    a=gsl_sf_exp((their_beta - omp->beta)*(omp->lx[0]-lx[0]));
     double r1=gsl_rng_uniform(rng);
-    accept=r1<a?1:0;
-    MPI_Send(&accept, 1, MPI_INT, other_rank,TAG,MPI_COMM_WORLD);
+    swap_accepted=r1<a?1:0;
+    MPI_Send(&swap_accepted, 1, MPI_INT, other_rank,TAG,MPI_COMM_WORLD);
   }else{
-    MPI_Recv(&accept, 1, MPI_INT, other_rank,TAG,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+    MPI_Recv(&swap_accepted, 1, MPI_INT, other_rank,TAG,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
   }
-  if (accept!=0){
-    omp->
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (swap_accepted!=0){ // both sides copy their received comm buffer into the kernel
+    memcpy(kernel->x,buf->x,N*sizeof(double));
+    memcpy(kernel->fx,buf->fx,1*sizeof(double));
+    memcpy(state->dfx,buf->dfx,N*sizeof(double));
+    memcpy(state->Hfx,buf->FI,N*N*sizeof(double));
+    memcpy(&(omp->lx),buf->lx,1*sizeof(double));
   }
   return swap_accepted;
 }
@@ -438,6 +447,7 @@ mcmc_kernel* smmala_kernel_alloc(int N, double step_size, smmala_model* model_fu
   kernel->model_function = model_function;
   kernel->kernel_params = params;
   kernel->ExchangeInformation = &smmala_exchange_information;
+  kernel->SwapChains = &smmala_swap_chains;
   kernel->Sample = &smmala_kernel_sample;
   kernel->Adapt = &smmala_kernel_adapt;
   kernel->Init = &smmala_kernel_init;

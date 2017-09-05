@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_matrix_int.h>
-#include "model_parameters_smmala.h"
+#include "../mcmc/model_parameters_smmala.h"
 #include "dynamic_array.h"
 
 

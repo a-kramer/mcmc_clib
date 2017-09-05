@@ -1,4 +1,24 @@
 #include "read_cnf.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <gsl/gsl_errno.h>
+#include <ctype.h>
+#include <math.h>
+#include <string.h>
+#include "normalisation_sd.h"
+#include "dynamic_array.h"
+//#include "../mcmc/model_parameters_smmala.h"
+
+
+
+field_expression* field_expression_stack(int id,
+					 field_expression *top,
+					 regex_t *open,
+					 regex_t *close);
+
+field_expression* field_expression_init(field_names *fn);
+
+
 
 
 gsl_object* gsl_object_alloc(){

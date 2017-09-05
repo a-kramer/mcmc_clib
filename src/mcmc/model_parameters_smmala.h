@@ -6,6 +6,13 @@
 #include <stdio.h>
 #include "../ode/ode_model.h"
 
+// normalisation methods
+#define DATA_IS_ABSOLUTE 0
+#define DATA_NORMALISED_BY_REFERENCE 1
+#define DATA_NORMALISED_BY_TIMEPOINT 2
+#define DATA_NORMALISED_BY_STATE_VAR 3
+
+
 typedef struct {
   int D; // number of sampling variables; unknown ODE-Model parameters
   int P; // number of total parameters of the ODE-Model (including dependent and known parameters)

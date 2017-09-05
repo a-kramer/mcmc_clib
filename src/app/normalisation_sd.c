@@ -1,8 +1,8 @@
 #include <stdlib.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_matrix_int.h>
-#include "model_parameters_smmala.h"
 #include "normalisation_sd.h"
+#include "../mcmc/model_parameters_smmala.h"
 /* All normalisation functions in this file use absolte values of
  * derivatives and add them weighted by individual sds. This works
  * under the assumption that the result's standard deviation is more
@@ -15,19 +15,21 @@
  * both d and s to be positive, hence absolute values by default.
  */
 
-int normalise_by_timepoint_with_sd(ode_model_parameters *omp){
+int normalise_by_timepoint_with_sd(void *mp){
   /* here normalisation is just one entry, containing the
    * normalisation time index. Many of the operation are done in
    * place, so variable interpretation changes.
    */
   int r,c,j,l;
+  ode_model_parameters *omp=mp;
   int C=omp->size->C;
   int T=omp->size->T;
   int F=omp->size->F;
   gsl_vector *d,*sd_d,*sd_s,*s;
   gsl_vector *tmp; // intermediate results
-  tmp=gsl_vector_alloc(F);
-  
+
+  tmp=omp->tmpF; //gsl_vector_alloc(F);
+ 
   r=omp->norm_t->size1;
   /*printf("r=%i\nnorm_t=[\n",r);
   for (c=0;c<r;c++){
@@ -62,11 +64,11 @@ int normalise_by_timepoint_with_sd(ode_model_parameters *omp){
    * now exactly 1, but the simulations will be as well, so they won't
    * contribute to the likelihood.
    */
-  gsl_vector_free(tmp);
+  //  gsl_vector_free(tmp);
   return GSL_SUCCESS;  
 }
 
-int normalise_by_state_var_with_sd(ode_model_parameters *omp){
+int normalise_by_state_var_with_sd(void *mp){
   /* here normalisation consists of two lines. Line 1 lists the state
    * variables to use for normalisation. Line 2 selects the time index
    * of that state variable to normalise at.
@@ -76,6 +78,7 @@ int normalise_by_state_var_with_sd(ode_model_parameters *omp){
   gsl_vector *tmp; // intermediate results
   //gsl_vector_view D,SD;
   gsl_vector *r,*sd_r,*d,*sd_d;
+  ode_model_parameters *omp=mp;
   int i_f, i_t;
   int C=omp->size->C;
   int T=omp->size->T;
