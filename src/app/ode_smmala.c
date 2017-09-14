@@ -51,7 +51,8 @@
 #define SMPL_RESUME_TUNE 2
 
 #define BUFSZ 1024
-#define BETA(rank,R) gsl_pow_4((double )rank / (double) (R-1))
+//#define BETA(rank,R) gsl_pow_4((double)(rank)/(double) ((R)-1))
+#define BETA(rank,R) (1.0/((double)(rank+1)))
 
 /* Auxiliary structure with working storage and aditional parameters for
  * a multivariate normal model with known covariance matrix and zero mean.
@@ -144,7 +145,7 @@ void print_chunk_graph(gsl_matrix *X, gsl_vector *lP){
 int main (int argc, char* argv[]) {
   int D = 0; // number of MCMC sampling variables, i.e. model parameters
   //int C = 0; // number of experimental conditions, i.e different input vectors
-  int i=0;
+  int c,i=0;
   int warm_up=0; // sets the number of burn in points at command line
   char *cfilename=NULL;
   char lib_name[BUFSZ];
@@ -246,7 +247,7 @@ int main (int argc, char* argv[]) {
   double p[P];
   gsl_vector_view p_view=gsl_vector_view_array(p,P);
   ode_model_get_default_params(odeModel, p, P);
-  //gsl_printf("default parameters",&(p_view.vector),0);
+  //  if(rank==0)  gsl_printf("default parameters",&(p_view.vector),GSL_IS_DOUBLE | GSL_IS_VECTOR);
   //  double t_old = solver_param[2];
   
   omp.solver=solver;
@@ -271,12 +272,14 @@ int main (int argc, char* argv[]) {
     gsl_vector_set_all(&(y_view.vector),1.0);
   }
   
-  
-  /* gsl_printf("data",omp.Data,1); */
-  /* gsl_printf("sd data",omp.sdData,1); */
-  /* gsl_printf("u",omp.input_u,1); */
-  /* gsl_printf("t",omp.t,0); */
- 
+  /* if (rank==0){ */
+  /*   gsl_printf("data",omp.Data,GSL_IS_DOUBLE | GSL_IS_MATRIX); */
+  /*   gsl_printf("sd data",omp.sdData,GSL_IS_DOUBLE | GSL_IS_MATRIX); */
+  /*   //gsl_vector_fprintf(stdout,omp.E[0]->input_u,"%g"); fflush(stdout); */
+  /*   //printf("Experiment %i\n",c); */
+  /*   for (c=0;c<omp.size->C;c++) gsl_printf("u",omp.E[c]->input_u,GSL_IS_DOUBLE | GSL_IS_VECTOR); */
+  /*   for (c=0;c<omp.size->C;c++) gsl_printf("t",omp.E[c]->t,GSL_IS_DOUBLE | GSL_IS_VECTOR); */
+  /* } */
   // unspecified initial conditions
   if (omp.ref_E->init_y==NULL){
     omp.ref_E->init_y=gsl_vector_alloc(N);
@@ -313,7 +316,7 @@ int main (int argc, char* argv[]) {
 					    seed,
 					    cnf_options.target_acceptance);
   /* initialise MCMC */
-  //gsl_printf("prior mean",omp.prior_mu,0);  
+  // if (rank==0) gsl_printf("prior mean",omp.prior_mu,GSL_IS_DOUBLE | GSL_IS_VECTOR);  
   if (sampling_action==SMPL_RESUME){
     rFile=fopen(resume_filename,"r");
     if (rFile==NULL) {
@@ -340,11 +343,11 @@ int main (int argc, char* argv[]) {
   for (i=0;i<D;i++) printf(" %g ",init_x[i]);
   printf("\n");
   mcmc_init(kernel, init_x);
-  
-  //gsl_printf("Normalised Data",omp.Data,1);
-  //gsl_printf("standard deviation",omp.sdData,1); //exit(0);
-  //fflush(stdout);
-  
+  /* if (rank==0){ */
+  /*   gsl_printf("Normalised Data",omp.Data,GSL_IS_DOUBLE | GSL_IS_MATRIX); */
+  /*   gsl_printf("standard deviation",omp.sdData,GSL_IS_DOUBLE | GSL_IS_MATRIX); //exit(0); */
+  /*   fflush(stdout); */
+  /* } */
   printf("# test evaluation of Posterior function.\n");
   fflush(stdout);
 
@@ -354,12 +357,7 @@ int main (int argc, char* argv[]) {
   double FI[D*D]; // fisher information matrix
   LogPosterior(init_x, &omp, &fx, dfx, FI);
   printf("# θ=θ₀; Posterior(θ|D)=%g;\n",fx);
-  smmala_comm_buffer buffer;
-  buffer.x=init_x;
-  buffer.lx=&lx;
-  buffer.fx=&fx;
-  buffer.dfx=dfx;
-  buffer.FI=FI;
+  smmala_comm_buffer *buffer=smmala_comm_buffer_alloc(D);
   
   /* print first sample, initial values in init_x */
   mcmc_print_sample(kernel, stdout);
@@ -368,9 +366,6 @@ int main (int argc, char* argv[]) {
   double acc_rate;
   size_t it;
   int acc;
-  
-  /* From here on, we will use fx, dfx and FI as communication buffers
-   */
   
   oFile=fopen(cnf_options.output_file,"w");
   if (oFile!=NULL){
@@ -386,36 +381,35 @@ int main (int argc, char* argv[]) {
   } else {
     BurnInSamples=warm_up;
   }
-  
+  printf("# Performing Burn-In with step-size (%g) tuning: %lu iterations\n",cnf_options.initial_stepsize,BurnInSamples);
   omp.beta=BETA(rank,R);
-  double their_beta;
-  int master;
+  double their_beta=1;
+  int master=0;
+  int swaps=0;
   /* Burn In Loop and Tuning*/
   for (it = 0; it < BurnInSamples; it++) {
     mcmc_sample(kernel, &acc);
     acc_c += acc;
-    // omp: ODE model parameters, sometimes called just mp, in
-    // functions kernel contains a link to the model, and therein is a
-    // link to omp.  mcmc_sample updates the omp structure with
-    // current values of FI and fx and dfx (gradient of fx).
-    // But, we already have a link to omp directly;
-    master=(it%2==rank%2);
-    if (master){
-      DEST=(rank+1)%R; // this process is the master process for swap decisions
-    } else {
-      DEST=(R+rank-1)%R; // this process has to accept swap decisions from DEST
+    if ((it+1)%3==0){
+      master=(it%2==rank%2); // if iterator is even, then even procs are master
+      if (master){
+	DEST=(rank+1)%R; // this process is the master process for swap decisions
+      } else {
+	DEST=(R+rank-1)%R; // this process has to accept swap decisions from DEST
+      }
+      //their_beta=BETA(DEST,R); // the orther proc's beta value
+      mcmc_exchange_information(kernel,DEST,buffer);
+      swaps+=mcmc_swap_chains(kernel,master,rank,DEST,buffer);
     }
-    their_beta=BETA(DEST,R); // the orther proc's 
-    mcmc_exchange_information(kernel,DEST,&buffer);
-    mcmc_swap_chains(kernel,master,rank,DEST,their_beta,&buffer);
-  }
-  //mcmc_print_sample(kernel, stdout);
-  if ( ((it + 1) % 100) == 0 ) {
-    acc_rate = (double) acc_c / 100.0;
-    fprintf(stdout, "# Iteration: %li\tAcceptance rate: %.2g\t",it, acc_rate);
-    mcmc_print_stats(kernel, stdout);
-    mcmc_adapt(kernel, acc_rate);
-    acc_c = 0;
+    //mcmc_print_sample(kernel, stdout);
+    if ( ((it + 1) % 100) == 0 ) {
+      acc_rate = (double) acc_c / 100.0;
+      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %li) acc. rate: %3.2g; %2i %% swaps\t",rank,R,omp.beta,it,acc_rate,swaps);
+      mcmc_print_stats(kernel, stdout);
+      mcmc_adapt(kernel, acc_rate);
+      acc_c = 0;
+      swaps=0;
+    }
   }
   
   fprintf(stdout, "\n# Burn-in complete, sampling from the posterior.\n");
@@ -429,6 +423,15 @@ int main (int argc, char* argv[]) {
     /* draw a sample using RMHMC */
     mcmc_sample(kernel, &acc);
     acc_c += acc;
+    master=(it%2==rank%2);
+    if (master){
+      DEST=(rank+1)%R; // this process is the master process for swap decisions
+    } else {
+      DEST=(R+rank-1)%R; // this process has to accept swap decisions from DEST
+    }
+    //their_beta=BETA(DEST,R); // the orther proc's 
+    mcmc_exchange_information(kernel,DEST,&buffer);
+    mcmc_swap_chains(kernel,master,rank,DEST,&buffer);
 		
     /* print sample */
     if (output_is_binary) {

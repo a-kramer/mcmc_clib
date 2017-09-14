@@ -7,8 +7,9 @@
 Model=ODEmodel11S26P4U
 SampleFile="`date +%Y-%m-%dT%Hh%Mm`.double"
 #SampleSize=$((1024**2))
-SampleSize=$((2**12))
-NP=${1:-1}
+DefaultSampleSize=$((2**10))
+SampleSize=${2:-$DefaultSampleSize}
+NP=${1:-2}
 cat<<EOF
 $0
  redirecting standard output to $Model.out
@@ -29,4 +30,4 @@ $0
  sampling now ...
 EOF
 
-mpirun -np $NP bin/ode_smmala --sens-approx -b -s ${SampleSize} -p -o $SampleFile -l ./$Model.so -c ./$Model.cfg 
+mpirun -np $NP bin/ode_smmala -b -w ${SampleSize} -s ${SampleSize} -p -o $SampleFile -l ./$Model.so -c ./$Model.cfg 

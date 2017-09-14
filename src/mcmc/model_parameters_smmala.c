@@ -130,7 +130,10 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
   // prior 
   omp->prior_tmp_a=gsl_vector_alloc(D);
   omp->prior_tmp_b=gsl_vector_alloc(D);
-
+  omp->dpx=gsl_vector_alloc(D);
+  omp->dlx=gsl_vector_alloc(D);
+  omp->FI_l=gsl_matrix_alloc(D,D);
+  omp->FI_p=gsl_matrix_alloc(D,D);
   return EXIT_SUCCESS;
 }
 

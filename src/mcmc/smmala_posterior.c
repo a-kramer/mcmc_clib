@@ -5,6 +5,7 @@
 #include <gsl/gsl_sf_exp.h>
 #include <gsl/gsl_sf_log.h>
 #include <gsl/gsl_rng.h>
+#include <string.h>
 #include <mpi.h>
 #include "smmala.h"
 #include "../ode/ode_model.h"
@@ -22,7 +23,7 @@ int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy,
   model=solver->odeModel;
   int CVerror =  ode_solver_solve(solver, t, y->data, &tout);
 
-  if (CVerror) {
+  if (CVerror!=CV_SUCCESS) {
     fprintf(stderr, "ODE solver failed with ERROR = %i.\n",CVerror);
     // return a rejection message; the Likelihood is not defined for this argument;
     return GSL_EDOM;
@@ -349,7 +350,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
    */
   int i,j,c,T,C,P,U,N,D;
   double l_t_j;
-  int status;
+  int status=GSL_SUCCESS;
   gsl_vector *y,*fy;
   gsl_matrix *yS,*fyS;
   gsl_vector *t;
@@ -359,7 +360,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
   gsl_matrix *fisher_information;
   gsl_vector_view oS_row;
   gsl_vector_view input_part;
-  int i_flag=CV_SUCCESS;
+  int i_flag=GSL_SUCCESS; // ODE (i)ntegration error flag
   ode_model *model;
   ode_solver *solver;
   sensitivity_approximation *a;
@@ -371,7 +372,8 @@ int LogLikelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
   U=mp->size->U;
   N=mp->size->N;
   D=mp->size->D;
-  //  printf("[L] D=%i\tF=%i\tU=%i\tC=%i\tT=%i\tP=%i\n",D,F,U,C,T,P);
+  //int F=mp->size->F;
+  //  printf("[L] D=%i\tF=%i\tU=%i\tC=%i\tP=%i\n",D,F,U,C,P);
   /* calculate reference model output if necessary:
    */
   input_part=gsl_vector_subvector(mp->p,D,U);
@@ -391,13 +393,12 @@ int LogLikelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
     T=t->size;
     for (j=0; j<T; j++){
 
-      y=mp->ref_E->y[j];  //printf("y: %i, %i\n",mp->size->N,y->size); fflush(stdout);
-      fy=mp->ref_E->fy[j]; //printf("fy: %i, %i\n",mp->size->F,fy->size);fflush(stdout);
-      yS=mp->ref_E->yS[j]; //printf("yS: %i, %i\n",mp->size->N*P,yS->size1*yS->size2);fflush(stdout);
-      fyS=mp->ref_E->fyS[j]; //printf("fyS: %i, %i\n",mp->size->F*P,fyS->size1*fyS->size2);fflush(stdout);
-      ode_solver_step(solver, gsl_vector_get(t,j), y, fy, yS, fyS, a);
-    }
-    
+      y=mp->ref_E->y[j];  //printf("y: %i, %zi\n",mp->size->N,y->size); fflush(stdout);
+      fy=mp->ref_E->fy[j]; //printf("fy: %i, %zi\n",mp->size->F,fy->size);fflush(stdout);
+      yS=mp->ref_E->yS[j]; //printf("yS: %i, %zi\n",mp->size->N*P,yS->size1*yS->size2);fflush(stdout);
+      fyS=mp->ref_E->fyS[j]; //printf("fyS: %i, %zi\n",mp->size->F*P,fyS->size1*fyS->size2);fflush(stdout);
+      i_flag&=ode_solver_step(solver, gsl_vector_get(t,j), y, fy, yS, fyS, a);
+    }    
   }
 
   for (c=0; c<C; c++){// loop over different experimental conditions
@@ -412,88 +413,95 @@ int LogLikelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
     t=mp->E[c]->t;
     T=t->size;
     for (j=0; j<T; j++){
-      y=mp->E[c]->y[j]; //printf("y: %i, %i\n",mp->size->N,y->size);
-      fy=mp->E[c]->fy[j]; //printf("fy: %i, %i\n",mp->size->F,fy->size);
-      yS=mp->E[c]->yS[j]; //printf("yS: %i, %i\n",mp->size->N*P,yS->size1*yS->size2);
-      fyS=mp->E[c]->fyS[j]; //printf("fyS: %i, %i\n",mp->size->F*P,fyS->size1*fyS->size2);
-      i_flag=ode_solver_step(solver, gsl_vector_get(t,j), y, fy, yS, fyS, a);
+      y=mp->E[c]->y[j]; //printf("y: %i, %zi\n",mp->size->N,y->size);
+      fy=mp->E[c]->fy[j]; //printf("fy: %i, %zi\n",mp->size->F,fy->size);
+      yS=mp->E[c]->yS[j]; //printf("yS: %i, %zi\n",mp->size->N*P,yS->size1*yS->size2);
+      fyS=mp->E[c]->fyS[j]; //printf("fyS: %i, %zi\n",mp->size->F*P,fyS->size1*fyS->size2);
+      i_flag&=ode_solver_step(solver, gsl_vector_get(t,j), y, fy, yS, fyS, a);
     }
   }
-  //printf("pre normalisation\n");
-  //printf_omp(mp);
-  switch (mp->normalisation_type){
-  case DATA_NORMALISED_BY_TIMEPOINT:
-    normalise_by_timepoint(mp);
-    break;
-  case DATA_NORMALISED_BY_REFERENCE:
-    normalise_by_reference(mp);
-    break;
-  case DATA_NORMALISED_BY_STATE_VAR:
-    normalise_by_state_var(mp);
-    break;
-  case DATA_IS_ABSOLUTE:
-    assign_oS_fyS(mp);
-    break;
-  default:
-    fprintf(stderr,"unknown normalisation method: %i\n",mp->normalisation_type);
-    exit(-1);
-  }
-  //printf("post normalisation\n");
-  //printf_omp(mp);
-
-  //initialise all return values
-  // log-likelihood
-  l[0]=0;
-  // gradient of the log-likelihood
-  grad_l_view=gsl_vector_view_array(dl,D);
-  grad_l=&(grad_l_view.vector);
-  gsl_vector_set_zero(grad_l);
-  // fisher information
-  fisher_information_view=gsl_matrix_view_array(FI,D,D);
-  fisher_information=&(fisher_information_view.matrix);
-  gsl_matrix_set_zero(fisher_information);
   
-  for (c=0; c<C; c++){
-    t=mp->E[c]->t;
-    T=t->size;
-    for (j=0; j<T; j++){
-      /* Calculate log-likelihood value
-       */
+  if (i_flag!=GSL_SUCCESS){
+    l[0]=-INFINITY;
+    return i_flag;
+  }else{
+    //printf("pre normalisation\n");
+    //printf_omp(mp);
+    
+    switch (mp->normalisation_type){
+    case DATA_NORMALISED_BY_TIMEPOINT:
+      normalise_by_timepoint(mp);
+      break;
+    case DATA_NORMALISED_BY_REFERENCE:
+      normalise_by_reference(mp);
+      break;
+    case DATA_NORMALISED_BY_STATE_VAR:
+      normalise_by_state_var(mp);
+      break;
+    case DATA_IS_ABSOLUTE:
+      assign_oS_fyS(mp);
+      break;
+    default:
+      fprintf(stderr,"unknown normalisation method: %i\n",mp->normalisation_type);
+      exit(-1);
+    }
+    //printf("post normalisation\n");
+    //printf_omp(mp);
+    
+    //initialise all return values
+    // log-likelihood
+    l[0]=0;    
+    // gradient of the log-likelihood
+    grad_l_view=gsl_vector_view_array(dl,D);
+    grad_l=&(grad_l_view.vector);
+    gsl_vector_set_zero(grad_l);
+    // fisher information
+    fisher_information_view=gsl_matrix_view_array(FI,D,D);
+    fisher_information=&(fisher_information_view.matrix);
+    gsl_matrix_set_zero(fisher_information);  
+  
+    for (c=0; c<C; c++){
+      t=mp->E[c]->t;
+      T=t->size;
+      for (j=0; j<T; j++){
+	/* Calculate log-likelihood value
+	 */
       
-      gsl_vector_sub(mp->E[c]->fy[j],mp->E[c]->data[j]);
-      gsl_vector_div(mp->E[c]->fy[j],mp->E[c]->sd_data[j]); // (fy-data)/sd_data
-      if (gsl_blas_ddot (mp->E[c]->fy[j],mp->E[c]->fy[j], &l_t_j)!=GSL_SUCCESS){
-	printf("ddot was unsuccessful\n");
-	exit(-1);
-      } // sum((fy-data)²/sd_data²)
+	gsl_vector_sub(mp->E[c]->fy[j],mp->E[c]->data[j]);
+	gsl_vector_div(mp->E[c]->fy[j],mp->E[c]->sd_data[j]); // (fy-data)/sd_data
+	if (gsl_blas_ddot (mp->E[c]->fy[j],mp->E[c]->fy[j], &l_t_j)!=GSL_SUCCESS){
+	  printf("ddot was unsuccessful\n");
+	  exit(-1);
+	} // sum((fy-data)²/sd_data²)
       
-      l[0]+=-0.5*l_t_j;
-      /* Calculate The Likelihood Gradient and Fisher Information:
-       */
-      gsl_vector_div(mp->E[c]->fy[j],mp->E[c]->sd_data[j]); // (fy-data)/sd_data²
-      //gsl_dgemv(TransA,alpha,A,x,beta,y)
-      status=gsl_blas_dgemv(CblasNoTrans,-1.0,mp->E[c]->oS[j],mp->E[c]->fy[j],1.0,grad_l);
-      if (status!=GSL_SUCCESS){
-	gsl_printf("oS",mp->E[c]->oS[j],1);
-	gsl_printf("(fy-data)/sd_data²",mp->E[c]->fy[j],0);
-	printf("dgemv was unsuccessful: %i %s\n",status,gsl_strerror(status));
-	exit(-1);
-      }
-      /* Calculate the Fisher information
-       */
-      for (i=0;i<D;i++) {
-	oS_row=gsl_matrix_row(mp->E[c]->oS[j],i);
-	gsl_vector_div(&(oS_row.vector),mp->E[c]->sd_data[j]);
-      }
-      gsl_blas_dgemm(CblasNoTrans,
-		     CblasTrans, 1.0,
-		     mp->E[c]->oS[j],
-		     mp->E[c]->oS[j], 1.0,
-		     fisher_information);	
-    } // end for loop for time points
-  } //end for different experimental conditions (i.e. inputs)
-  //exit(0);
-  return i_flag;
+	l[0]+=-0.5*l_t_j;
+	/* Calculate The Likelihood Gradient and Fisher Information:
+	 */
+	gsl_vector_div(mp->E[c]->fy[j],mp->E[c]->sd_data[j]); // (fy-data)/sd_data²
+	//gsl_dgemv(TransA,alpha,A,x,beta,y)
+	status=gsl_blas_dgemv(CblasNoTrans,-1.0,mp->E[c]->oS[j],mp->E[c]->fy[j],1.0,grad_l);
+	if (status!=GSL_SUCCESS){
+	  gsl_printf("oS",mp->E[c]->oS[j],1);
+	  gsl_printf("(fy-data)/sd_data²",mp->E[c]->fy[j],0);
+	  printf("dgemv was unsuccessful: %i %s\n",status,gsl_strerror(status));
+	  //exit(-1);
+	}
+	/* Calculate the Fisher information
+	 */
+	for (i=0;i<D;i++) {
+	  oS_row=gsl_matrix_row(mp->E[c]->oS[j],i);
+	  gsl_vector_div(&(oS_row.vector),mp->E[c]->sd_data[j]);
+	}
+	gsl_blas_dgemm(CblasNoTrans,
+		       CblasTrans, 1.0,
+		       mp->E[c]->oS[j],
+		       mp->E[c]->oS[j], 1.0,
+		       fisher_information);	
+      } // end for loop for time points
+    } //end for different experimental conditions (i.e. inputs)
+    //exit(0);
+  }
+  return i_flag & status;
 }
 
 
@@ -515,7 +523,7 @@ int LogPosterior(const double* x,  void* model_params, double* fx, double* dfx, 
   int D=omp->size->D;
 
   prior_diff=omp->prior_tmp_a;
-  prior_mv=omp->prior_tmp_b;
+  prior_mv=omp->dpx;
   inv_cov=omp->prior_inverse_cov;
   
   gsl_vector_const_view x_view=gsl_vector_const_view_array(x,D);
@@ -526,7 +534,8 @@ int LogPosterior(const double* x,  void* model_params, double* fx, double* dfx, 
 
   logL_stat=LogLikelihood(omp, fx, dfx, FI);
   omp->lx=fx[0];
-  
+  memcpy(omp->dlx->data,dfx,sizeof(double)*D);
+  memcpy(omp->FI_l->data,FI,sizeof(double)*D*D);
   //printf("likelihood: %g\n",fx[0]);
   
   gsl_vector_memcpy(prior_diff,x_v);
@@ -536,6 +545,8 @@ int LogPosterior(const double* x,  void* model_params, double* fx, double* dfx, 
   gsl_blas_ddot(prior_diff,prior_mv,&prior_value);
   omp->px=prior_value;
   
+  
+  int status=logL_stat;
   //  printf("PosteriorFI: prior_value=%f\n",prior_value);
   fx[0]*=omp->beta;
   fx[0]+=prior_value;
@@ -546,6 +557,7 @@ int LogPosterior(const double* x,  void* model_params, double* fx, double* dfx, 
 
   // now for the gradient:
   for (i=0; i < D ; i++){
+    // dfx = beta*dlx + dpx because fx = beta lx + px
     dfx[i]*= omp->beta;
     dfx[i]+= gsl_vector_get(prior_mv,i); // prior component
   }
@@ -555,7 +567,7 @@ int LogPosterior(const double* x,  void* model_params, double* fx, double* dfx, 
     FI[i] *= gsl_pow_2(omp->beta);
     FI[i] += omp->prior_inverse_cov->data[i];
   }
-  return logL_stat;
+  return status;
 }
 
 

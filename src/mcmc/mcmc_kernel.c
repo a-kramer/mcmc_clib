@@ -45,8 +45,8 @@ int mcmc_exchange_information(mcmc_kernel* kernel, const int DEST, void *buffer)
   return kernel->ExchangeInformation(kernel, DEST, buffer);
 }
 
-int mcmc_swap_chains(mcmc_kernel* kernel, const int master, const int rank, const int DEST, const double their_beta, void *buffer){
-  return kernel->SwapChains(kernel, master, rank, DEST, their_beta, buffer);
+int mcmc_swap_chains(mcmc_kernel* kernel, const int master, const int rank, const int DEST, void *buffer){
+  return kernel->SwapChains(kernel, master, rank, DEST, buffer);
 }
   
 

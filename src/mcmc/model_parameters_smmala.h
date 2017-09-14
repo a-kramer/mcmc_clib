@@ -59,6 +59,8 @@ typedef struct {
   double beta; // inverse temperature for annealing or tempering; logPosterior= beta*logLikelihood+logPrior
   double lx;
   double px;
+  gsl_vector *dpx;
+  gsl_vector *dlx;  
   problem_size *size;
   gsl_vector *p; // memory for the ODE's parameters (they are
 		 // exponential) and input parameters, appended
@@ -74,6 +76,8 @@ typedef struct {
   gsl_vector *prior_tmp_b; // .. for calculation buffers
   gsl_vector *prior_mu; // prior parameter: the medians of log normal distributions;
   gsl_matrix *prior_inverse_cov; // prior parameter: the inverse covariance in log space (where the prior is a Gaussian distribution);
+  gsl_matrix *FI_l; // likelihood contribution to fisher information matrix
+  gsl_matrix *FI_p; // prior contribution to fisher information matrix
   sensitivity_approximation *S_approx; 
   ode_solver *solver; // contains: cvode_mem; *odeModel; N_Vector y; N_Vector *yS; params;
 } ode_model_parameters;
