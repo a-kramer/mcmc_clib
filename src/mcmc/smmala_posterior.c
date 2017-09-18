@@ -12,7 +12,7 @@
 #include "smmala_posterior.h"
 #include "../app/diagnosis_output.h"
 #include "model_parameters_smmala.h"
-int LogLikelihood(ode_model_parameters *mp, double *l, double *dl, double *FI);
+int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *dl, gsl_matrix *FI);
 
 int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy, gsl_matrix *yS, gsl_matrix *fyS, sensitivity_approximation *a){
   /* solves ODE for parameter vector p;
@@ -335,7 +335,7 @@ int assign_oS_fyS(ode_model_parameters *mp){
 }
 
 
-int LogLikelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
+int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_matrix *fisher_information){
 
   /* Here, the ode integration is done
    * 
@@ -354,10 +354,6 @@ int LogLikelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
   gsl_vector *y,*fy;
   gsl_matrix *yS,*fyS;
   gsl_vector *t;
-  gsl_vector_view grad_l_view;
-  gsl_vector *grad_l;
-  gsl_matrix_view fisher_information_view;
-  gsl_matrix *fisher_information;
   gsl_vector_view oS_row;
   gsl_vector_view input_part;
   int i_flag=GSL_SUCCESS; // ODE (i)ntegration error flag
@@ -452,12 +448,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
     // log-likelihood
     l[0]=0;    
     // gradient of the log-likelihood
-    grad_l_view=gsl_vector_view_array(dl,D);
-    grad_l=&(grad_l_view.vector);
     gsl_vector_set_zero(grad_l);
-    // fisher information
-    fisher_information_view=gsl_matrix_view_array(FI,D,D);
-    fisher_information=&(fisher_information_view.matrix);
     gsl_matrix_set_zero(fisher_information);  
   
     for (c=0; c<C; c++){
@@ -509,64 +500,45 @@ int LogLikelihood(ode_model_parameters *mp, double *l, double *dl, double *FI){
 /* Calculates the unormalised log-posterior fx, the gradient dfx, the
  * Fisher information FI.
  */
-int LogPosterior(const double* x,  void* model_params, double* fx, double* dfx, double* FI){
+int LogPosterior(const double beta, gsl_vector *x,  void* model_params, double *fx, gsl_vector **dfx, gsl_matrix **FI){
 	
   ode_model_parameters* omp =  (ode_model_parameters*) model_params;
   double prior_value=0;            // the prior distribution related sum of squares
   int i;
-  gsl_matrix *inv_cov;
-  gsl_vector *prior_diff, *prior_mv;
-  
-  const gsl_vector *x_v;
-  // double l;
+  gsl_vector *prior_diff;  
   int logL_stat;
-  int D=omp->size->D;
+  int D=omp->prior_mu->size;
 
   prior_diff=omp->prior_tmp_a;
-  prior_mv=omp->dpx;
-  inv_cov=omp->prior_inverse_cov;
-  
-  gsl_vector_const_view x_view=gsl_vector_const_view_array(x,D);
-  x_v=&x_view.vector;
-  
-  fx[0]=0;
-  for (i=0;i<D;i++) gsl_vector_set(omp->p,i,gsl_sf_exp(x[i]));
 
-  logL_stat=LogLikelihood(omp, fx, dfx, FI);
-  omp->lx=fx[0];
-  memcpy(omp->dlx->data,dfx,sizeof(double)*D);
-  memcpy(omp->FI_l->data,FI,sizeof(double)*D*D);
+  fx[0]=0;
+  for (i=0;i<D;i++) gsl_vector_set(omp->p,i,gsl_sf_exp(gsl_vector_get(x,i)));
+
+  logL_stat=LogLikelihood(omp, &fx[1], dfx[1], FI[1]); // likelihood contribution
   //printf("likelihood: %g\n",fx[0]);
   
-  gsl_vector_memcpy(prior_diff,x_v);
+  gsl_vector_memcpy(prior_diff,x);
   gsl_vector_sub(prior_diff,omp->prior_mu);
 
-  gsl_blas_dsymv(CblasUpper,-0.5,inv_cov,prior_diff,0.0,prior_mv);
-  gsl_blas_ddot(prior_diff,prior_mv,&prior_value);
-  omp->px=prior_value;
+  gsl_blas_dsymv(CblasUpper,-0.5,omp->prior_inverse_cov,prior_diff,0.0,dfx[2]);
+  gsl_blas_ddot(prior_diff,dfx[2],&prior_value);
+  fx[2]=prior_value;
   
-  
+  gsl_matrix_memcpy(FI[2],omp->prior_inverse_cov);
   int status=logL_stat;
   //  printf("PosteriorFI: prior_value=%f\n",prior_value);
-  fx[0]*=omp->beta;
-  fx[0]+=prior_value;
-  /* here the "sum_of_squares" belongs to the log-likelihood
-   * while the prior_value is the prior-related part of the log-posterior
-   * these values omit all constants.
-   */
 
-  // now for the gradient:
-  for (i=0; i < D ; i++){
-    // dfx = beta*dlx + dpx because fx = beta lx + px
-    dfx[i]*= omp->beta;
-    dfx[i]+= gsl_vector_get(prior_mv,i); // prior component
-  }
-  
-  /* FI is constant, it does not depend on the parameters x ... */
-  for (i=0; i < D*D ; i++){
-    FI[i] *= gsl_pow_2(omp->beta);
-    FI[i] += omp->prior_inverse_cov->data[i];
-  }
+  fx[0]=fx[1];
+  fx[0]*=beta;
+  fx[0]+=fx[2];
+
+  gsl_vector_memcpy(dfx[0],dfx[1]);
+  gsl_vector_scale(dfx[0],beta);
+  gsl_vector_add(dfx[0],dfx[2]);
+
+  gsl_matrix_memcpy(FI[0],FI[1]);
+  gsl_matrix_scale(FI[0],beta*beta);
+  gsl_vector_add(FI[0],FI[2]);
   return status;
 }
 

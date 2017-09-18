@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
+#include <mpi.h>
 #include "../mcmc/model_parameters_smmala.h"
 #include "diagnosis_output.h"
 
@@ -89,7 +90,9 @@ int printf_omp(void *mp){
   char name[512];
   ode_model_parameters *omp=mp;
   FILE *f;
-  sprintf(name,"omp_with_logL_%g_beta_%g.txt",omp->lx,omp->beta);
+  int r;
+  MPI_Comm_rank(MPI_COMM_WORLD,&r);
+  sprintf(name,"ode_model_state_of_rank_%i.txt",r);
   f=fopen(name,"w");
   C=omp->size->C;
   D=omp->size->D;

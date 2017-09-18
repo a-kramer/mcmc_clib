@@ -56,11 +56,6 @@ typedef struct {
 
 typedef struct {
   double t0;
-  double beta; // inverse temperature for annealing or tempering; logPosterior= beta*logLikelihood+logPrior
-  double lx;
-  double px;
-  gsl_vector *dpx;
-  gsl_vector *dlx;  
   problem_size *size;
   gsl_vector *p; // memory for the ODE's parameters (they are
 		 // exponential) and input parameters, appended

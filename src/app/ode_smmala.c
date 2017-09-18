@@ -52,7 +52,8 @@
 
 #define BUFSZ 1024
 //#define BETA(rank,R) gsl_pow_4((double)(rank)/(double) ((R)-1))
-#define BETA(rank,R) (1.0/((double)(rank+1)))
+//#define BETA(rank,R) (1.0/((double)(rank+1)))
+#define BETA(rank,R) gsl_sf_exp(-0.25*((double) rank))
 
 /* Auxiliary structure with working storage and aditional parameters for
  * a multivariate normal model with known covariance matrix and zero mean.
@@ -310,7 +311,8 @@ int main (int argc, char* argv[]) {
   double init_x[D];
   /* allocate a new RMHMC MCMC kernel */
   printf("# allocating memory for a new SMMALA MCMC kernel.\n");
-  mcmc_kernel* kernel = smmala_kernel_alloc(D,
+  double beta=BETA(rank,R);
+  mcmc_kernel* kernel = smmala_kernel_alloc(beta,D,
 					    cnf_options.initial_stepsize,
 					    model,
 					    seed,
@@ -351,13 +353,13 @@ int main (int argc, char* argv[]) {
   printf("# test evaluation of Posterior function.\n");
   fflush(stdout);
 
-  double lx; // log-likelihood of x
-  double fx; // log-posterior of x
-  double dfx[D]; // gradient of f wrt x
-  double FI[D*D]; // fisher information matrix
-  LogPosterior(init_x, &omp, &fx, dfx, FI);
-  printf("# θ=θ₀; Posterior(θ|D)=%g;\n",fx);
-  smmala_comm_buffer *buffer=smmala_comm_buffer_alloc(D);
+  /* double lx; // log-likelihood of x */
+  /* double fx; // log-posterior of x */
+  /* double dfx[D]; // gradient of f wrt x */
+  /* double FI[D*D]; // fisher information matrix */
+  /* LogPosterior(beta, init_x, &omp, &fx, dfx, FI); */
+  /* printf("# θ=θ₀; Posterior(θ|D)=%g;\n",fx); */
+  void *buffer=smmala_comm_buffer_alloc(D);
   
   /* print first sample, initial values in init_x */
   mcmc_print_sample(kernel, stdout);
@@ -382,7 +384,6 @@ int main (int argc, char* argv[]) {
     BurnInSamples=warm_up;
   }
   printf("# Performing Burn-In with step-size (%g) tuning: %lu iterations\n",cnf_options.initial_stepsize,BurnInSamples);
-  omp.beta=BETA(rank,R);
   double their_beta=1;
   int master=0;
   int swaps=0;
@@ -404,7 +405,7 @@ int main (int argc, char* argv[]) {
     //mcmc_print_sample(kernel, stdout);
     if ( ((it + 1) % 100) == 0 ) {
       acc_rate = (double) acc_c / 100.0;
-      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %li) acc. rate: %3.2g; %2i %% swaps\t",rank,R,omp.beta,it,acc_rate,swaps);
+      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %li) acc. rate: %3.2g; %2i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       mcmc_adapt(kernel, acc_rate);
       acc_c = 0;

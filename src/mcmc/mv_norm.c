@@ -58,11 +58,9 @@ int mnv_norm_rnd_cholPr(gsl_rng* rng, const gsl_vector* m, const gsl_matrix* cho
 		gsl_vector_set( result, i, gsl_ran_ugaussian(rng) );
 	
 	/* For covariance A then L*randn, for covariance A^{-1} then L^{-T}*rand */
-	gsl_blas_dtrsv(CblasUpper, CblasNoTrans, CblasNonUnit, cholPr, result);
+	if (gsl_blas_dtrsv(CblasUpper, CblasNoTrans, CblasNonUnit, cholPr, result)!=GSL_SUCCESS) exit(-1);
 	/*gsl_blas_dtrmv(CblasLower, CblasNoTrans, CblasNonUnit, cholPr, result);*/
-	if (m != NULL)
-		gsl_vector_add(result, m);
-	
+	if (m != NULL) gsl_vector_add(result, m);	
 	return 0;
 }
 

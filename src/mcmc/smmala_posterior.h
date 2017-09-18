@@ -1,2 +1,2 @@
-int LogPosterior(const double* x,  void* model_params, double* fx, double* dfx, double* FI);
+int LogPosterior(const double beta, gsl_vector* x,  void* model_params, double* fx, gsl_vector **dfx, gsl_matrix **FI);
 
