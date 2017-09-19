@@ -341,7 +341,7 @@ int main (int argc, char* argv[]) {
   }
   
   printf("# initializing MCMC.\n");
-  printf("init_x:");
+  printf("# init_x:");
   for (i=0;i<D;i++) printf(" %g ",init_x[i]);
   printf("\n");
   mcmc_init(kernel, init_x);
@@ -352,16 +352,12 @@ int main (int argc, char* argv[]) {
   /* } */
   printf("# test evaluation of Posterior function done:\n");
   printf("# θ=θ₀; Posterior(θ|D)=%+g;\n# where θ₀:",kernel->fx[0]); 
-  for (i=0;i<D; i++) printf(" %+g ",kernel->x[i]); printf("\n");
-
-  void *buffer=(void *) smmala_comm_buffer_alloc(D);
-
-  /* print first sample, initial values in init_x */
-  mcmc_print_sample(kernel, stdout);
+  for (i=0;i<D;i++) printf(" %+g ",kernel->x[i]); printf("\n");
   ode_solver_print_stats(solver, stdout);
   fflush(stdout);
   fflush(stderr);
-  
+
+  void *buffer=(void *) smmala_comm_buffer_alloc(D);
   size_t acc_c = 0;
   double acc_rate;
   size_t it;

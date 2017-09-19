@@ -23,7 +23,6 @@
 void mcmc_print_sample(mcmc_kernel* kernel, FILE* s){
   int n = kernel->N;
   int i;
-  printf("x: "); fflush(stdout);
   if (kernel->x!=NULL && kernel->fx!=NULL){
     for (i = 0; i < n; i++) {
       fprintf(s, "%12.5e ", kernel->x[i]);

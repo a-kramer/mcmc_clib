@@ -10,6 +10,7 @@
 //#include <gsl/gsl_matrix.h>
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_sf_exp.h>
+#include <gsl/gsl_linalg.h>
 #include <string.h>
 #include <mpi.h>
 #include "smmala.h"
@@ -37,14 +38,11 @@ typedef struct{
 static smmala_params* smmala_params_alloc(const double beta, const int N, double step_size, const double target_acceptance);
 
 void* smmala_comm_buffer_alloc(int D){
-  printf("smmala_comm_buffer...");  fflush(stdout);
   smmala_params *smmala_buffer=smmala_params_alloc(0,D,0,0);;
   if (smmala_buffer==NULL) {
     perror("could not create communication buffer.\n");
     exit(-1);
   }
-  printf(" created...");
-  fflush(stdout);
   return smmala_buffer;
 }
 
@@ -170,6 +168,7 @@ int smmala_swap_chains(mcmc_kernel* kernel, const int master, const int rank, co
     gsl_matrix_memcpy(state->Hfx[0],state->Hfx[1]);
     gsl_matrix_scale(state->Hfx[0],beta*beta);
     gsl_matrix_add(state->Hfx[0],state->Hfx[2]);
+    if (gsl_linalg_cholesky_decomp(state->Hfx[0])!=GSL_SUCCESS) perror("Hfx is not positive definite.");
     //gsl_printf("Hfx0",state->Hfx[0],GSL_IS_MATRIX|GSL_IS_DOUBLE);
   }
   return swap_accepted;
@@ -363,7 +362,8 @@ static int smmala_kernel_sample(mcmc_kernel* kernel, int* acc){
   int n = kernel->N;
   double stepsize = state->stepsize;
   
-  gsl_matrix_memcpy(state->cholH_mat, state->Hfx[0]);  	
+  gsl_matrix_memcpy(state->cholH_mat, state->Hfx[0]);
+  
   /* Calculate mean vector for random (Gaussian) step, by following the current gradient of posterior */
   nat_grad_step(state->x, state->Hfx[0], state->dfx[0], state->mean_vec,stepsize);
   /* Random vector from multivariate normal with mean mean_vec and precision cholH_mat */
