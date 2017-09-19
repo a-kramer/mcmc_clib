@@ -380,8 +380,8 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
     ode_solver_reinit(solver, mp->t0, mp->ref_E->init_y->data, N,
 		      mp->p->data,
 		      mp->p->size);
-    //gsl_printf("reference p",mp->p,0); fflush(stdout);
-    //gsl_printf("ref yS0",mp->ref_E->yS0,1);
+    //gsl_printf("reference p",mp->p,GSL_IS_VECTOR|GSL_IS_DOUBLE); fflush(stdout);
+    //gsl_printf("ref yS0",mp->ref_E->yS0,GSL_IS_MATRIX|GSL_IS_DOUBLE);
     if (ode_model_has_sens(model)){      
       ode_solver_reinit_sens(solver, mp->ref_E->yS0->data, P, N);
     }
@@ -474,7 +474,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 	if (status!=GSL_SUCCESS){
 	  gsl_printf("oS",mp->E[c]->oS[j],1);
 	  gsl_printf("(fy-data)/sd_data²",mp->E[c]->fy[j],0);
-	  printf("dgemv was unsuccessful: %i %s\n",status,gsl_strerror(status));
+	  fprintf(stderr,"dgemv was unsuccessful: %i %s\n",status,gsl_strerror(status));
 	  //exit(-1);
 	}
 	/* Calculate the Fisher information
@@ -500,7 +500,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 /* Calculates the unormalised log-posterior fx, the gradient dfx, the
  * Fisher information FI.
  */
-int LogPosterior(const double beta, gsl_vector *x,  void* model_params, double *fx, gsl_vector **dfx, gsl_matrix **FI){
+int LogPosterior(const double beta, const gsl_vector *x,  void* model_params, double *fx, gsl_vector **dfx, gsl_matrix **FI){
 	
   ode_model_parameters* omp =  (ode_model_parameters*) model_params;
   double prior_value=0;            // the prior distribution related sum of squares
@@ -526,7 +526,7 @@ int LogPosterior(const double beta, gsl_vector *x,  void* model_params, double *
   
   gsl_matrix_memcpy(FI[2],omp->prior_inverse_cov);
   int status=logL_stat;
-  //  printf("PosteriorFI: prior_value=%f\n",prior_value);
+  //printf("PosteriorFI: prior_value=%f\n",prior_value);
 
   fx[0]=fx[1];
   fx[0]*=beta;
@@ -538,7 +538,8 @@ int LogPosterior(const double beta, gsl_vector *x,  void* model_params, double *
 
   gsl_matrix_memcpy(FI[0],FI[1]);
   gsl_matrix_scale(FI[0],beta*beta);
-  gsl_vector_add(FI[0],FI[2]);
+  gsl_matrix_add(FI[0],FI[2]);
+  //printf("[LogPosterior] done.\n"); fflush(stdout);
   return status;
 }
 

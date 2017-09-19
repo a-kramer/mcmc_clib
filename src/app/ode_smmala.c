@@ -350,20 +350,18 @@ int main (int argc, char* argv[]) {
   /*   gsl_printf("standard deviation",omp.sdData,GSL_IS_DOUBLE | GSL_IS_MATRIX); //exit(0); */
   /*   fflush(stdout); */
   /* } */
-  printf("# test evaluation of Posterior function.\n");
-  fflush(stdout);
+  printf("# test evaluation of Posterior function done:\n");
+  printf("# θ=θ₀; Posterior(θ|D)=%+g;\n# where θ₀:",kernel->fx[0]); 
+  for (i=0;i<D; i++) printf(" %+g ",kernel->x[i]); printf("\n");
 
-  /* double lx; // log-likelihood of x */
-  /* double fx; // log-posterior of x */
-  /* double dfx[D]; // gradient of f wrt x */
-  /* double FI[D*D]; // fisher information matrix */
-  /* LogPosterior(beta, init_x, &omp, &fx, dfx, FI); */
-  /* printf("# θ=θ₀; Posterior(θ|D)=%g;\n",fx); */
-  void *buffer=smmala_comm_buffer_alloc(D);
-  
+  void *buffer=(void *) smmala_comm_buffer_alloc(D);
+
   /* print first sample, initial values in init_x */
   mcmc_print_sample(kernel, stdout);
   ode_solver_print_stats(solver, stdout);
+  fflush(stdout);
+  fflush(stderr);
+  
   size_t acc_c = 0;
   double acc_rate;
   size_t it;
@@ -384,7 +382,6 @@ int main (int argc, char* argv[]) {
     BurnInSamples=warm_up;
   }
   printf("# Performing Burn-In with step-size (%g) tuning: %lu iterations\n",cnf_options.initial_stepsize,BurnInSamples);
-  double their_beta=1;
   int master=0;
   int swaps=0;
   /* Burn In Loop and Tuning*/
@@ -398,7 +395,6 @@ int main (int argc, char* argv[]) {
       } else {
 	DEST=(R+rank-1)%R; // this process has to accept swap decisions from DEST
       }
-      //their_beta=BETA(DEST,R); // the orther proc's beta value
       mcmc_exchange_information(kernel,DEST,buffer);
       swaps+=mcmc_swap_chains(kernel,master,rank,DEST,buffer);
     }
@@ -431,8 +427,8 @@ int main (int argc, char* argv[]) {
       DEST=(R+rank-1)%R; // this process has to accept swap decisions from DEST
     }
     //their_beta=BETA(DEST,R); // the orther proc's 
-    mcmc_exchange_information(kernel,DEST,&buffer);
-    mcmc_swap_chains(kernel,master,rank,DEST,&buffer);
+    mcmc_exchange_information(kernel,DEST,buffer);
+    mcmc_swap_chains(kernel,master,rank,DEST,buffer);
 		
     /* print sample */
     if (output_is_binary) {

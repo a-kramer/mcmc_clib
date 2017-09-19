@@ -23,11 +23,17 @@
 void mcmc_print_sample(mcmc_kernel* kernel, FILE* s){
   int n = kernel->N;
   int i;
-  for (i = 0; i < n; i++) {
-    fprintf(s, "%12.5e ", kernel->x[i]);
+  printf("x: "); fflush(stdout);
+  if (kernel->x!=NULL && kernel->fx!=NULL){
+    for (i = 0; i < n; i++) {
+      fprintf(s, "%12.5e ", kernel->x[i]);
+    }
+    fprintf(s," %12.5e ",kernel->fx[0]);
+    fprintf(s, "\n");
+  } else {
+    perror("kernel->(x or fx) is a NULL pointer.");
+    exit(-1);
   }
-  fprintf(s," %12.5e ",kernel->fx[0]);
-  fprintf(s, "\n");
 }
 
 int mcmc_write_sample(mcmc_kernel *kernel, FILE *s){

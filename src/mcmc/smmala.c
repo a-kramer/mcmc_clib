@@ -6,8 +6,8 @@
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_linalg.h>
 #include <gsl/gsl_randist.h>
-#include <gsl/gsl_vector.h>
-#include <gsl/gsl_matrix.h>
+//#include <gsl/gsl_vector.h>
+//#include <gsl/gsl_matrix.h>
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_sf_exp.h>
 #include <string.h>
@@ -15,7 +15,7 @@
 #include "smmala.h"
 #include "mv_norm.h"
 #include "model_parameters_smmala.h"
-
+#include "../app/diagnosis_output.h"
 #define SWAP(a, b, tmp)  tmp = a; a = b; b = tmp
 
 // fx = beta*lx + px
@@ -35,21 +35,27 @@ typedef struct{
 } smmala_params;
 
 static smmala_params* smmala_params_alloc(const double beta, const int N, double step_size, const double target_acceptance);
+
 void* smmala_comm_buffer_alloc(int D){
-  smmala_params *smmala_buffer;
-  smmala_params_alloc(0,D,0,0);
+  printf("smmala_comm_buffer...");  fflush(stdout);
+  smmala_params *smmala_buffer=smmala_params_alloc(0,D,0,0);;
+  if (smmala_buffer==NULL) {
+    perror("could not create communication buffer.\n");
+    exit(-1);
+  }
+  printf(" created...");
+  fflush(stdout);
   return smmala_buffer;
 }
 
 int smmala_exchange_information(mcmc_kernel* kernel, const int DEST, void *buffer){
   MPI_Status status; // MPI_Status contains: MPI_SOURCE, MPI_TAG, MPI_ERROR
   int N=kernel->N; // size of x, dfx; N*N is size of FI;
-  smmala_params* state = (smmala_params*) kernel->kernel_params;
-  smmala_model* model = (smmala_model*) kernel->model_function;
-  ode_model_parameters *omp = (ode_model_parameters*) model->m_params;  
+  smmala_params *state = (smmala_params*) kernel->kernel_params;
+  smmala_params *scbuf = buffer;
   int TAG=0;
   int SRC=DEST; // send to and receive from the same process
-  smmala_params *scbuf=buffer;
+
   //error handling for nerr communication steps
   int nerr=6;
   int i, ec=MPI_SUCCESS, overall_error=MPI_SUCCESS;
@@ -60,12 +66,11 @@ int smmala_exchange_information(mcmc_kernel* kernel, const int DEST, void *buffe
   double *send_buffer[]={state->x->data, state->Hfx[1]->data, state->Hfx[2]->data, state->fx, state->dfx[1]->data, state->dfx[2]->data};
   double *recv_buffer[]={scbuf->x->data, scbuf->Hfx[1]->data, scbuf->Hfx[2]->data, scbuf->fx, scbuf->dfx[1]->data, scbuf->dfx[2]->data};
   int            size[]={             N,                 N*N,                 N*N,         3,                   N,                   N};
-  int n;
-  n=sizeof(send_buffer);
-  if (n!=nerr) {
-    fprintf(stderr,"sizeof operator doesn't work as expected on arrays.\n");
-    MPI_Abort(MPI_COMM_WORLD,-1);
-  }
+  /* int n=sizeof(send_buffer); */
+  /* if (n!=nerr) { */
+  /*   fprintf(stderr,"sizeof operator doesn't work as expected on arrays.\n"); */
+  /*   MPI_Abort(MPI_COMM_WORLD,-1); */
+  /* } */
   //int r;
   //MPI_Comm_rank(MPI_COMM_WORLD,&r);
   //printf("[rank %i] exchange information\n",r);  
@@ -101,24 +106,26 @@ int smmala_exchange_information(mcmc_kernel* kernel, const int DEST, void *buffe
    fprintf(stderr, "[Comm with rank %3i] %s\n", DEST, error_string);
    MPI_Abort(MPI_COMM_WORLD, overall_error);
   }
-  /* FILE *f; */
-  /* char name[128]; */
-  /* int r; */
-  /* MPI_Comm_rank(MPI_COMM_WORLD,&r); */
+  //FILE *f;
+  //char name[128];
   /* sprintf(name,"rank_%i_comm_results.txt",r); */
   /* f=fopen(name,"a"); */
   /* MPI_Barrier(MPI_COMM_WORLD); */
-  /* fprintf(f,"[rank %i] my x: ",r);   for (i=0;i<N;i++)   fprintf(f," %+g ",kernel->x[i]); fprintf(f,"\n"); */
-  /* fprintf(f,"[rank %i] my fx: ",r);                      fprintf(f," %+g ",kernel->fx[0]); fprintf(f,"\n"); */
-  /* fprintf(f,"[rank %i] my dfx: ",r); for (i=0;i<N;i++)   fprintf(f," %+g ",state->dfx[i]); fprintf(f,"\n"); */
-  /* fprintf(f,"[rank %i] my Hfx: ",r); for (i=0;i<N*N;i++) fprintf(f," %+g ",state->Hfx[i]); fprintf(f,"\n"); */
-  /* fprintf(f,"[rank %i] my lx: ",r);                      fprintf(f," %+g ",omp->lx); fprintf(f,"\n"); */
+  /* fprintf(f,"[rank %i] my beta: %+g",r,state->beta); */
+  /* fprintf(f,"[rank %i] my x: ",r);   for (i=0;i<N;i++)   fprintf(f," %+g ",state->x->data[i]); fprintf(f,"\n"); */
+  /* fprintf(f,"[rank %i] my dfx1: ",r); for (i=0;i<N;i++)   fprintf(f," %+g ",state->dfx[1]->data[i]); fprintf(f,"\n"); */
+  /* fprintf(f,"[rank %i] my dfx2: ",r); for (i=0;i<N;i++)   fprintf(f," %+g ",state->dfx[2]->data[i]); fprintf(f,"\n"); */
+  /* fprintf(f,"[rank %i] my Hfx1: ",r); for (i=0;i<N*N;i++) fprintf(f," %+g ",state->Hfx[1]->data[i]); fprintf(f,"\n"); */
+  /* fprintf(f,"[rank %i] my Hfx2: ",r); for (i=0;i<N*N;i++) fprintf(f," %+g ",state->Hfx[2]->data[i]); fprintf(f,"\n"); */
+  /* fprintf(f,"[rank %i] my beta*lx+px: ",r);              fprintf(f,"beta × %+g + %g",state->fx[1],state->fx[2]); fprintf(f,"\n"); */
+  
   /* MPI_Barrier(MPI_COMM_WORLD); */
-  /* fprintf(f,"[rank %i] recv x: ",r);   for (i=0;i<N;i++)   fprintf(f," %+g ",buf->x[i]); fprintf(f,"\n"); */
-  /* fprintf(f,"[rank %i] recv fx: ",r);                      fprintf(f," %+g ",buf->fx[0]); fprintf(f,"\n"); */
-  /* fprintf(f,"[rank %i] recv dfx: ",r); for (i=0;i<N;i++)   fprintf(f," %+g ",buf->dfx[i]); fprintf(f,"\n"); */
-  /* fprintf(f,"[rank %i] recv Hfx: ",r); for (i=0;i<N*N;i++) fprintf(f," %+g ",buf->FI[i]); fprintf(f,"\n"); */
-  /* fprintf(f,"[rank %i] recv lx: ",r);                      fprintf(f," %+g ",buf->lx[0]); fprintf(f,"\n"); */
+  /* fprintf(f,"[rank %i] recv x: ",r);   for (i=0;i<N;i++)   fprintf(f," %+g ",scbuf->x->data[i]); fprintf(f,"\n"); */
+  /* fprintf(f,"[rank %i] recv dfx1: ",r); for (i=0;i<N;i++)   fprintf(f," %+g ",scbuf->dfx[1]->data[i]); fprintf(f,"\n"); */
+  /* fprintf(f,"[rank %i] recv dfx2: ",r); for (i=0;i<N;i++)   fprintf(f," %+g ",scbuf->dfx[2]->data[i]); fprintf(f,"\n"); */
+  /* fprintf(f,"[rank %i] recv Hfx1: ",r); for (i=0;i<N*N;i++) fprintf(f," %+g ",scbuf->Hfx[1]->data[i]); fprintf(f,"\n"); */
+  /* fprintf(f,"[rank %i] recv Hfx2: ",r); for (i=0;i<N*N;i++) fprintf(f," %+g ",scbuf->Hfx[2]->data[i]); fprintf(f,"\n"); */
+  /* fprintf(f,"[rank %i] recv beta*lx+px: ",r);                      fprintf(f,"beta × %+g + %g",scbuf->fx[1],scbuf->fx[2]); fprintf(f,"\n"); */
   /* fclose(f); */
   return overall_error;
 }
@@ -129,13 +136,9 @@ int smmala_swap_chains(mcmc_kernel* kernel, const int master, const int rank, co
   int N=kernel->N; // size of x, dfx; N*N is size of FI;
   gsl_rng *rng = (gsl_rng*) kernel->rng;
   smmala_params *state = (smmala_params*) kernel->kernel_params;
-  smmala_model *model = (smmala_model*) kernel->model_function;
-  ode_model_parameters *omp = (ode_model_parameters*) model->m_params;
+  smmala_params *recv_buf=buffer;
   int i;
   int TAG=0;
-  smmala_params *recv_buf=buffer;
-  //  log likelihood of x: omp->lx;
-  //  log      prior of x: omp->px;
   double beta=state->beta;
   double their_beta;
   MPI_Sendrecv(&beta, 1, MPI_DOUBLE, other_rank, TAG, &their_beta, 1, MPI_DOUBLE, other_rank, TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -145,37 +148,37 @@ int smmala_swap_chains(mcmc_kernel* kernel, const int master, const int rank, co
   if (master){
     double r1=gsl_rng_uniform(rng);
     swap_accepted=r1<a?1:0;
+    //printf("[rank %i (master)] swap accepted: %i\n",rank,swap_accepted);
     MPI_Send(&swap_accepted, 1, MPI_INT, other_rank,TAG,MPI_COMM_WORLD);
   }else{
     MPI_Recv(&swap_accepted, 1, MPI_INT, other_rank,TAG,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
   }
   MPI_Barrier(MPI_COMM_WORLD);
-  if (swap_accepted!=0){ // both sides copy their received communication buffer into the kernel
+  if (swap_accepted){ // both sides copy their received communication buffer into the kernel
     gsl_vector_memcpy(state->x,recv_buf->x);
     memcpy(state->fx,recv_buf->fx,sizeof(double)*3);
-    for (i=0;i<3;i++) {
+    state->fx[0]=beta*state->fx[1] + state->fx[2];
+    for (i=1;i<3;i++) {
       gsl_vector_memcpy(state->dfx[i],recv_buf->dfx[i]);
       gsl_matrix_memcpy(state->Hfx[i],recv_buf->Hfx[i]);
     }
-    state->fx[0]=beta*state->fx[1] + state->fx[2];
-    gsl_vector_set_zero(state->dfx[0]);
-    gsl_vector_add(state->dfx[0],state->dfx[1]);
+    gsl_vector_memcpy(state->dfx[0],state->dfx[1]);
     gsl_vector_scale(state->dfx[0],beta);
     gsl_vector_add(state->dfx[0],state->dfx[2]);
+    //gsl_printf("dfx0",state->dfx[0],GSL_IS_VECTOR|GSL_IS_DOUBLE);
 
-    gsl_matrix_set_zero(state->Hfx[0]);
-    gsl_matrix_add(state->Hfx[0],state->Hfx[1]);
+    gsl_matrix_memcpy(state->Hfx[0],state->Hfx[1]);
     gsl_matrix_scale(state->Hfx[0],beta*beta);
     gsl_matrix_add(state->Hfx[0],state->Hfx[2]);
+    //gsl_printf("Hfx0",state->Hfx[0],GSL_IS_MATRIX|GSL_IS_DOUBLE);
   }
   return swap_accepted;
 }
 
 static smmala_params* smmala_params_alloc(const double beta, const int N, double step_size, const double target_acceptance){
   int overall_error=EXIT_SUCCESS;
-  smmala_params* params = (smmala_params*) malloc( sizeof(smmala_params) );
+  smmala_params* params = (smmala_params*) malloc(sizeof(smmala_params));
   if (params == NULL){
-    /* TODO: write a proper error handler */
     fprintf(stderr,"smmala_params_alloc: malloc failed to allocate memory for smmala_params \n");
     return NULL;
   }
@@ -187,6 +190,7 @@ static smmala_params* smmala_params_alloc(const double beta, const int N, double
   params->beta=beta;
   params->target_acceptance=target_acceptance;
   params->x=NULL;
+  params->fx=NULL;
   params->dfx = NULL;
   params->Hfx = NULL;
   params->new_x = NULL;
@@ -194,26 +198,27 @@ static smmala_params* smmala_params_alloc(const double beta, const int N, double
   params->new_Hfx = NULL;
   params->mean_vec = NULL;
   params->cholH_mat = NULL;
-
+  //printf("# [smmala_params_alloc] allocating memory.\n");
+  params->fx=malloc(nc*sizeof(double));
   params->x = gsl_vector_alloc(N);
   if (params->x == NULL) overall_error++;
   
-  params->dfx = malloc(3*sizeof(gsl_vector*));
+  params->dfx = malloc(nc*sizeof(gsl_vector*));
   for (i=0;i<nc;i++) params->dfx[i]=gsl_vector_alloc(N);
   if (params->dfx == NULL) overall_error++;
 
-  params->Hfx = malloc(3*sizeof(gsl_matrix*));
+  params->Hfx = malloc(nc*sizeof(gsl_matrix*));
   for (i=0;i<nc;i++) params->Hfx[i]=gsl_matrix_alloc(N,N);
   if (params->Hfx == NULL) overall_error++;
 
   params->new_x = gsl_vector_alloc(N);
   if (params->new_x == NULL) overall_error++;
   
-  params->new_dfx = malloc(3*sizeof(gsl_vector*));
+  params->new_dfx = malloc(nc*sizeof(gsl_vector*));
   for (i=0;i<nc;i++) params->new_dfx[i]=gsl_vector_alloc(N);
   if (params->new_dfx == NULL) overall_error++;
 	
-  params->new_Hfx = malloc(3*sizeof(gsl_matrix*));
+  params->new_Hfx = malloc(nc*sizeof(gsl_matrix*));
   for (i=0;i<nc;i++) params->new_Hfx[i]=gsl_matrix_alloc(N,N);
   if (params->new_Hfx == NULL) overall_error++;
 
@@ -225,7 +230,9 @@ static smmala_params* smmala_params_alloc(const double beta, const int N, double
 
   params->fx[0] = 0;
   params->stepsize = step_size;
-
+  //printf("allocations done: overall error: %i\n",overall_error);
+  //fflush(stdout);
+  //fflush(stderr);
   if (overall_error!=EXIT_SUCCESS) {
 	fprintf(stderr," smmala_params_alloc: malloc failed \n");
 	if (params->dfx) gsl_vector_free(params->x);	
@@ -254,6 +261,8 @@ static smmala_params* smmala_params_alloc(const double beta, const int N, double
 
 	return NULL;	
   }
+  // printf("# [smmala_params_alloc] done.\n");
+  //fflush(stdout);
   return(params);
 }
 
@@ -268,13 +277,12 @@ static void smmala_params_free(smmala_params* params){
   gsl_vector_free(params->x);
   gsl_vector_free(params->new_x);
   gsl_vector_free(params->mean_vec);
-  free(params->cholH_mat);
-  free(params->mean_vec);
+  gsl_matrix_free(params->cholH_mat);
   free(params->new_Hfx);
   free(params->new_dfx);
-  free(params->new_x);
   free(params->Hfx);
   free(params->dfx);
+  free(params->fx);
   free(params);
 }
 
@@ -284,17 +292,15 @@ static int smmala_kernel_init(mcmc_kernel* kernel, const double *x){
 	
   smmala_params* state = (smmala_params*) kernel->kernel_params;
   /* copy x to the kernel x state */
-  for ( i=0; i < n; i++)
-	  kernel->x[i] = x[i];
+  for ( i=0; i < n; i++) kernel->x[i] = x[i];
 
   smmala_model* model = kernel->model_function;
-  gsl_vector_view x_init = gsl_vector_view_array(x,n);
+  gsl_vector_const_view x_init = gsl_vector_const_view_array(x,n);
   res = model->LogPosterior(state->beta, &(x_init.vector), model->m_params, state->fx, state->dfx, state->Hfx);
   if (res != 0){
     fprintf(stderr,"smmala_kernel_init: Likelihood function failed\n");
     exit(-1);
   }
-  kernel->fx = state->fx;
   res = gsl_linalg_cholesky_decomp(state->Hfx[0]);
   if (res != 0){
 	fprintf(stderr,"Error: matrix not positive definite in smmala_init.\n");
@@ -337,24 +343,19 @@ static int smmala_kernel_init_rand(mcmc_kernel* kernel){
 }
 
 
-static int nat_grad_step(const gsl_vector* x, const gsl_matrix* cholPr, 
-						 const gsl_vector* grad, gsl_vector* result, double stepSize){
-
-	/* TODO: error checking and return error code */
-	
-	/* newx = x + (0.5*e)*H^{-1}*grad */
-	/* H^{-1}*grad is similar to solving the system H*a = grad */
-	gsl_linalg_cholesky_solve(cholPr, grad, result);
-	gsl_vector_scale(result, 0.5*stepSize);
-	gsl_vector_add(result, x);
-	
-	return 0;
+static int nat_grad_step(const gsl_vector* x, const gsl_matrix* cholPr,  const gsl_vector* grad, gsl_vector* result, double stepSize){
+  /* newx = x + (0.5*e)*H^{-1}*grad */
+  /* H^{-1}*grad is similar to solving the system H*result = grad */
+  gsl_linalg_cholesky_solve(cholPr, grad, result);
+  gsl_vector_scale(result, 0.5*stepSize);
+  gsl_vector_add(result, x);
+  
+  return 0;
 }
 
 
 static int smmala_kernel_sample(mcmc_kernel* kernel, int* acc){
-  /* TODO: check return values for errors from gsl functions */
-
+  int i;
   smmala_params* state = (smmala_params*) kernel->kernel_params;
   smmala_model* model = (smmala_model*) kernel->model_function;
   gsl_rng* rng = (gsl_rng*) kernel->rng;
@@ -363,14 +364,11 @@ static int smmala_kernel_sample(mcmc_kernel* kernel, int* acc){
   double stepsize = state->stepsize;
   
   gsl_matrix_memcpy(state->cholH_mat, state->Hfx[0]);  	
-  /* Calculate mean vector */
+  /* Calculate mean vector for random (Gaussian) step, by following the current gradient of posterior */
   nat_grad_step(state->x, state->Hfx[0], state->dfx[0], state->mean_vec,stepsize);
-
-  /* Random sample from multivariate normal with 
-     mean mean_vec and precision H_mat_v */
+  /* Random vector from multivariate normal with mean mean_vec and precision cholH_mat */
   gsl_matrix_scale(state->cholH_mat,1.0/sqrt(stepsize));
   mnv_norm_rnd_cholPr(rng, state->mean_vec, state->cholH_mat, state->new_x);
-
   /* Calculate propbability of new state given old state */
   double pNgO = log_mv_norm_pdf_cholP(state->new_x, state->mean_vec, state->cholH_mat);
   
@@ -404,13 +402,12 @@ static int smmala_kernel_sample(mcmc_kernel* kernel, int* acc){
     double rand_dec = log(gsl_rng_uniform(rng));
     if ( (mh_ratio > 0.0)||(mh_ratio > rand_dec) ) {
       *acc = 1;
-      gsl_vector *tmp_V;
-      gsl_vector **tmp_Vptr;
-      gsl_matrix **tmp_Mptr;
-      SWAP(state->x, state->new_x, tmp_V);
-      SWAP(state->dfx, state->new_dfx, tmp_Vptr);
-      SWAP(state->Hfx, state->new_Hfx, tmp_Mptr);
+      gsl_vector_memcpy(state->x,state->new_x);
       memcpy(state->fx, new_fx,sizeof(double)*3);
+      for (i=0;i<3;i++){
+	gsl_vector_memcpy(state->dfx[i],state->new_dfx[i]);
+	gsl_matrix_memcpy(state->Hfx[i],state->new_Hfx[i]);
+      }
     }else{
       *acc = 0;
     }
@@ -430,75 +427,68 @@ static void smmala_kernel_adapt(mcmc_kernel* kernel, double acc_rate){
 }
 
 static void smmala_kernel_free(mcmc_kernel* kernel){
-	smmala_params* params = (smmala_params*)kernel->kernel_params;
-	smmala_params_free(params);
-	gsl_rng* rng = (gsl_rng*)kernel->rng;
-	gsl_rng_free(rng);
-	free(kernel);
+  smmala_params* params = (smmala_params*)kernel->kernel_params;
+  smmala_params_free(params);
+  gsl_rng* rng = (gsl_rng*)kernel->rng;
+  gsl_rng_free(rng);
+  free(kernel);
 }
 
 static void smmala_kernel_print_stats(mcmc_kernel* kernel, FILE* outStream){
-	smmala_params* params = (smmala_params*)kernel->kernel_params;
-	fprintf(outStream, "Step-size: %5.4g\n",params->stepsize);
+  smmala_params* params = (smmala_params*)kernel->kernel_params;
+  fprintf(outStream, "Step-size: %5.4g\n",params->stepsize);
 }
 
-smmala_model* smmala_model_alloc(fptrPosterior_smmala Lx, fptrPrior_rnd Prx, 
-								 void* model_params){
-	
-	smmala_model* model = (smmala_model*) malloc( sizeof (smmala_model) );
-	if (model == 0){
-		/* TODO: write a proper error handler */
-		fprintf(stderr,"malloc failed to allocate memory for smmala_model\n");
-		return 0;
-	}
-
-	model->LogPosterior = Lx;
-	model->Prior_rnd = Prx;
-	model->m_params = model_params;
-
-	return model;
+smmala_model* smmala_model_alloc(fptrPosterior_smmala Lx, fptrPrior_rnd Prx,  void* model_params){
+  smmala_model* model = (smmala_model*) malloc( sizeof (smmala_model) );
+  if (model == NULL){
+    fprintf(stderr,"malloc failed to allocate memory for smmala_model\n");
+    exit(-1);
+  }
+  model->LogPosterior = Lx;
+  model->Prior_rnd = Prx;
+  model->m_params = model_params;
+  return model;
 }
 
 void smmala_model_free(smmala_model* model){
-	free(model);
+  free(model);
 }
 
 mcmc_kernel* smmala_kernel_alloc(const double beta, const int N, double step_size, smmala_model* model_function, const unsigned long int seed, const double target_acceptance){
-
-	
-  smmala_params* state = smmala_params_alloc(beta, N, step_size,target_acceptance);
+  smmala_params* state = smmala_params_alloc(beta, N, step_size, target_acceptance);
   if( state == NULL ){
-    /* TODO: write a propper error handler */
-		fprintf(stderr,"malloc failed to allocate memory for params in smmala_kernel_alloc \n");
-		return 0;
+    fprintf(stderr,"malloc failed to allocate memory for params in smmala_kernel_alloc \n");
+    exit(-1);
   }
   
-  mcmc_kernel* kernel = (mcmc_kernel*) malloc( sizeof(mcmc_kernel) );
+  mcmc_kernel* kernel = (mcmc_kernel*) malloc(sizeof(mcmc_kernel));
   if (kernel == NULL){
-    /* TODO: write a proper error handler */
     smmala_params_free(state);
     fprintf(stderr,"malloc failed to allocate memory for mcmc_kernel in smmala_alloc.\n");
-    return 0;
+    exit(-1);
   }
+
+  kernel->x=NULL;
+  kernel->fx=NULL;
+
+  if (state->x->data!=NULL) kernel->x = state->x->data;
+  if (state->fx!=NULL) kernel->fx = state->fx;
   
-  kernel->x = state->x->data;
-  kernel->fx= state->fx;
-  if (kernel->x == NULL){
-    /* TODO: write a proper error handler */
+  if (kernel->x == NULL || kernel->fx == NULL){
     smmala_params_free(state);
     free(kernel);
-    fprintf(stderr,"smmala->x is NULL pointer, check smmala parameter allocation \n");
-    return 0;
+    fprintf(stderr,"smmala: kernel->x OR kernel->fx is NULL pointer, check smmala parameter allocation \n");
+    exit(-1);
   }
   
   gsl_rng_env_setup();
   gsl_rng* r = gsl_rng_alloc(gsl_rng_default);
   if (r == NULL){
-    /* TODO: write a proper error handler */
     smmala_params_free(state);
     free(kernel);
     fprintf(stderr,"failed to create gsl_rng in smmala_alloc \n");
-    return 0;
+    exit(-1);
   }
   
   gsl_rng_set(r, seed);
