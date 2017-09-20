@@ -96,7 +96,7 @@ void VectorField::PrintCVODES(map<string,string> options){
 	/* Declerations for ode_model.h	*/
 	fout << endl;
 	fout << "typedef int (*rhs_f)(realtype, N_Vector, N_Vector, void *);" << endl;
-	fout << "typedef int (*jac_f)(int, realtype," << endl;
+	fout << "typedef int (*jac_f)(long int, realtype," << endl;
 	fout << "                     N_Vector, N_Vector," << endl;
 	fout << "                     DlsMat, void*," << endl;
 	fout << "                     N_Vector, N_Vector, N_Vector);" << endl;
@@ -203,12 +203,12 @@ void VectorField::PrintCVODES(map<string,string> options){
     fout << " *  The Jacobian." << endl;
     fout << " */" << endl;
     fout << endl;
-    fout << func_return_type << " " << Name() << "_jac(int N_, realtype t," << endl;
+    fout << func_return_type << " " << Name() << "_jac(long N_, realtype t," << endl;
     fout << "                N_Vector y_, N_Vector fy_," << endl;
 	fout << "                DlsMat jac_, void *params," << endl;
     fout << "                N_Vector tmp1, N_Vector tmp2, N_Vector tmp3)" << endl;
 
-    pout << func_return_type << " " << Name() << "_jac(int, realtype," << endl;
+    pout << func_return_type << " " << Name() << "_jac(long, realtype," << endl;
     pout << "                N_Vector, N_Vector," << endl;
 	pout << "                DlsMat, void *," << endl;
     pout << "                N_Vector, N_Vector, N_Vector);" << endl;

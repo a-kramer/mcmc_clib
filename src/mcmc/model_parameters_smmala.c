@@ -124,13 +124,10 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
   /* during burn-in, we slowly increase beta from 0 to 1; if no
    * burn-in is performed, beta needs to be 1.0
    */
-  omp->beta=1.0;
-  
   omp->p=gsl_vector_alloc(P);
   // prior 
   omp->prior_tmp_a=gsl_vector_alloc(D);
   omp->prior_tmp_b=gsl_vector_alloc(D);
-
   return EXIT_SUCCESS;
 }
 

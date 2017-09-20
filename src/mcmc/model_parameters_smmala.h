@@ -6,6 +6,13 @@
 #include <stdio.h>
 #include "../ode/ode_model.h"
 
+// normalisation methods
+#define DATA_IS_ABSOLUTE 0
+#define DATA_NORMALISED_BY_REFERENCE 1
+#define DATA_NORMALISED_BY_TIMEPOINT 2
+#define DATA_NORMALISED_BY_STATE_VAR 3
+
+
 typedef struct {
   int D; // number of sampling variables; unknown ODE-Model parameters
   int P; // number of total parameters of the ODE-Model (including dependent and known parameters)
@@ -14,7 +21,6 @@ typedef struct {
   int T; // number of measurement time-points for NORMALISATION_BY_REFERENCE
   int U; // number of input parameters
   int C; // number of experimental conditions, excluding control (reference measurement)
-  //int R; // number of reference measurements, should always be 1, but if necessary uncomment line
 } problem_size;
 
 typedef struct {
@@ -49,9 +55,7 @@ typedef struct {
 } experiment;
 
 typedef struct {
-  //  int D;
   double t0;
-  double beta; // inverse temperature for annealing or tempering; logPosterior= beta*logLikelihood+logPrior
   problem_size *size;
   gsl_vector *p; // memory for the ODE's parameters (they are
 		 // exponential) and input parameters, appended
@@ -67,6 +71,8 @@ typedef struct {
   gsl_vector *prior_tmp_b; // .. for calculation buffers
   gsl_vector *prior_mu; // prior parameter: the medians of log normal distributions;
   gsl_matrix *prior_inverse_cov; // prior parameter: the inverse covariance in log space (where the prior is a Gaussian distribution);
+  gsl_matrix *FI_l; // likelihood contribution to fisher information matrix
+  gsl_matrix *FI_p; // prior contribution to fisher information matrix
   sensitivity_approximation *S_approx; 
   ode_solver *solver; // contains: cvode_mem; *odeModel; N_Vector y; N_Vector *yS; params;
 } ode_model_parameters;

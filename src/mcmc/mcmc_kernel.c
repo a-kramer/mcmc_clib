@@ -22,25 +22,34 @@
 
 void mcmc_print_sample(mcmc_kernel* kernel, FILE* s){
   int n = kernel->N;
-  double* x = kernel->x;
-  double fx = kernel->fx[0];
   int i;
-  for (i = 0; i < n; i++) {
-    fprintf(s, "%12.5e ", x[i]);
+  if (kernel->x!=NULL && kernel->fx!=NULL){
+    for (i = 0; i < n; i++) {
+      fprintf(s, "%12.5e ", kernel->x[i]);
+    }
+    fprintf(s," %12.5e ",kernel->fx[0]);
+    fprintf(s, "\n");
+  } else {
+    perror("kernel->(x or fx) is a NULL pointer.");
+    exit(-1);
   }
-  fprintf(s," %12.5e ",fx);
-  fprintf(s, "\n");
 }
 
 int mcmc_write_sample(mcmc_kernel *kernel, FILE *s){
   int n = kernel->N;
-  double* x = kernel->x;
-  double fx = kernel->fx[0];
-  fwrite(x,sizeof(double),n,s);
-  fwrite(&fx,sizeof(double),1,s);
+  fwrite(kernel->x,sizeof(double),n,s);
+  fwrite(kernel->fx,sizeof(double),1,s);
   return EXIT_SUCCESS;
 }
 
+int mcmc_exchange_information(mcmc_kernel* kernel, const int DEST, void *buffer){
+  return kernel->ExchangeInformation(kernel, DEST, buffer);
+}
+
+int mcmc_swap_chains(mcmc_kernel* kernel, const int master, const int rank, const int DEST, void *buffer){
+  return kernel->SwapChains(kernel, master, rank, DEST, buffer);
+}
+  
 
 /* used only when the code is not compiled with the -DHAVE_INLINE flag */
 int mcmc_sample(mcmc_kernel* kernel, int* acc){
@@ -48,12 +57,11 @@ int mcmc_sample(mcmc_kernel* kernel, int* acc){
 	return kernel->Sample(kernel, acc);
 }
 
-
 void mcmc_adapt(mcmc_kernel* kernel, double acc_rate){
 	kernel->Adapt(kernel, acc_rate);
 }
 
-int mcmc_init(mcmc_kernel* kernel, const double* x){
+int mcmc_init(mcmc_kernel* kernel, const double *x){
 	return kernel->Init(kernel, x);
 }
 

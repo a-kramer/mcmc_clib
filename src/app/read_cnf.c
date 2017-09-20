@@ -1,4 +1,24 @@
 #include "read_cnf.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <gsl/gsl_errno.h>
+#include <ctype.h>
+#include <math.h>
+#include <string.h>
+#include "normalisation_sd.h"
+#include "dynamic_array.h"
+//#include "../mcmc/model_parameters_smmala.h"
+
+
+
+field_expression* field_expression_stack(int id,
+					 field_expression *top,
+					 regex_t *open,
+					 regex_t *close);
+
+field_expression* field_expression_init(field_names *fn);
+
+
 
 
 gsl_object* gsl_object_alloc(){
@@ -379,6 +399,7 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
 	  r=G->gsl->matrix->size1;
 	  c=G->gsl->matrix->size2;
 	  omp->prior_inverse_cov=gsl_matrix_alloc(r,c);
+	  omp->FI_p=omp->prior_inverse_cov; // the fisher information of the prior is just its inverse covariance matrix
 	  gsl_matrix_memcpy(omp->prior_inverse_cov, G->gsl->matrix);
 	  nda_free(nda);
 	  //read_block(ps->D,ps->D,cnf,DOUBLE_BLOCK,omp->prior_inverse_cov->data,comment);

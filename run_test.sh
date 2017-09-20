@@ -7,7 +7,9 @@
 Model=ODEmodel11S26P4U
 SampleFile="`date +%Y-%m-%dT%Hh%Mm`.double"
 #SampleSize=$((1024**2))
-SampleSize=$((10))
+DefaultSampleSize=$((2**10))
+SampleSize=${2:-$DefaultSampleSize}
+NP=${1:-2}
 cat<<EOF
 $0
  redirecting standard output to $Model.out
@@ -18,14 +20,14 @@ $0
 
  NumOfParameters = 26;
       SampleSize = ${SampleSize};
-             fid = fopen('${SampleFile}','r');
-          Sample = fread(fid,[NumOfParameters+1,SampleSize],'double');
+          Sample = cell($NP,1);
+  for i=1:$NP
+             fid = fopen(sprintf("rank_%04i_of_$NP_${SampleFile}",i),'r');
+       Sample{i} = fread(fid,[NumOfParameters+1,SampleSize],'double');
                    fclose(fid);
+  endfor
 
- use «tailf $Model.out» to see progress (press «Ctrl-C» to exit tailf)
- redirecting standard output to $Model.out
-             standard error  to $Model.err
  sampling now ...
 EOF
 
-mpirun -np ${1:-1} bin/ode_smmala  -b -s ${SampleSize} -p -o $SampleFile -l ./$Model.so -c ./$Model.cfg 
+mpirun -np $NP bin/ode_smmala -b -w ${SampleSize} -s ${SampleSize} -p -o $SampleFile -l ./$Model.so -c ./$Model.cfg 
