@@ -435,7 +435,8 @@ int main (int argc, char* argv[]) {
     /* print sample log and statistics every 100 samples */
     if ( ((it + 1) % 100) == 0 ) {
       acc_rate = (double)acc_c / (double)100;
-      fprintf(stdout, "# Iteration: %li\tAcceptance rate: %.2g\t",it, acc_rate);
+      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %li) acc. rate: %3.2g; %2i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
+      //fprintf(stdout, "# Iteration: %li\tAcceptance rate: %.2g\t",it, acc_rate);
       mcmc_print_stats(kernel, stdout);
       acc_c = 0;
     }
