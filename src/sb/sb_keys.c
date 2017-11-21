@@ -45,9 +45,8 @@ int sb_key_append(SBkey_t sb, char *token, match_t *match){
   int l=1+b-a; // length of new key
   m=m>N+1?m:N+1;
   if (n==sb->N) status&=sb_key_resize(sb,m);
-  if (n<sb->N) sb->key[n]=calloc(l,sizeof(char));
-  if (sb->key[n]!=NULL){
-    strncpy(sb->key[n],token+a,l);
+  if (n<sb->N) {
+    sb->key[n]=g_strndup(token+a,l);
     sb->numel++;
   } else status=EXIT_FAILURE;
   return status;
@@ -60,3 +59,12 @@ char * sb_key_retrieve(SBkey_t sb, int i){
   return s;
 }
 
+int sb_key_free(SBkey_t sb){
+  int i;
+  int n=sb->numel;
+  for (i=0;i<n;i++){
+    if (sb->key[i]!=NULL) g_free(sb->key[i])
+  }
+  free(sb->key);
+  return EXIT_SUCCESS;
+}

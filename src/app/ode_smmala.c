@@ -53,7 +53,7 @@
 #define BUFSZ 1024
 //#define BETA(rank,R) gsl_pow_4((double)(rank)/(double) ((R)-1))
 //#define BETA(rank,R) (1.0/((double)(rank+1)))
-#define BETA(rank,R) gsl_sf_exp(-0.25*((double) rank))
+#define BETA(rank,R) gsl_sf_exp(-gamma*((double) rank))
 
 /* Auxiliary structure with working storage and aditional parameters for
  * a multivariate normal model with known covariance matrix and zero mean.
@@ -161,6 +161,7 @@ int main (int argc, char* argv[]) {
   char resume_filename[BUFSZ]="resume.double";
   int output_is_binary=0;
   double seed = 1;
+  double gamma=0.25;
   int sampling_action=SMPL_FRESH;
   size_t resume_count;
   gsl_error_handler_t *gsl_error_handler;
@@ -192,6 +193,8 @@ int main (int argc, char* argv[]) {
     else if (strcmp(argv[i],"-b")==0) output_is_binary=1;
     else if (strcmp(argv[i],"-a")==0) cnf_options.target_acceptance=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"-i")==0) cnf_options.initial_stepsize=strtod(argv[i+1],NULL);
+    else if (strcmp(argv[i],"-g")==0) gamma=strtod(argv[i+1],NULL);
+    
     else if (strcmp(argv[i],"--seed")==0) seed=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"-h")==0) {print_help(); exit(0);}
     

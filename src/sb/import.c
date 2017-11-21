@@ -1,5 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <assert.h>
+#include <glib.h>
 #include <string.h>
 #include <regex.h>
 #ifndef _GNU_SOURCE
@@ -17,33 +19,38 @@
 #include <gsl/gsl_sort.h>
 #include <gsl/gsl_sort_vector.h>
 #include <gsl/gsl_statistics_double.h>
-#include <glib.h>
-#include "flex_array.h"
-#include "sb_keys.h"
+#include "sbtab.h"
 
 #define DEFAULT_STR_LENGTH 128
 
-int parse_sb_tab(char *);
+sbtab_t* parse_sb_tab(char *);
  
 int main(int argc, char*argv[]){
   int i;
   regex_t *sb_tab_file;
+  sbtab_t *table;
+  GPtrArray *sbtab;
   char *sptr;
   
   sptr=malloc(sizeof(char)*64);
   sb_tab_file=malloc(sizeof(regex_t));
   regcomp(sb_tab_file,".*[.][tc]sv",REG_EXTENDED);
-
+  sbtab=g_ptr_array_new_full(3,sbtab_free);
   for (i=1;i<argc;i++){
-    if (regexec(sb_tab_file,argv[i],0,NULL,0)==0) parse_sb_tab(argv[i]);
+    if (regexec(sb_tab_file,argv[i],0,NULL,0)==0) {
+      table=parse_sb_tab(argv[i]);
+      g_ptr_array_add(sbtab,table);
+    }
     else printf("unknown option «%s».\n",argv[i]);
   }
-
+  guint n=sbtab->len;
+  printf("[main] %i tables read.\n",n);
   return EXIT_SUCCESS;
 }
 
 int copy_match(char *sptr, regmatch_t *match, char *source, ssize_t N){
   regoff_t a,b;
+  int i;
   int length;
   a=match->rm_so;
   b=match->rm_eo;
@@ -59,28 +66,27 @@ int copy_match(char *sptr, regmatch_t *match, char *source, ssize_t N){
 }
 
 
-int parse_sb_tab(char *sb_tab_file){
+sbtab_t* parse_sb_tab(char *sb_tab_file){
   FILE* fid;
+  int i;
   char *s;
   char *key;
   size_t n_s=DEFAULT_STR_LENGTH, m_s, length=0;
   regex_t SBtab;
-  regex_t TableName, TableTitle, TableType, SBcomment, SBkeys, SBkey;
-  char name[DEFAULT_STR_LENGTH];
+  regex_t RE_TableName, RE_TableTitle, RE_TableType, SBcomment, SBkeys, SBkey;
+  gchar *TableName, *TableTitle, *TableType;
   regmatch_t match[2];
   regoff_t a,b;
   int r_status=0;
-  GHashTable *table;
-  
+  gchar **keys;
+  sbtab_t *sbtab;
+  sbtab=NULL;
   s=malloc(sizeof(char)*n_s);
-
-  table=g_hash_table_new_full(g_str_hash, g_str_equal, g_free, flex_array_free);
-  
   r_status&=regcomp(&SBcomment,"[%#]",REG_EXTENDED);
   r_status&=regcomp(&SBtab,"!!SBtab",REG_EXTENDED);  
-  r_status&=regcomp(&TableName,"TableName[[:blank:]]*=[[:blank:]]*'([^']+)'",REG_EXTENDED);
-  r_status&=regcomp(&TableTitle,"TableTitle[[:blank:]]*=[[:blank:]]*'([^']+)'",REG_EXTENDED);
-  r_status&=regcomp(&TableType,"TableType[[:blank:]]*=[[:blank:]]*'([^']+)'",REG_EXTENDED);
+  r_status&=regcomp(&RE_TableName,"TableName[[:blank:]]*=[[:blank:]]*'([^']+)'",REG_EXTENDED);
+  r_status&=regcomp(&RE_TableTitle,"TableTitle[[:blank:]]*=[[:blank:]]*'([^']+)'",REG_EXTENDED);
+  r_status&=regcomp(&RE_TableType,"TableType[[:blank:]]*=[[:blank:]]*'([^']+)'",REG_EXTENDED);
   r_status&=regcomp(&SBkeys,"![^!][[:alpha:]]",REG_EXTENDED);
   r_status&=regcomp(&SBkey,"(![[:alpha:]][[:alnum:]]*|>[[:alpha:]][:[:alnum:]]*)",REG_EXTENDED);
   
@@ -103,42 +109,33 @@ int parse_sb_tab(char *sb_tab_file){
 	s[a]='\0';
       }
       if (regexec(&SBtab,s,0,NULL,0)==0){	
-	if (regexec(&TableName,s,2,match,0)==0){
-	  copy_match(name,&match[1],s,DEFAULT_STR_LENGTH);
-	  printf("TableName: %s\n",name); fflush(stdout);
+	if (regexec(&RE_TableName,s,2,match,0)==0){
+	  TableName=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
+	  printf("TableName: %s\n",TableName); fflush(stdout);
 	}
-	if (regexec(&TableType,s,2,match,0)==0){
-	  copy_match(name,&match[1],s,DEFAULT_STR_LENGTH);
-	  printf("TableType: %s\n",name); fflush(stdout);
+	if (regexec(&RE_TableType,s,2,match,0)==0){
+	  TableType=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
+	  printf("TableType: %s\n",TableType); fflush(stdout);
 	}
-	if (regexec(&TableTitle,s,2,match,0)==0){
-	  copy_match(name,&match[1],s,DEFAULT_STR_LENGTH);
-	  printf("TableTitle: %s\n",name); fflush(stdout);
+	if (regexec(&RE_TableTitle,s,2,match,0)==0){
+	  TableTitle=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
+	  printf("TableTitle: %s\n",TableTitle); fflush(stdout);
 	}
       } else if (regexec(&SBkeys,s,1,match,0)==0){
-	SBkey_t *sb;
-	int k=0;
-	sb=sb_key_alloc(12);
-	assert(sb!=NULL);	
-
-	flex_double *column;
-	column=flex_array_alloc(60);
-	key=strtok(s,",;\t");
-	while (key!=NULL){
-	  printf("strtok: «%s»,\t",key);
-	  if (regexec(&SBkey,key,2,match,0)==0){
-	    sb_key_append(sb,key,&match[1]);	    
-	    //	    copy_match(name,&match[1],key,DEFAULT_STR_LENGTH);
-	    printf("SBkey: «%s»\n",sb_key_retrieve(sb,k));
-	    k++;
-	    g_hash_table_insert(table,g_strdup(name),);
-	  }
-	  key=strtok(NULL,",;\t");
-	}
-      }
-      
+	keys=g_strsplit_set(s,",;\t",-1);
+	int k=g_strv_length(keys);
+	for (i=0;i<k;i++) g_strstrip(keys[i]);
+	sbtab=sbtab_alloc(keys);
+      } else {
+	assert(sbtab!=NULL);
+	sbtab_append_row(sbtab,s);
+      }      
     }
-  }
-  g_hash_table_destroy(table);
-  return EXIT_SUCCESS;
+    if (sbtab!=NULL){
+      sbtab->TableTitle=TableTitle;
+      sbtab->TableName=TableName;
+      sbtab->TableType=TableType;
+    }
+  }  
+  return sbtab;
 }
