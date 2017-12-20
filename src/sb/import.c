@@ -27,9 +27,11 @@
 #define DEFAULT_STR_LENGTH 128
 
 sbtab_t* parse_sb_tab(char *);
- 
+gsl_matrix** get_data_matrix(sbtab_t *DataTable,sbtab_t *L1_OUT);
+
 int main(int argc, char*argv[]){
-  int i;
+  int i,j;
+  int status=EXIT_SUCCESS;
   regex_t *sb_tab_file;
   sbtab_t *table;
   GPtrArray *sbtab;
@@ -43,23 +45,23 @@ int main(int argc, char*argv[]){
   sbtab_hash=g_hash_table_new(g_str_hash, g_str_equal);
   for (i=1;i<argc;i++){
     if (regexec(sb_tab_file,argv[i],0,NULL,0)==0) {
+      printf("[main] parsing sbtab file %s.\n",argv[i]);
       table=parse_sb_tab(argv[i]);
       g_ptr_array_add(sbtab,table);
       g_hash_table_insert(sbtab_hash,table->TableName,table);
     }
     else printf("unknown option «%s».\n",argv[i]);
   }
-  guint n=sbtab->len;
-  printf("[main] %i tables read.\n",n);
+  guint n_tab=sbtab->len;
+  printf("[main] %i tables read.\n",n_tab);
   // convert all data matrices of numbers into actual double/int numbers
   // 1. find all experiment quantity matrices
-  regex_t sb_ListOfExperiments;
   regmatch_t match[5];
-  
+  regex_t sb_ListOfExperiments;  
   guint nE;
-  guint T,N;
-  gchar *id,*s;
-
+  guint F;
+  gchar *experiment_id,*s;
+  gsl_matrix **Y_dY;
   gsl_matrix **Y;
   gsl_matrix **dY;
   double val;
@@ -69,23 +71,54 @@ int main(int argc, char*argv[]){
   
   // find all output names
   L1_OUT=g_hash_table_lookup(sbtab_hash,"L1_OUT");
-  N=L1_OUT->column[0]->len;
-  regcomp(&sb_ListOfExperiment,"(([Ll]ist|[Tt]able)Of)?[Ee]xp(eriments)?",REG_EXTENDED);
+  F=L1_OUT->column[0]->len;
+  regcomp(&sb_ListOfExperiments,"(([Ll]ist|[Tt]able)Of)?[Ee]xp(eriments)?",REG_EXTENDED);
   
-  for (i=0;i<n;i++){
+  for (i=0;i<n_tab;i++){
     table=(sbtab_t*) g_ptr_array_index(sbtab,i);
-    if (regexec(sb_ListOfExperiments, table->TableName, 5, match , 0)==0){
-      printf("found list of experiments: %s\n",table->TableName);
+    if (regexec(&sb_ListOfExperiments,table->TableName,5,match,0)==0){
+      // table is list of experiments
       nE=table->column[0]->len; // list of experiments -> number of experiments
-      Y=malloc(sizeof(gsl_matrix)*nE);
-      dY=malloc(sizeof(gsl_matrix)*nE);
-      for (j=0;j<nrows;j++) {
-	id=(gchar*) g_ptr_array_index(table->column[0],j);
-	DataTable=g_hash_table_lookup(sbtab_hash,id);
-	get_data_matrix(DataTable,L1_OUT,Y[j],dY[j]);
+      printf("[main] found list of experiments: %s with %i enries\n",table->TableName,nE);
+      Y=malloc(sizeof(gsl_matrix*)*nE);
+      dY=malloc(sizeof(gsl_matrix*)*nE);
+      for (j=0;j<nE;j++) {
+	experiment_id=(gchar*) g_ptr_array_index(table->column[0],j);
+	printf("[main] processing %s\n",experiment_id);
+	DataTable=g_hash_table_lookup(sbtab_hash,experiment_id);
+	if (DataTable!=NULL){
+	  Y_dY=get_data_matrix(DataTable,L1_OUT);
+	  Y[j]=Y_dY[0];
+	  dY[j]=Y_dY[1];
+	} else{
+	  fprintf(stderr,"DataTable %s missing (NULL).\n",experiment_id);
+	  status&=EXIT_FAILURE;
+	}
+      }
+      printf("result of reading matyrices (Y,dY):\n");
+      gsl_matrix_fprintf(stdout,Y[j],"%g,");
     }
   }
-return EXIT_SUCCESS;
+  return status;
+}
+
+gchar* get_reference(gchar *LinkKey, regmatch_t *match){
+  int l=match->rm_eo - match->rm_so;
+  int L=strlen(LinkKey);
+  int s_offset=match->rm_so;
+  gchar *s;
+  //printf("[get_reference] linked key: «%s».\n",LinkKey);
+  //fflush(stdout);
+  if (l>0 && s_offset>0 && l <= L - s_offset){
+    s=g_strndup(LinkKey+s_offset, l);
+    //printf("[get_reference] «%s».\n",s);
+    fflush(stdout);
+  }else{
+    //fprintf(stderr,"[get_reference] key: %s; match %i:%i (%i).\n",LinkKey,match->rm_so,match->rm_eo,L);
+    //fprintf(stderr,"[get_reference] s_offset: %i, length: %i\n",s_offset,l);
+    s=g_strdup("");
+  }
+  return s; 
 }
 
 int copy_match(char *sptr, regmatch_t *match, char *source, ssize_t N){
@@ -105,51 +138,75 @@ int copy_match(char *sptr, regmatch_t *match, char *source, ssize_t N){
   
 }
 
-int get_data_matrix(sbtab_t *DataTable,sbtab_t *L1_OUT, gsl_matrix *Y, gsl_matrix *dY){
-  int status=EXIT_SUCCESS;
-  int i_r, i_c;
-  guint T,N;
-  gchar *id;
-  regex_t LinkedHeader;
+gsl_matrix** get_data_matrix(sbtab_t *DataTable,sbtab_t *L1_OUT){
+  int i,i_r, i_c;
+  GPtrArray *c,*dc;
+  double val,dval=INFINITY;
+  guint F=L1_OUT->column[0]->len;
+  guint T=DataTable->column[0]->len;
+  gsl_matrix **Y;
+  gchar *y,*dy,*s, *ds;
+  Y=malloc(sizeof(gsl_matrix*)*2);
   
-  regcomp(&LinkedHeader,"^>(([[:alpha:]][[:word:]]*):)*([[:alpha:]][[:word:]]+)$",REG_EXTENDED);
-  N=L1_OUT->column[0]->len;
-  if (DataTable!=NULL){	  
-    T=DataTable->column[0]->len;
-    Y=gsl_matrix_alloc(T,N);	  
-    for (i_r=0;i_r<T;i_r++){
-      regexec();
-      s=sbtab_get(DataTable,id,);
-      val=strtod();
-    }
-    printf("Found experiment %s with %i measurements.\n",id,T);	  
-  }else{
-    fprintf(stderr,"Experiment %s could not be found.\n",id);
-    status&=EXIT_FAILURE;
+  for (i=0;i<2;i++) {
+    Y[i]=gsl_matrix_alloc(T,F);
   }
-  return status;  
+  gsl_matrix_set_all(Y[0],1.0);
+  gsl_matrix_set_all(Y[1],INFINITY);
+  printf("[get_data_matrix] Found experiment %s with %i measurements.\n",DataTable->TableName,T);	  
+  for (i_c=0; i_c<F; i_c++){
+    y=(gchar *) g_ptr_array_index(L1_OUT->column[0],i_c);
+    dy=g_strconcat("SD",y);
+    c=sbtab_get_column(y);
+    dc=sbtab_get_column(dy);
+    if (c!=NULL){
+      for (i_r=0; i_r<T; i_r++){
+	s = (gchar*) g_ptr_array_index(c,i_r);
+	if (dc!=NULL) {
+	  ds = (gchar*) g_ptr_array_index(dc,i_r);
+	  assert(ds!=NULL);
+	  dval=strtod(ds,NULL);
+	}
+	if (s!=NULL){
+	  printf("[get_data_matrix] got «%s» ",s);
+	  val=strtod(s,NULL);
+	} else {
+	  val=1.0;
+	  dval=INFINITY;
+	}
+	//dval=strtod(s,NULL);
+	printf(" %g ± %g\n",val,dval);
+	gsl_matrix_set(Y[0],i_r,i_c,val);
+	gsl_matrix_set(Y[1],i_r,i_c,dval);
+      }
+    }
+  }  
+  return Y;  
 }
 
 
 sbtab_t* parse_sb_tab(char *sb_tab_file){
   FILE* fid;
   int i,i_sep;
-  char fs=';';
-  char *key;
+  size_t L=0;
+  gchar *fs;
+  //  char *key;
   char *s; // string to hold read in lines
-  size_t n_s=DEFAULT_STR_LENGTH, m_s, length=0;
+  size_t n_s=DEFAULT_STR_LENGTH, m_s;
   regex_t SBtab;
   regex_t RE_TableName, RE_TableTitle, RE_TableType, SBcomment, SBkeys, SBkey, SBlink;
   regex_t EmptyLine;
   gchar *TableName, *TableTitle, *TableType;
-  regmatch_t match[2];
+  regmatch_t match[4];
   regoff_t a,b;
   int r_status=0;
   gchar **keys;
   gchar *stem, *leaf;
   sbtab_t *sbtab;
+  
+  fs=g_strdup(";\t,");
   sbtab=NULL;
-  s=malloc(sizeof(char)*n_s);
+  s=malloc(sizeof(char)*n_s); // a buffer to read strings from file via getline
   r_status&=regcomp(&EmptyLine,"^[[:blank:]]*$",REG_EXTENDED);
   r_status&=regcomp(&SBcomment,"[%#]",REG_EXTENDED);
   r_status&=regcomp(&SBtab,"!!SBtab",REG_EXTENDED);  
@@ -158,10 +215,10 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
   r_status&=regcomp(&RE_TableType,"TableType[[:blank:]]*=[[:blank:]]*'([^']+)'",REG_EXTENDED);
   r_status&=regcomp(&SBkeys,"![^!][[:alpha:]]",REG_EXTENDED);
   r_status&=regcomp(&SBkey,"(![[:alpha:]][[:alnum:]]*|>([[:alpha:]][[:word:]]*:)*([[:alpha:]][[:word:]])*)",REG_EXTENDED);
-  r_status&=regcomp(&SBlink,">([[:alpha:]][[:word:]]*:)*(([[:alpha:]][[:word:]])*)$",REG_EXTENDED);
+  r_status&=regcomp(&SBlink,">([[:alpha:]][[:alpha:][:digit:]]*:)*([[:alpha:]][[[:alpha:][:digit:]]]*)",REG_EXTENDED);
   
   if (r_status==0){
-    printf("regular expressions created.\n");
+    printf("[parse_sb_tab] regular expressions created (EC=%i).\n",r_status);
   } else {
     fprintf(stderr,"[regcomp] returned %i\n",r_status);
     perror("[regcomp]");
@@ -179,8 +236,13 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
 	s[a]='\0';
       }
       if (regexec(&SBtab,s,0,NULL,0)==0){
-	i_sep=strcspn(s,";,\t");
-	fs=s[i_sep]; //field separator
+	i_sep=strcspn(s,fs);
+	L=strlen(s);
+	if (i_sep<L){
+	  g_free(fs);
+	  fs=g_strndup(&s[i_sep],1); //field separator
+	}
+	printf("[parse_sb_tab] separator: «%s».\n",fs);
 	if (regexec(&RE_TableName,s,2,match,0)==0){
 	  TableName=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
 	  printf("TableName: %s\n",TableName); fflush(stdout);
@@ -193,20 +255,42 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
 	  TableTitle=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
 	  printf("TableTitle: %s\n",TableTitle); fflush(stdout);
 	}
-      } else if (regexec(&SBkeys,s,1,match,0)==0){
+      } else if (regexec(&SBkeys,s,2,match,0)==0){
 	keys=g_strsplit_set(s,fs,-1);
 	int k=g_strv_length(keys);
+	//print all headers
+	printf("[parse_sb_tab] %i headers:",k); fflush(stdout);
 	for (i=0;i<k;i++) {
-	  if (regexec(&SBlink,keys[i],2,match,0)==0){
-	    stem=g_strndup(keys[i]+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
-	    leaf=g_strndup(keys[i]+match[2].rm_so,match[2].rm_eo-match[2].rm_so);
-	    printf("[keys] link to table «%s», ID=«%s» found. I will use ID in hash table.\n",stem,leaf);
-	  }
 	  g_strstrip(keys[i]);
+	  if (keys[i]!=NULL) printf("«%s» ",keys[i]);
+	  else fprintf(stderr,"key[%i/%i] is NULL. ",i,k); 
+	}
+	printf("done.\n");
+	// check headers for links and save only the id in the link as hash.
+	for (i=0;i<k;i++) {
+	  //printf("[parse_sb_tab] checking key %i of %i (%s); ",i,k,keys[i]);
+	  r_status=regexec(&SBlink,keys[i],4,match,0);
+	  fflush(stdout);
+	  fflush(stderr);
+	  if (r_status==0){
+	    //printf("key[%i] is linked.\n",i);
+	    fflush(stdout);
+	    stem=get_reference(keys[i], &match[1]);
+	    leaf=get_reference(keys[i], &match[2]);
+	    if (leaf!=NULL){
+	      printf("\t[keys] link to table «%s», ID=«%s» found. I will use ID in hash table.\n",stem,leaf);
+	      g_free(keys[i]);
+	      keys[i]=leaf;
+	    } else {
+	      fprintf(stderr,"[parse_sb_tab] could not dereference link. Will use the string as is.\n");
+	    }
+	  }else{
+	    //printf("key[%i] is not linked.\n",i);
+	  }	  
 	}
 	sbtab=sbtab_alloc(keys);
-      } else if (regexec(&EmptyLine,s,0,NULL,0)){
-	printf("skipping empty line.\n");
+      } else if (regexec(&EmptyLine,s,0,NULL,0)==0){
+	printf("[parse_sb_tab] skipping empty line «%s».\n",s);
       } else {
 	assert(sbtab!=NULL);
 	sbtab_append_row(sbtab,s);

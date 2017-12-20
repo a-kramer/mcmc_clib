@@ -79,11 +79,22 @@ gchar* sbtab_get(const sbtab_t *sbtab, char *key, size_t i){
   gchar *d;
   GPtrArray *a=NULL;
   a=g_hash_table_lookup(sbtab->col,key);
-  if (a!=NULL) d=g_ptr_array_index(a,i);  
+  if (a!=NULL) d=g_ptr_array_index(a,i);
+  else d=NULL;
   return d;
 }
 
-int sbtab_free(sbtab_t *sbtab){
+GPtrArray* sbtab_get_column(const sbtab_t *sbtab, char *key){
+  GPtrArray *a=NULL;
+  a=g_hash_table_lookup(sbtab->col,key);
+  if (a==NULL){
+    fprintf(stderr,"[sbtab_get_column] lookup of «%s» in Table «%s» failed, using DefaultValue instead.",key,sbtab->TableName);
+  }
+  return a;
+}
+
+void sbtab_free(void *tab){
+  sbtab_t *sbtab=tab;
   int n=g_strv_length(sbtab->key);
   int i;
   g_hash_table_destroy(sbtab->col);
@@ -94,5 +105,4 @@ int sbtab_free(sbtab_t *sbtab){
   g_free(sbtab->column);
   g_strfreev(sbtab->key);
   free(sbtab);
-  return EXIT_SUCCESS;
 }
