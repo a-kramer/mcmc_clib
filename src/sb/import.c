@@ -53,13 +53,16 @@ int main(int argc, char*argv[]){
     else printf("unknown option «%s».\n",argv[i]);
   }
   guint n_tab=sbtab->len;
-  printf("[main] %i tables read.\n",n_tab);
+  printf("[main] %i tables read: ",n_tab);
+  for (i=0;i<n_tab;i++){
+    table=g_ptr_array_index(sbtab,i);
+    printf(" %s ",table->TableName);
+  }
+  printf("\n");
   // convert all data matrices of numbers into actual double/int numbers
   // 1. find all experiment quantity matrices
-  regmatch_t match[5];
-  regex_t sb_ListOfExperiments;  
+  sbtab_t *E_table;
   guint nE;
-  guint F;
   gchar *experiment_id,*s;
   gsl_matrix **Y_dY;
   gsl_matrix **Y;
@@ -67,37 +70,41 @@ int main(int argc, char*argv[]){
   double val;
   sbtab_t *DataTable;
   sbtab_t *L1_OUT;
-  
+  GPtrArray *ID; 
   
   // find all output names
   L1_OUT=g_hash_table_lookup(sbtab_hash,"L1_OUT");
-  F=L1_OUT->column[0]->len;
-  regcomp(&sb_ListOfExperiments,"(([Ll]ist|[Tt]able)Of)?[Ee]xp(eriments)?",REG_EXTENDED);
-  
-  for (i=0;i<n_tab;i++){
-    table=(sbtab_t*) g_ptr_array_index(sbtab,i);
-    if (regexec(&sb_ListOfExperiments,table->TableName,5,match,0)==0){
-      // table is list of experiments
-      nE=table->column[0]->len; // list of experiments -> number of experiments
-      printf("[main] found list of experiments: %s with %i enries\n",table->TableName,nE);
-      Y=malloc(sizeof(gsl_matrix*)*nE);
-      dY=malloc(sizeof(gsl_matrix*)*nE);
-      for (j=0;j<nE;j++) {
-	experiment_id=(gchar*) g_ptr_array_index(table->column[0],j);
-	printf("[main] processing %s\n",experiment_id);
-	DataTable=g_hash_table_lookup(sbtab_hash,experiment_id);
-	if (DataTable!=NULL){
-	  Y_dY=get_data_matrix(DataTable,L1_OUT);
-	  Y[j]=Y_dY[0];
-	  dY[j]=Y_dY[1];
-	} else{
-	  fprintf(stderr,"DataTable %s missing (NULL).\n",experiment_id);
-	  status&=EXIT_FAILURE;
-	}
-      }
-      printf("result of reading matyrices (Y,dY):\n");
-      gsl_matrix_fprintf(stdout,Y[j],"%g,");
+  assert(L1_OUT!=NULL);
+  E_table=NULL;
+  E_table=g_hash_table_lookup(sbtab_hash,"Experiments");
+  if (E_table!=NULL){
+    nE=E_table->column[0]->len; // list of experiments -> number of experiments
+    ID=g_hash_table_lookup(E_table->col,"!ID");
+    if (ID!=E_table->column[0]) printf("!ID is not first column!\n");
+    for (j=0;j<nE;j++){    
+      experiment_id=(gchar*) g_ptr_array_index(E_table->column[0],j);
+      printf("GPtrArray[%i]: %s\n",j,experiment_id);
+      experiment_id=(gchar*) g_ptr_array_index(ID,j);
+      printf("ID[%i]: %s\n",j,experiment_id);      
     }
+    printf("[main] found list of experiments: %s with %i entries\n",E_table->TableName,nE);
+    Y=malloc(sizeof(gsl_matrix*)*nE);
+    dY=malloc(sizeof(gsl_matrix*)*nE);
+    for (j=0;j<nE;j++) {
+      experiment_id=(gchar*) g_ptr_array_index(E_table->column[0],j);
+      printf("[main] processing %s\n",experiment_id);
+      DataTable=g_hash_table_lookup(sbtab_hash,experiment_id);
+      if (DataTable!=NULL && L1_OUT!=NULL){
+	Y_dY=get_data_matrix(DataTable,L1_OUT);
+	Y[j]=Y_dY[0];
+	dY[j]=Y_dY[1];
+      } else{
+	fprintf(stderr,"Either L1 Output or DataTable %s missing (NULL).\n",experiment_id);	
+	status&=EXIT_FAILURE;
+      }
+    }
+    //printf("result of reading matrices (Y,dY):\n");
+    //for (j=0;j<nE;j++) gsl_matrix_fprintf(stdout,Y[j],"%g,");
   }
   return status;
 }
@@ -134,14 +141,15 @@ int copy_match(char *sptr, regmatch_t *match, char *source, ssize_t N){
     return EXIT_SUCCESS;
   } else {
     return EXIT_FAILURE;
-  }
-  
+  }  
 }
 
-gsl_matrix** get_data_matrix(sbtab_t *DataTable,sbtab_t *L1_OUT){
+gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT){
   int i,i_r, i_c;
   GPtrArray *c,*dc;
   double val,dval=INFINITY;
+  printf("[get_data_matrix] checking whether DataTable exists.\n"); fflush(stdout);
+  assert(DataTable!=NULL && L1_OUT!=NULL);
   guint F=L1_OUT->column[0]->len;
   guint T=DataTable->column[0]->len;
   gsl_matrix **Y;
@@ -149,16 +157,20 @@ gsl_matrix** get_data_matrix(sbtab_t *DataTable,sbtab_t *L1_OUT){
   Y=malloc(sizeof(gsl_matrix*)*2);
   
   for (i=0;i<2;i++) {
+    printf("[get_data_matrix] allocating a %i×%i matrix.\n",T,F);
     Y[i]=gsl_matrix_alloc(T,F);
+    assert(Y[i]!=NULL);
   }
+  printf("[get_data_matrix] setting data matrix to default values.\n"); fflush(stdout);
   gsl_matrix_set_all(Y[0],1.0);
   gsl_matrix_set_all(Y[1],INFINITY);
-  printf("[get_data_matrix] Found experiment %s with %i measurements.\n",DataTable->TableName,T);	  
+  printf("[get_data_matrix] Found experiment %s with %i measurements of %i items.\n",DataTable->TableName,T,F);  fflush(stdout);
   for (i_c=0; i_c<F; i_c++){
     y=(gchar *) g_ptr_array_index(L1_OUT->column[0],i_c);
-    dy=g_strconcat("SD",y);
-    c=sbtab_get_column(y);
-    dc=sbtab_get_column(dy);
+    dy=g_strconcat("SD",y,NULL);
+    printf("[get_data_matrix] reading the column %s ± %s\n",y,dy);  fflush(stdout);
+    c=sbtab_get_column(DataTable,y);
+    dc=sbtab_get_column(DataTable,dy);
     if (c!=NULL){
       for (i_r=0; i_r<T; i_r++){
 	s = (gchar*) g_ptr_array_index(c,i_r);
@@ -168,14 +180,14 @@ gsl_matrix** get_data_matrix(sbtab_t *DataTable,sbtab_t *L1_OUT){
 	  dval=strtod(ds,NULL);
 	}
 	if (s!=NULL){
-	  printf("[get_data_matrix] got «%s» ",s);
+	  printf("[get_data_matrix] row %i; got string «%s» ",i_r,s);
 	  val=strtod(s,NULL);
 	} else {
 	  val=1.0;
 	  dval=INFINITY;
 	}
 	//dval=strtod(s,NULL);
-	printf(" %g ± %g\n",val,dval);
+	printf("..so %g ± %g\n",val,dval);
 	gsl_matrix_set(Y[0],i_r,i_c,val);
 	gsl_matrix_set(Y[1],i_r,i_c,dval);
       }
@@ -245,16 +257,26 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
 	printf("[parse_sb_tab] separator: «%s».\n",fs);
 	if (regexec(&RE_TableName,s,2,match,0)==0){
 	  TableName=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
-	  printf("TableName: %s\n",TableName); fflush(stdout);
+	  printf("TableName: «%s»\n",TableName); fflush(stdout);
+	} else {
+	  fprintf(stderr,"TableName is missing.\n");
+	  exit(-1);
 	}
 	if (regexec(&RE_TableType,s,2,match,0)==0){
 	  TableType=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
-	  printf("TableType: %s\n",TableType); fflush(stdout);
+	  printf("TableType: «%s»\n",TableType); fflush(stdout);
+	}else {
+	  fprintf(stderr,"TableType is missing.\n");
+	  exit(-1);
 	}
 	if (regexec(&RE_TableTitle,s,2,match,0)==0){
 	  TableTitle=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
-	  printf("TableTitle: %s\n",TableTitle); fflush(stdout);
+	  printf("TableTitle: «%s»\n",TableTitle); fflush(stdout);
+	}else {
+	  fprintf(stderr,"TableTitle is missing.\n");
+	  exit(-1);
 	}
+	
       } else if (regexec(&SBkeys,s,2,match,0)==0){
 	keys=g_strsplit_set(s,fs,-1);
 	int k=g_strv_length(keys);
