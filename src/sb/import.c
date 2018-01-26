@@ -21,6 +21,7 @@
 #include <gsl/gsl_statistics_double.h>
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
+#include "hdf5.h"
 #include "sbtab.h"
 #include "../mcmc/model_parameters_smmala.h"
 
@@ -32,15 +33,18 @@ gsl_matrix** get_data_matrix(sbtab_t *DataTable,sbtab_t *L1_OUT);
 int main(int argc, char*argv[]){
   int i,j;
   int status=EXIT_SUCCESS;
-  regex_t *sb_tab_file;
+  regex_t *sb_tab_file, *h5_file;
   sbtab_t *table;
   GPtrArray *sbtab;
   GHashTable *sbtab_hash;
   char *sptr;
+  gchar *H5FileName=NULL;
   
   sptr=malloc(sizeof(char)*64);
   sb_tab_file=malloc(sizeof(regex_t));
+  h5_file=malloc(sizeof(regex_t));
   regcomp(sb_tab_file,".*[.][tc]sv",REG_EXTENDED);
+  regcomp(h5_file,".*[.]h5",REG_EXTENDED);
   sbtab=g_ptr_array_new_full(3,sbtab_free);
   sbtab_hash=g_hash_table_new(g_str_hash, g_str_equal);
   for (i=1;i<argc;i++){
@@ -49,8 +53,12 @@ int main(int argc, char*argv[]){
       table=parse_sb_tab(argv[i]);
       g_ptr_array_add(sbtab,table);
       g_hash_table_insert(sbtab_hash,table->TableName,table);
-    }
-    else printf("unknown option «%s».\n",argv[i]);
+    } else if (regexec(h5_file,argv[i],0,NULL,0)==0) {
+      H5FileName=g_strdup(argv[i]);
+    } else printf("unknown option «%s».\n",argv[i]);
+  }
+  if (H5FileName==NULL){
+      H5FileName=g_strdup("ExperimentalData.h5");
   }
   guint n_tab=sbtab->len;
   printf("[main] %i tables read: ",n_tab);
@@ -105,6 +113,47 @@ int main(int argc, char*argv[]){
     }
     //printf("result of reading matrices (Y,dY):\n");
     //for (j=0;j<nE;j++) gsl_matrix_fprintf(stdout,Y[j],"%g,");
+  }
+  if (Y!=NULL && dY!=NULL){
+    write_data_to_hdf5(H5FileName,Y,dY,nE);
+  }
+  return status;
+}
+
+
+int write_data_to_hdf5(char *file_name, gsl_matrix **Y, gsl_matrix **dY, int nE){
+  int i;
+  hid_t       file_id;   /* file identifier */
+  herr_t      status;
+  hid_t data_group_id, sd_group_id, dataspace_id, dataset_id, sd_data_id;  
+  hsize_t size[2];
+  char H5_data_name[24];
+  /* Create a new file using default properties. */
+  status=EXIT_SUCCESS;
+  file_id = H5Fcreate(file_name, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  data_group_id = H5Gcreate(file_id, "/data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  sd_group_id = H5Gcreate(file_id, "/sd_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  for (i=0;i<nE;i++){
+    size[0]=Y[i]->size1;
+    size[1]=Y[i]->size2;
+    dataspace_id = H5Screate_simple(2, size, NULL);
+    // Y
+    sprintf(H5_data_name,"data_block_%i",i);
+    dataset_id = H5Dcreate2(data_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    status &= H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Y[i]->data);    
+    status &= H5Dclose(dataset_id);
+    // dY
+    sprintf(H5_data_name,"sd_data_block_%i",i);
+    sd_data_id = H5Dcreate2(sd_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    status &= H5Dwrite(sd_data_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dY[i]->data);    
+    status &= H5Dclose(sd_data_id);    
+  }
+  /* Terminate access to the file. */
+  status &= H5Gclose (data_group_id);
+  status &= H5Gclose (sd_group_id);
+  status &= H5Fclose(file_id);
+  if (status!=EXIT_SUCCESS){
+    fprintf(stderr,"[write HDF5] something went wrong; overall status=%i\n",status);
   }
   return status;
 }
