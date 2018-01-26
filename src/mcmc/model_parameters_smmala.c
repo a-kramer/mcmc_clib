@@ -14,6 +14,12 @@ int init_E(ode_model_parameters *omp){
   omp->ref_E->t=NULL;
   omp->ref_E->init_y=NULL;
   omp->ref_E->input_u=NULL;
+  omp->Data=NULL;
+  omp->sdData=NULL;
+  for (i=0;i<C;i++) {
+    omp->data_block=NULL;
+    omp->sd_data_block=NULL;
+  }
   printf("# %i+1 experiment structures allocated.\n",C);
   return GSL_SUCCESS;
 }
@@ -27,12 +33,17 @@ int ode_model_parameters_link(ode_model_parameters *omp){
   for (i=0;i<C;i++){
     T=omp->E[i]->t->size; // there is one data block per experiment, with T rows
     //data
-    omp->E[i]->data_block_view=gsl_matrix_submatrix(omp->Data,k,0,T,F);
-    omp->E[i]->data_block=&(omp->E[i]->data_block_view.matrix);
-    //standard deviation
-    omp->E[i]->sd_data_block_view=gsl_matrix_submatrix(omp->sdData,k,0,T,F);
-    omp->E[i]->sd_data_block=&(omp->E[i]->sd_data_block_view.matrix);
-    // next data block
+    if (omp->E[i]->data_block==NULL && omp->Data!=NULL){
+      omp->E[i]->data_block_view=gsl_matrix_submatrix(omp->Data,k,0,T,F);
+      omp->E[i]->data_block=&(omp->E[i]->data_block_view.matrix);
+      //standard deviation
+      omp->E[i]->sd_data_block_view=gsl_matrix_submatrix(omp->sdData,k,0,T,F);
+      omp->E[i]->sd_data_block=&(omp->E[i]->sd_data_block_view.matrix);
+    }else{
+      fprintf();
+      omp->E[i]->data_block=gsl_matrix_alloc(T,F);
+      omp->E[i]->sd_data_block=gsl_matrix_alloc(T,F);
+    }
     k+=T;
     // each row
     omp->E[i]->data_row=(gsl_vector_view*) malloc(sizeof(gsl_vector_view)*T);
@@ -85,7 +96,6 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
   omp->S_approx->r=gsl_vector_alloc(N);
   omp->S_approx->eJt=gsl_matrix_alloc(N,N);
   omp->S_approx->Jt=gsl_matrix_alloc(N,N);
-
   //printf("alloc norm f and t\n");
   for (i=0;i<C;i++){
     T=omp->E[i]->t->size;

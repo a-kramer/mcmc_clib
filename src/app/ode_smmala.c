@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #ifndef _GNU_SOURCE
 #include <libgen.h>
 #endif
@@ -44,7 +45,10 @@
 #include "../ode/ode_model.h"
 #include "../mcmc/smmala_posterior.h"
 #include "diagnosis_output.h"
+#include "hdf5.h"
+#include "hdf5_hl.h"
 
+#define CHUNK 100
 // sampling actions 
 #define SMPL_RESUME 1
 #define SMPL_FRESH 0
@@ -76,15 +80,15 @@ int print_help(){
   printf("-s $N\n");
   printf("\t\t\t$N sample size. default N=10.\n\n");
   printf("-r, --resume\n");
-  printf("\t\t\tresume from last sampled MCMC point. Only the last MCMC position is read from the file named «resume.double». Everything else about the problem can be changed.\n");
-  printf("-o ./output_file\n");
-  printf("\t\t\tfile for output. Output can be binary.\n\n");
-  printf("-b\n");
-  printf("\t\t\toutput mode: binary.\n\n");
+  printf("\t\t\tResume from last sampled MCMC point. Only the last MCMC position is read from the file named «resume.double». Everything else about the problem can be changed.\n");
+  printf("-o ./output_file.h5\n");
+  printf("\t\t\tFilename for hdf5 output. This file will contain the log-parameter sample and log-posterior values\n\n");
+  //printf("-b\n");
+  //printf("\t\t\tOutput mode: binary.\n\n");
   printf("-a $a\n");
-  printf("\t\t\ttarget acceptance value (markov chain will be tuned for this acceptance).\n\n");
+  printf("\t\t\tTarget acceptance value $a (all markov chains will be tuned for this acceptance).\n\n");
   printf("--seed $seed\n");
-  printf("\t\tset the gsl pseudo random number generator seed to $seed.\n\n");
+  printf("\t\tSet the gsl pseudo random number generator seed to $seed.\n\n");
   
   //  printf("test for 1/Inf=%f\n",1.0/INFINITY);
   return EXIT_SUCCESS;
@@ -152,14 +156,14 @@ int main (int argc, char* argv[]) {
   char lib_name[BUFSZ];
   ode_model_parameters omp;
   FILE *cnf;   // configuration file, with file name: cfilename
-  char global_sample_filename_stem[BUFSZ]="sample.dat"; // filename basis
+  char global_sample_filename_stem[BUFSZ]="Sample.h5"; // filename basis
   char rank_sample_file[BUFSZ]; // filename for sample output
   //char *x_sample_file=NULL; // filename for sample output x(t,p)
   //char *y_sample_file=NULL; // filename for sample output y(t,p)
   FILE *oFile; // will be the file named «sample_file»
   FILE *rFile; // last sampled value will be written to this file
   char resume_filename[BUFSZ]="resume.double";
-  int output_is_binary=0;
+  //int output_is_binary=0;
   double seed = 1;
   double gamma=0.25;
   int sampling_action=SMPL_FRESH;
@@ -175,6 +179,7 @@ int main (int argc, char* argv[]) {
   cnf_options.target_acceptance=-0.5;
   cnf_options.initial_stepsize =-0.1; // not used here in smmala
   cnf_options.sample_size=-10;
+  herr_t status;
   MPI_Init(&argc,&argv);
   int rank,R,DEST;
   MPI_Comm_size(MPI_COMM_WORLD,&R);
@@ -190,7 +195,7 @@ int main (int argc, char* argv[]) {
     //    else if (strcmp(argv[i],"-n")==0) Tuning=0;
     else if (strcmp(argv[i],"-s")==0) cnf_options.sample_size=strtol(argv[i+1],NULL,0);
     else if (strcmp(argv[i],"-o")==0) strcpy(cnf_options.output_file,argv[i+1]);
-    else if (strcmp(argv[i],"-b")==0) output_is_binary=1;
+    //    else if (strcmp(argv[i],"-b")==0) output_is_binary=1;
     else if (strcmp(argv[i],"-a")==0) cnf_options.target_acceptance=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"-i")==0) cnf_options.initial_stepsize=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"-g")==0) gamma=strtod(argv[i+1],NULL);
@@ -365,15 +370,46 @@ int main (int argc, char* argv[]) {
   double acc_rate;
   size_t it;
   int acc;
+  size_t Samples = cnf_options.sample_size;  
+  //oFile=fopen(cnf_options.output_file,"w");
+  hsize_t size[2];
+  hsize_t chunk_size[2];
+  hid_t file_id = H5Fcreate(cnf_options.output_file, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  assert(file_id>0);
+  hid_t para_property_id = H5Pcreate(H5P_DATASET_CREATE);
+  hid_t post_property_id = H5Pcreate(H5P_DATASET_CREATE);
+
+  /* here we set a «chunk size», which will coincide with the hyperslabs we select to write output*/
+  // parameter sample chunk size:
+  chunk_size[0]=CHUNK;
+  chunk_size[1]=D;
+  H5Pset_chunk(para_property_id, 2, chunk_size);
+  hid_t para_chunk_id=H5Screate_simple(2, chunk_size, NULL); // a dataspace to write chunks/hyperslabs
   
-  oFile=fopen(cnf_options.output_file,"w");
-  if (oFile!=NULL){
-    printf("# writing sample to output file.\n");
-  } else {
-    fprintf(stderr,"# Could not open output file {%s} for writing.\n",cnf_options.output_file);
-    exit(1);
-  }
+  // posterior probability distribution chunk size:
+  chunk_size[0]=CHUNK;
+  chunk_size[1]=1;
+  H5Pset_chunk(post_property_id, 2, chunk_size);
+  hid_t post_chunk_id=H5Screate_simple(2, chunk_size, NULL);
+  // hyperslab selection
+  hsize_t offset[2]={0,0}, stride[2]={1,1}, count[2]={1,1}, block[2];
+  block[0]=CHUNK;
+  block[1]=D;
+
+  // hdf5 file setup
+  size[0]=Samples;
+  size[1]=D;
+  hid_t para_dataspace_id=H5Screate_simple(2, size, NULL);
+  size[0]=Samples;
+  size[1]=1;
+  hid_t post_dataspace_id=H5Screate_simple(2, size, NULL);
+    assert(post_dataspace_id>0 && para_dataspace_id>0);
   
+  hid_t parameter_set_id = H5Dcreate2(file_id, "LogParameters", H5T_NATIVE_DOUBLE, para_dataspace_id, H5P_DEFAULT, para_property_id, H5P_DEFAULT);
+  hid_t posterior_set_id = H5Dcreate2(file_id, "LogPosterior", H5T_NATIVE_DOUBLE, post_dataspace_id, H5P_DEFAULT, post_property_id, H5P_DEFAULT);
+  assert(parameter_set_id>0 && posterior_set_id>0);
+
+  // Burn In Loop set up
   size_t BurnInSamples;
   if (warm_up==0){
     BurnInSamples = 7 * (int) sqrt(cnf_options.sample_size);
@@ -383,6 +419,7 @@ int main (int argc, char* argv[]) {
   printf("# Performing Burn-In with step-size (%g) tuning: %lu iterations\n",cnf_options.initial_stepsize,BurnInSamples);
   int master=0;
   int swaps=0;
+  
   /* Burn In Loop and Tuning*/
   for (it = 0; it < BurnInSamples; it++) {
     mcmc_sample(kernel, &acc);
@@ -398,9 +435,9 @@ int main (int argc, char* argv[]) {
       swaps+=mcmc_swap_chains(kernel,master,rank,DEST,buffer);
     }
     //mcmc_print_sample(kernel, stdout);
-    if ( ((it + 1) % 100) == 0 ) {
-      acc_rate = (double) acc_c / 100.0;
-      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %li) acc. rate: %3.2g; %2i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
+    if ( ((it + 1) % CHUNK) == 0 ) {
+      acc_rate = ((double) acc_c) / ((double) CHUNK);
+      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %4li) acc. rate: %3.2g; %2i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       mcmc_adapt(kernel, acc_rate);
       acc_c = 0;
@@ -412,9 +449,14 @@ int main (int argc, char* argv[]) {
   
   
   /* full Posterior loop */
-  size_t Samples = cnf_options.sample_size;
   clock_t ct=clock();
-  
+  gsl_matrix *log_para_chunk;
+  gsl_vector *log_post_chunk;
+  log_para_chunk=gsl_matrix_alloc(CHUNK,D);
+  log_post_chunk=gsl_vector_alloc(CHUNK);
+  gsl_vector_view current;
+  gsl_vector_view x_state;
+  swaps=0;
   for (it = 0; it < Samples; it++) {
     /* draw a sample using RMHMC */
     mcmc_sample(kernel, &acc);
@@ -427,30 +469,65 @@ int main (int argc, char* argv[]) {
     }
     //their_beta=BETA(DEST,R); // the orther proc's 
     mcmc_exchange_information(kernel,DEST,buffer);
-    mcmc_swap_chains(kernel,master,rank,DEST,buffer);
+    swaps+=mcmc_swap_chains(kernel,master,rank,DEST,buffer);
 		
-    /* print sample */
-    if (output_is_binary) {
-      mcmc_write_sample(kernel, oFile);
-    }else{
-      mcmc_print_sample(kernel, oFile);
-    }
+    /* save sampled point for writing */
+    current=gsl_matrix_row(log_para_chunk,it%CHUNK);
+    x_state=gsl_vector_view_array(kernel->x,D);
+    gsl_vector_memcpy(&(current.vector),&(x_state.vector));
+    gsl_vector_set(log_post_chunk,it%CHUNK,kernel->fx[0]);
     /* print sample log and statistics every 100 samples */
-    if ( ((it + 1) % 100) == 0 ) {
-      acc_rate = (double)acc_c / (double)100;
-      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %li) acc. rate: %3.2g; %2i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
-      //fprintf(stdout, "# Iteration: %li\tAcceptance rate: %.2g\t",it, acc_rate);
+    if ( ((it + 1) % CHUNK) == 0 ) {
+      acc_rate = ((double) acc_c) / ((double) CHUNK);
+      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %5li) acc. rate: %3.2g; %3i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       acc_c = 0;
+
+      // print chunk to hdf5 file
+      block[1]=D;
+      status = H5Sselect_hyperslab(para_dataspace_id, H5S_SELECT_SET, offset, stride, count, block);
+      H5Dwrite(parameter_set_id, H5T_NATIVE_DOUBLE, para_chunk_id, para_dataspace_id, H5P_DEFAULT, log_para_chunk->data);
+      block[1]=1;
+      status = H5Sselect_hyperslab(post_dataspace_id, H5S_SELECT_SET, offset, stride, count, block);
+      H5Dwrite(posterior_set_id, H5T_NATIVE_DOUBLE, post_chunk_id, post_dataspace_id, H5P_DEFAULT, log_post_chunk->data);
+      offset[0]=it+1;
+      swaps=0;
     }
   }
+  // write remaining data to the output hdf5 file
+  if (Samples%CHUNK > 0){
+    block[0]=Samples%CHUNK;
+    block[1]=D;
+    status = H5Sselect_hyperslab(para_dataspace_id, H5S_SELECT_SET, offset, stride, count, block);
+    H5Dwrite(parameter_set_id, H5T_NATIVE_DOUBLE, para_chunk_id, para_dataspace_id, H5P_DEFAULT, log_para_chunk->data);
+    block[1]=1;
+    status = H5Sselect_hyperslab(post_dataspace_id, H5S_SELECT_SET, offset, stride, count, block);
+    H5Dwrite(posterior_set_id, H5T_NATIVE_DOUBLE, post_chunk_id, post_dataspace_id, H5P_DEFAULT, log_post_chunk->data);
+  }
+  // annotate written sample with all necessary information
+  status&=H5LTset_attribute_double(file_id, "LogParameters", "seed", &seed, 1);
+  status&=H5LTset_attribute_int(file_id, "LogParameters", "MPI_RANK", &rank, 1);
+  status&=H5LTset_attribute_ulong(file_id, "LogParameters", "SampleSize", &Samples, 1);
+  status&=H5LTset_attribute_ulong(file_id, "LogParameters", "BurnIn", &BurnInSamples, 1);
+  status&=H5LTset_attribute_double(file_id, "LogParameters", "Temperature", &beta, 1);
+  
+  status&=H5LTset_attribute_string(file_id, "LogParameters", "ModelLibrary", lib_base);
+  status&=H5LTset_attribute_string(file_id, "LogParameters", "DataFrom", cfilename);
+  
+  ct=clock()-ct;
+  printf("# computation time spend sampling: %f s\n",((double) ct)/((double) CLOCKS_PER_SEC));
+  
   rFile=fopen(resume_filename,"w");
   mcmc_write_sample(kernel, rFile);
   fclose(rFile);
-  ct=clock()-ct;
-  fclose(oFile);
-  printf("# computation time spend sampling: %f s\n",((double) ct)/((double) CLOCKS_PER_SEC));
 
+  H5Dclose(posterior_set_id);
+  H5Dclose(parameter_set_id);
+  H5Sclose(para_dataspace_id);
+  H5Sclose(post_dataspace_id);
+  H5Pclose(para_property_id);
+  H5Pclose(post_property_id);
+  H5Fclose(file_id);
 
   /* clear memory */
   smmala_model_free(model);

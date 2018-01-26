@@ -121,8 +121,8 @@ extern "C" {
   struct mcmc_kernel_struct_ {
     int N;						/* number of parameters. size of x */
     long int t;					/* itteration number, initialise at 0 */
-    double* x;					/* current state of the chain, parameters */
-    double* fx;
+    double* x;					/* link to method specific state, e.g.: sth. like smmala->state->x->data; current state of the Markov chain, ~ ODE-model log-parameters */
+    double* fx;                                 /* this is also a link to the LogPosterior value saved in the working memory of the specific mcmc method */
     void* rng;					/* pointer to random number generator */
     void* model_function;		/* pointer to structure with user defined functions for the model */
     void* kernel_params;		/* kernel specific parameters and working storage */
@@ -144,7 +144,7 @@ extern "C" {
    *  Results:
    *	 sample is the array with a random sample from the prior.
    */
-  typedef int (*fptrPrior_rnd) (gsl_rng* rng, const const void* model_params, double* sample);
+  typedef int (*fptrPrior_rnd) (gsl_rng* rng, const void* model_params, double* sample);
   
   /* convinience macros for sampling and adaptation */
 #define MCMC_SAMPLE( K, a ) ((K)->Sample) ((K), (a))

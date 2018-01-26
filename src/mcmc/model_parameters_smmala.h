@@ -12,13 +12,19 @@
 #define DATA_NORMALISED_BY_TIMEPOINT 2
 #define DATA_NORMALISED_BY_STATE_VAR 3
 
+#define get_number_of_state_variables(omp) (omp->problem_size->N)
+#define get_number_of_MCMC_variables(omp) (omp->problem_size->D)
+#define get_number_of_model_parameters(omp) (omp->problem_size->P)
+#define get_number_of_model_outputs(omp) (omp->problem_size->F)
+#define get_number_of_model_inputs(omp) (omp->problem_size->U)
+#define get_number_of_experimental_conditions(omp) (omp->problem_size->C)
 
 typedef struct {
   int D; // number of sampling variables; unknown ODE-Model parameters
   int P; // number of total parameters of the ODE-Model (including dependent and known parameters)
   int N; // number of state varibales
   int F; // number of output functions
-  int T; // number of measurement time-points for NORMALISATION_BY_REFERENCE
+  int T; // number of measurement time-points for NORMALISATION_BY_REFERENCE case
   int U; // number of input parameters
   int C; // number of experimental conditions, excluding control (reference measurement)
 } problem_size;
@@ -52,6 +58,9 @@ typedef struct {
   gsl_matrix **yS;
   gsl_matrix **fyS;
   gsl_matrix **oS; // observational sensitivities
+  int normalised_by_experiment; // index of experiment that normalises this one
+  gsl_vector_int *normalised_by_timepoint; // index-set of timepoints to use for normalisation, if any
+  gsl_vector_int *normalised_by_output; // index-set of the output channel to use for normalisation
 } experiment;
 
 typedef struct {

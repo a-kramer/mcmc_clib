@@ -30,29 +30,35 @@ sbtab_t* sbtab_alloc(gchar **keys){
   return sb;
 }
 
-int sbtab_append_row(const sbtab_t *sbtab, const char *data){
+int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
   int i,N;
   gchar **s;
   int status=EXIT_SUCCESS;
   double d;
   GPtrArray *a;
-  s=g_strsplit_set(data,",;\t",-1);
+  s=g_strsplit_set(data,fs,-1);
   if (data!=NULL && s!=NULL){
     int n=g_strv_length(s);
     guint c=g_hash_table_size(sbtab->col);
     N=c<n?c:n;
-    for (i=0;i<N;i++) g_strstrip(s[i]);
+    for (i=0;i<n;i++) g_strstrip(s[i]);
     assert(sbtab!=NULL && sbtab->row!=NULL);
     // get number of rows;
     guint *r;
     r=malloc(sizeof(guint));
     r[0]=g_hash_table_size(sbtab->row);
     g_hash_table_insert(sbtab->row,g_strdup(s[0]),r);
+    /* the new row can be addressed by this hash table (sbtab->row), using the
+     * first column (typically !ID), returning the row index of the new
+     * row, which is the previous table size (before the suuplied row was added).
+     */
     for (i=0;i<N;i++){
       g_ptr_array_add(sbtab->column[i],g_strdup(s[i]));
     }      
     if(n!=c) {
-      fprintf(stderr,"[sbtab_append_row] data contained %i entries while table has %i headers\n",n,c);
+      fprintf(stderr,"[sbtab_append_row] data contained %i entries while table has %i headers\n\t\t",n,c);
+      for (i=0;i<c;i++) fprintf(stderr,"«%s» ",sbtab->key[i]);       fprintf(stderr,"\n\t\t");
+      for (i=0;i<n;i++) fprintf(stderr,"«%s» ",s[i]);
       fprintf(stderr,"\t\t\tinput is a [tc]sv file, so delimited by ,; or \\t and inline comments marked by %%\n");
       guint nTK;
       const gchar **TK=(const gchar **) g_hash_table_get_keys_as_array(sbtab->col,&nTK);
@@ -88,7 +94,7 @@ GPtrArray* sbtab_get_column(const sbtab_t *sbtab, char *key){
   GPtrArray *a=NULL;
   a=g_hash_table_lookup(sbtab->col,key);
   if (a==NULL){
-    fprintf(stderr,"[sbtab_get_column] lookup of «%s» in Table «%s» failed, using DefaultValue instead.",key,sbtab->TableName);
+    fprintf(stderr,"[sbtab_get_column] warning: lookup of «%s» in Table «%s» failed.\n",key,sbtab->TableName);
   }
   return a;
 }
