@@ -88,7 +88,7 @@ GPtrArray* sbtab_get_column(const sbtab_t *sbtab, char *key){
   GPtrArray *a=NULL;
   a=g_hash_table_lookup(sbtab->col,key);
   if (a==NULL){
-    fprintf(stderr,"[sbtab_get_column] lookup of «%s» in Table «%s» failed, using DefaultValue instead.",key,sbtab->TableName);
+    fprintf(stderr,"[sbtab_get_column] lookup of «%s» in Table «%s» failed.\n",key,sbtab->TableName);
   }
   return a;
 }

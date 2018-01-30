@@ -29,6 +29,8 @@
 
 sbtab_t* parse_sb_tab(char *);
 gsl_matrix** get_data_matrix(sbtab_t *DataTable,sbtab_t *L1_OUT);
+int write_data_to_hdf5(char *file_name, gsl_matrix **Y, gsl_matrix **dY, int nE);
+int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab_hash);
 
 int main(int argc, char*argv[]){
   int i,j;
@@ -67,6 +69,74 @@ int main(int argc, char*argv[]){
     printf(" %s ",table->TableName);
   }
   printf("\n");
+  status&=process_data_tables(H5FileName, sbtab, sbtab_hash);
+  //process_input_table(H5FileName, sbtab, sbtab_hash);
+  //process_prior(H5FileName, sbtab, sbtab_hash);
+  return status;
+}
+
+write_input_to_hdf5(gchar *H5FileName, gsl_matrix *u){
+  int i;
+  hid_t       file_id;   /* file identifier */
+  herr_t      status;
+  hid_t data_group_id, sd_group_id, dataspace_id, dataset_id, sd_data_id;  
+  hsize_t size[2];
+  char H5_data_name[24];
+  status=EXIT_SUCCESS;
+  file_id = H5Fopen(H5FileName, H5F_ACC_RDWR, H5P_DEFAULT);
+  group_id = H5G(file_id, "/input", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  /* do stuff */
+  H5Gclose(group_id);
+  H5Fclose(file_id);
+}
+
+int process_input_table(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab_hash){
+  sbtab_t *E_table;
+  guint nE;
+  gchar *experiment_id,*s;
+  GPtrArray *ID, *InputID, *ExperimentID, *E_U; // E_U is the experiment's input column
+  sbtab_t *L1_OUT, *Input;
+  gsl_matrix *u;
+  int i,j,nE,nU; // number of Experiments and number of Iputs
+  gchar *s,*;
+  int status=EXIT_SUCCESS;
+  double val;
+  Input=g_hash_table_lookup(sbtab_hash,"Input");
+  E_table=g_hash_table_lookup(sbtab_hash,"Experiments");
+  if (E_table==NULL){
+    E_table=g_hash_table_lookup(sbtab_hash,"TableOfExperiments");
+  }
+  if(E_table!=NULL && Input!=NULL){
+    ID=E_table->column[0];
+    nE=ID->len;
+    ExperimentID=ID;
+
+    ID=Input->column[0];
+    nU=ID->len;
+    InputID=ID;
+    u=gsl_matrix_alloc(nE,nU);
+    gsl_matrix_set_zero(u);
+    for (i=0;i<nE;i++){      
+      for (j=0;j<nU;j++){
+	U=g_ptr_array_index(InputID,j);
+	assert(U!=NULL);
+	E_U=sbtab_get_column(E_table,U);
+	s=g_ptr_array_index(E_U,i);
+	val=strtod(s,NULL);
+	gsl_matrix_set(u,i,j,val);
+      }
+    }
+  }else{
+    fprintf(stderr,"[process_input_table] Table missing (Experiments or Inputs)\n");
+    exit(-1);
+  }
+  if (u!=NULL){
+    write_input_to_hdf5(H5FileName,u);
+  }
+  return status;
+}
+
+int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab_hash){
   // convert all data matrices of numbers into actual double/int numbers
   // 1. find all experiment quantity matrices
   sbtab_t *E_table;
@@ -79,12 +149,20 @@ int main(int argc, char*argv[]){
   sbtab_t *DataTable;
   sbtab_t *L1_OUT;
   GPtrArray *ID; 
+  int status=EXIT_SUCCESS;
   
   // find all output names
   L1_OUT=g_hash_table_lookup(sbtab_hash,"L1_OUT");
+  if (L1_OUT==NULL){
+    L1_OUT=g_hash_table_lookup(sbtab_hash,"Output");
+  }
   assert(L1_OUT!=NULL);
-  E_table=NULL;
+
   E_table=g_hash_table_lookup(sbtab_hash,"Experiments");
+  if (E_table==NULL){
+    E_table=g_hash_table_lookup(sbtab_hash,"TableOfExperiments");
+  }
+  
   if (E_table!=NULL){
     nE=E_table->column[0]->len; // list of experiments -> number of experiments
     ID=g_hash_table_lookup(E_table->col,"!ID");
@@ -107,7 +185,7 @@ int main(int argc, char*argv[]){
 	Y[j]=Y_dY[0];
 	dY[j]=Y_dY[1];
       } else{
-	fprintf(stderr,"Either L1 Output or DataTable %s missing (NULL).\n",experiment_id);	
+	fprintf(stderr,"Either L1 Output or DataTable %s missing (NULL).\n",experiment_id);
 	status&=EXIT_FAILURE;
       }
     }
@@ -197,7 +275,8 @@ gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT){
   int i,i_r, i_c;
   GPtrArray *c,*dc;
   double val,dval=INFINITY;
-  printf("[get_data_matrix] checking whether DataTable exists.\n"); fflush(stdout);
+  
+  //printf("[get_data_matrix] checking whether DataTable exists.\n"); fflush(stdout);
   assert(DataTable!=NULL && L1_OUT!=NULL);
   guint F=L1_OUT->column[0]->len;
   guint T=DataTable->column[0]->len;
@@ -210,35 +289,40 @@ gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT){
     Y[i]=gsl_matrix_alloc(T,F);
     assert(Y[i]!=NULL);
   }
-  printf("[get_data_matrix] setting data matrix to default values.\n"); fflush(stdout);
+  printf("[get_data_matrix] setting data matrix to default values (1 ± ∞).\n"); fflush(stdout);
   gsl_matrix_set_all(Y[0],1.0);
   gsl_matrix_set_all(Y[1],INFINITY);
+
+
+  // find the name of each outputs error quantifier:  
+  GPtrArray *NoiseName;
   printf("[get_data_matrix] Found experiment %s with %i measurements of %i items.\n",DataTable->TableName,T,F);  fflush(stdout);
   for (i_c=0; i_c<F; i_c++){
     y=(gchar *) g_ptr_array_index(L1_OUT->column[0],i_c);
-    dy=g_strconcat("SD",y,NULL);
-    printf("[get_data_matrix] reading the column %s ± %s\n",y,dy);  fflush(stdout);
+    NoiseName=sbtab_get_column(L1_OUT,"!ErrorName");
+    if (NoiseName!=NULL){
+      dy=g_ptr_array_index(NoiseName,i_c);
+    }else{
+      dy=g_strconcat("SD",y,NULL);
+    }
+    //printf("[get_data_matrix] reading the column %s ± %s\n",y,dy);  fflush(stdout);
     c=sbtab_get_column(DataTable,y);
     dc=sbtab_get_column(DataTable,dy);
     if (c!=NULL){
       for (i_r=0; i_r<T; i_r++){
 	s = (gchar*) g_ptr_array_index(c,i_r);
+	if (s!=NULL){
+	  //printf("[get_data_matrix] row %i; got string «%s» ",i_r,s);
+	  val=strtod(s,NULL);
+	  gsl_matrix_set(Y[0],i_r,i_c,val);
+	} 
 	if (dc!=NULL) {
 	  ds = (gchar*) g_ptr_array_index(dc,i_r);
 	  assert(ds!=NULL);
 	  dval=strtod(ds,NULL);
+	  gsl_matrix_set(Y[1],i_r,i_c,dval);
 	}
-	if (s!=NULL){
-	  printf("[get_data_matrix] row %i; got string «%s» ",i_r,s);
-	  val=strtod(s,NULL);
-	} else {
-	  val=1.0;
-	  dval=INFINITY;
-	}
-	//dval=strtod(s,NULL);
-	printf("..so %g ± %g\n",val,dval);
-	gsl_matrix_set(Y[0],i_r,i_c,val);
-	gsl_matrix_set(Y[1],i_r,i_c,dval);
+	//printf("..so %g ± %g\n",val,dval);
       }
     }
   }  
