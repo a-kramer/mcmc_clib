@@ -48,10 +48,8 @@ int main(int argc, char*argv[]){
   sbtab_t *table;
   GPtrArray *sbtab;
   GHashTable *sbtab_hash;
-  char *sptr;
   gchar *H5FileName=NULL;
   
-  sptr=malloc(sizeof(char)*64);
   sb_tab_file=malloc(sizeof(regex_t));
   h5_file=malloc(sizeof(regex_t));
   regcomp(sb_tab_file,".*[.][tc]sv",REG_EXTENDED);
@@ -94,17 +92,14 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   gsl_vector *E_default_input;
   gsl_vector *time;
   gsl_vector *input;
-  gsl_vector **u; //inputs
   gsl_matrix **Y_dY; // to make one return pointer possible: Y_dY[0] is data, Y_dY[1] is standard deviation
-  gsl_matrix **Y;    // vector of matrices, one per input line
-  gsl_matrix **dY;
   double val;
   sbtab_t *DataTable;
   sbtab_t *L1_OUT;
   GPtrArray *ID, *E_type, *input_ID, *default_time_column; 
   int status=EXIT_SUCCESS;
   int i,j,k;
-  hid_t file_id;
+
   // find Input Table
   Input=g_hash_table_lookup(sbtab_hash,"Input");
   assert(Input!=NULL);
@@ -120,6 +115,10 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
     E_table=g_hash_table_lookup(sbtab_hash,"TableOfExperiments");
   }
   
+  hid_t file_id;
+  hid_t data_group_id, sd_group_id, dataspace_id, dataset_id, sd_data_id;  
+  file_id = H5Fcreate(H5FileName, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  
   if (E_table!=NULL){
     guint nE=E_table->column[0]->len; // list of experiments -> number of experiments
     ID=g_hash_table_lookup(E_table->col,"!ID");
@@ -134,7 +133,6 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
       default_time_column=sbtab_get_column(E_table,"!Time");
     }
     printf("[main] found list of experiments: %s with %i entries\n",E_table->TableName,nE);
-    u=malloc(sizeof(gsl_vector*)*nE);
     guint nU=Input->column[0]->len;
     default_input=gsl_vector_alloc(nU);
     gsl_vector_set_zero(default_input);
@@ -146,8 +144,6 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
 	gsl_vector_set(default_input,j,val);
       }
     }
-    Y=malloc(sizeof(gsl_matrix*)*nE);
-    dY=malloc(sizeof(gsl_matrix*)*nE);
     E_default_input=gsl_vector_alloc(nU);
     input=gsl_vector_alloc(nU);
     for (j=0;j<nE;j++) { // j is the major experiment index      
@@ -171,8 +167,13 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
 	}
       }
       DataTable=g_hash_table_lookup(sbtab_hash,experiment_id);
-      file_id = H5Fcreate(H5FileName, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
 
+      data_group_id = H5Gcreate(file_id, "/data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+      sd_group_id = H5Gcreate(file_id, "/sd_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+      status &= H5Gclose(data_group_id);
+      status &= H5Gclose(sd_group_id);
+
+      
       if (DataTable!=NULL && L1_OUT!=NULL){
 	E_type=sbtab_get_column(E_table,"!Type");
 	int ExperimentType=UNKNOWN_TYPE;
@@ -225,46 +226,52 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
     //printf("result of reading matrices (Y,dY):\n");
     //for (j=0;j<nE;j++) gsl_matrix_fprintf(stdout,Y[j],"%g,");
   }
+  status &= H5Gclose (data_group_id);
+  status &= H5Gclose (sd_group_id);
   status &= H5Fclose(file_id);
   return status;
 }
 
 int write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor){
   int i;
-  herr_t      status;
+  herr_t status;
   hid_t data_group_id, sd_group_id, dataspace_id, dataset_id, sd_data_id;  
   hsize_t size[2];
-  char H5_data_name[24];
+  char H5_data_name[128];
   static int index=0;
   /* Create a new file using default properties. */
   status=EXIT_SUCCESS;
-  data_group_id = H5Gcreate(file_id, "/data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  sd_group_id = H5Gcreate(file_id, "/sd_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  printf("[write_data_to_hdf5] looking up data group «H5_ROOT/data»");
+  data_group_id=H5Gopen(file_id,"/data",H5P_DEFAULT); printf(" id=%i\n",data_group_id);
+  printf("[write_data_to_hdf5] looking up standard deviation group «H5_ROOT/sd_data»");
+  sd_group_id=H5Gopen(file_id,"/sd_data",H5P_DEFAULT); printf(" id=%i\n",sd_group_id);
+  assert(data_group_id>0);
+  assert(sd_group_id>0);
   // write data and standard deviation to file
-    size[0]=Y->size1;
-    size[1]=Y->size2;
-    dataspace_id = H5Screate_simple(2, size, NULL);
-    // Y
-    sprintf(H5_data_name,"data_block_%i",index);
-    dataset_id = H5Dcreate2(data_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-    status &= H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Y->data);
-    status &= H5LTset_attribute_int(dataset_id,H5_data_name,"index", &i, 1);
-    status &= H5Dclose(dataset_id);
-    status &= H5LTset_attribute_int(dataset_id, H5_data_name, "major", &major, 1); // major experiment index, as presented in SBtab file
-    status &= H5LTset_attribute_int(dataset_id, H5_data_name, "minor", &minor, 1); // minor experiment index, within a dose response experiment
-    // dY
-    sprintf(H5_data_name,"sd_data_block_%i",index);
-    sd_data_id = H5Dcreate2(sd_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-    status &= H5Dwrite(sd_data_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dY->data);    
-    status &= H5Dclose(sd_data_id);    
-    // time
-    status &= H5LTset_attribute_double(dataset_id, H5_data_name, "time", time->data, time->size);
-    // input
-    status &= H5LTset_attribute_double(dataset_id, H5_data_name, "input", input->data, input->size);
-  /* Terminate access to the file. */
-  status &= H5Gclose (data_group_id);
-  status &= H5Gclose (sd_group_id);
-
+  size[0]=Y->size1;
+  size[1]=Y->size2;
+  dataspace_id = H5Screate_simple(2, size, NULL);
+  // Y
+  sprintf(H5_data_name,"data_block_%i",index);
+  printf("[write_data_to_hdf5] creating dataset «%s».\n",H5_data_name);
+  dataset_id = H5Dcreate2(data_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  status &= H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Y->data);
+  status &= H5LTset_attribute_int(dataset_id,H5_data_name,"index",&index, 1);
+  status &= H5LTset_attribute_int(dataset_id,H5_data_name,"major",&major, 1); // major experiment index, as presented in SBtab file
+  status &= H5LTset_attribute_int(dataset_id,H5_data_name,"minor",&minor, 1); // minor experiment index, within a dose response experiment
+  // time
+  status &= H5LTset_attribute_double(dataset_id,H5_data_name,"time",time->data, time->size);
+  // input
+  status &= H5LTset_attribute_double(dataset_id,H5_data_name,"input",input->data, input->size);
+  status &= H5Dclose(dataset_id);
+  // dY
+  sprintf(H5_data_name,"sd_data_block_%i",index);
+  sd_data_id = H5Dcreate2(sd_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  status &= H5Dwrite(sd_data_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dY->data);    
+  status &= H5Dclose(sd_data_id);    
+  
+  status &= H5Gclose(data_group_id);
+  status &= H5Gclose(sd_group_id);
   if (status!=EXIT_SUCCESS){
     fprintf(stderr,"[write HDF5] something went wrong; overall H5 status=%i\n",status);
   }else{
@@ -421,8 +428,8 @@ gsl_matrix* get_input_matrix(sbtab_t *DataTable, GPtrArray *input_ID, gsl_vector
   }
   printf("[get_input_matrix] getting dose values in a Dose Response experiment %s.\n",DataTable->TableName); fflush(stdout);
   for (j=0;j<nU;j++){
-    s=g_ptr_index(input_ID,j);
-    u=sbtab_get_column(DataTable,s);
+    s=g_ptr_array_index(input_ID,j);
+    if (s!=NULL) u=sbtab_get_column(DataTable,s);
     if (u!=NULL){
       printf("[get_input_matrix] Found input column %i (%s).\n",j,s);  fflush(stdout);
       for (i=0;i<N;i++){
