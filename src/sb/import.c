@@ -146,6 +146,11 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
     }
     E_default_input=gsl_vector_alloc(nU);
     input=gsl_vector_alloc(nU);
+    gsl_matrix *input_block;
+    gsl_matrix_view data_sub, sd_data_sub;
+    gsl_vector_view input_row;
+    gsl_vector_view time_view;
+    int N,M;
     for (j=0;j<nE;j++) { // j is the major experiment index      
       experiment_id=(gchar*) g_ptr_array_index(E_table->column[0],j);
       if (default_time_column!=NULL) {
@@ -170,8 +175,8 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
 
       data_group_id = H5Gcreate(file_id, "/data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
       sd_group_id = H5Gcreate(file_id, "/sd_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-      status &= H5Gclose(data_group_id);
-      status &= H5Gclose(sd_group_id);
+      //status &= H5Gclose(data_group_id);
+      //status &= H5Gclose(sd_group_id);
 
       
       if (DataTable!=NULL && L1_OUT!=NULL){
@@ -187,8 +192,9 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
 	    ExperimentType=TIME_SERIES;  
 	  }
 	}else{
-	  // default case
+	  // default case, when !Type has not been specified
 	  ExperimentType=TIME_SERIES;
+	  printf("[process_data_tables] Experiment Type is not defined, assuming time series data. Use !Type column in Table of Experiments.\n");
 	}
 	switch(ExperimentType){
 	case UNKNOWN_TYPE:
@@ -198,23 +204,20 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
 	case TIME_SERIES:
 	  Y_dY=get_data_matrix(DataTable,L1_OUT);
 	  time=get_time_vector(DataTable);
-	  write_data_to_hdf5(file_id,Y_dY[DATA],Y_dY[STDV],time,E_default_input,j,0);
+	  assert(write_data_to_hdf5(file_id,Y_dY[DATA],Y_dY[STDV],time,E_default_input,j,0)==0);
 	  break;
 	case DOSE_RESPONSE:
 	  Y_dY=get_data_matrix(DataTable,L1_OUT);
-	  gsl_matrix *input_block;
 	  input_block=get_input_matrix(DataTable,input_ID,E_default_input);
-	  gsl_vector_view time_view;
 	  time_view=gsl_vector_view_array(&default_time,1);
-	  int N=Y_dY[DATA]->size1;
-	  int M=Y_dY[DATA]->size2;
-	  gsl_matrix_view data_sub, sd_data_sub;
-	  gsl_vector_view input_row;
+	  N=Y_dY[DATA]->size1;
+	  M=Y_dY[DATA]->size2;
+	  assert(N>0 && M>0);
 	  for (i=0;i<N;i++){ // i is the minor "simulation unit" index within a dose response experiment
 	    data_sub=gsl_matrix_submatrix(Y_dY[DATA],i,0,1,M);
 	    sd_data_sub=gsl_matrix_submatrix(Y_dY[STDV],i,0,1,M);
 	    input_row=gsl_matrix_row(input_block,i);
-	    write_data_to_hdf5(file_id,&(data_sub.matrix),&(sd_data_sub.matrix),&(time_view.vector),&(input_row.vector),j,i);
+	    assert(write_data_to_hdf5(file_id,&(data_sub.matrix),&(sd_data_sub.matrix),&(time_view.vector),&(input_row.vector),j,i)==0);
 	  }
 	  break;
 	}
@@ -226,8 +229,8 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
     //printf("result of reading matrices (Y,dY):\n");
     //for (j=0;j<nE;j++) gsl_matrix_fprintf(stdout,Y[j],"%g,");
   }
-  status &= H5Gclose (data_group_id);
-  status &= H5Gclose (sd_group_id);
+  status &= H5Gclose(data_group_id);
+  status &= H5Gclose(sd_group_id);
   status &= H5Fclose(file_id);
   return status;
 }
@@ -241,6 +244,7 @@ int write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector 
   static int index=0;
   /* Create a new file using default properties. */
   status=EXIT_SUCCESS;
+  printf("[write_data_to_hdf5] writing data set with index %i (MAJOR=%i, MINOR=%i)\n",index,major,minor);
   printf("[write_data_to_hdf5] looking up data group «H5_ROOT/data»");
   data_group_id=H5Gopen(file_id,"/data",H5P_DEFAULT); printf(" id=%i\n",data_group_id);
   printf("[write_data_to_hdf5] looking up standard deviation group «H5_ROOT/sd_data»");
@@ -269,15 +273,13 @@ int write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector 
   sd_data_id = H5Dcreate2(sd_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   status &= H5Dwrite(sd_data_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dY->data);    
   status &= H5Dclose(sd_data_id);    
-  
   status &= H5Gclose(data_group_id);
   status &= H5Gclose(sd_group_id);
   if (status!=EXIT_SUCCESS){
-    fprintf(stderr,"[write HDF5] something went wrong; overall H5 status=%i\n",status);
+    fprintf(stderr,"[write_data_to_hdf5] something went wrong; overall H5 status=%i\n",status);
   }else{
     index++;
-  }
-  
+  }  
   return status;
 }
 
