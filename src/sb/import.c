@@ -86,19 +86,21 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   // convert all data matrices of numbers into actual double/int numbers
   // 1. find all experiment quantity matrices
   sbtab_t *E_table, *Input;  
-  gchar *experiment_id, *s, *input_id, *type;
-  double default_time=1.0; // arbitrary  
+  gchar *experiment_id, *s, *input_id, *type, *experiment_name;
   gsl_vector *default_input;
   gsl_vector *E_default_input;
-  gsl_vector *time;
+  gsl_vector *time, *default_time;
   gsl_vector *input;
   gsl_matrix **Y_dY; // to make one return pointer possible: Y_dY[0] is data, Y_dY[1] is standard deviation
   double val;
   sbtab_t *DataTable;
   sbtab_t *L1_OUT;
-  GPtrArray *ID, *E_type, *input_ID, *default_time_column; 
+  GPtrArray *ID, *E_type, *input_ID, *default_time_column, *E_Name; 
   int status=EXIT_SUCCESS;
   int i,j,k;
+  int *ExperimentType;
+  regex_t DoseResponse;
+  regcomp(&DoseResponse,"[[:blank:]]*[Dd]ose[[:blank:]]*[Rr]esponse", REG_EXTENDED);
 
   // find Input Table
   Input=g_hash_table_lookup(sbtab_hash,"Input");
@@ -118,21 +120,39 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   hid_t file_id;
   hid_t data_group_id, sd_group_id, dataspace_id, dataset_id, sd_data_id;  
   file_id = H5Fcreate(H5FileName, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  data_group_id = H5Gcreate(file_id, "/data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  sd_group_id = H5Gcreate(file_id, "/sd_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   
   if (E_table!=NULL){
     guint nE=E_table->column[0]->len; // list of experiments -> number of experiments
     ID=g_hash_table_lookup(E_table->col,"!ID");
     assert(ID!=NULL);
     if (ID!=E_table->column[0]) printf("!ID is not first column!\n");
-    for (j=0;j<nE;j++){    
-      experiment_id=(gchar*) g_ptr_array_index(E_table->column[0],j);
-      printf("GPtrArray[%i]: %s\n",j,experiment_id);
-      experiment_id=(gchar*) g_ptr_array_index(ID,j);
-      printf("ID[%i]: %s\n",j,experiment_id);
-      // default measurement time?
-      default_time_column=sbtab_get_column(E_table,"!Time");
+    E_Name=g_hash_table_lookup(E_table->col,"!Name");
+    ExperimentType=calloc(nE,sizeof(int));
+    E_type=sbtab_get_column(E_table,"!Type");
+    default_time_column=sbtab_get_column(E_table,"!Time");
+    if (default_time_column!=NULL){
+      default_time=gsl_vector_alloc(nE);
+      for (j=0;j<nE;j++) gsl_vector_set(default_time,j,strtod(g_ptr_array_index(default_time_column,j),NULL));
     }
-    printf("[main] found list of experiments: %s with %i entries\n",E_table->TableName,nE);
+    for (j=0;j<nE;j++){
+      experiment_id=(gchar*) g_ptr_array_index(ID,j);
+      ExperimentType[j]=UNKNOWN_TYPE;
+      if (E_type!=NULL){
+	type=g_ptr_array_index(E_type,j);
+	if (type!=NULL && regexec(&DoseResponse, type, 0, NULL, 0)==0){
+	  ExperimentType[j]=DOSE_RESPONSE;
+	} else {
+	  ExperimentType[j]=TIME_SERIES;  
+	}
+      }else{
+	// default case, when !Type has not been specified, for now
+	ExperimentType[j]=TIME_SERIES;
+	printf("[process_data_tables] Experiment Type is not defined, assuming time series data. Use !Type column in Table of Experiments.\n");
+      } 
+    }
+    printf("[process_data_tables] found list of experiments: %s with %i entries\n",E_table->TableName,nE);
     guint nU=Input->column[0]->len;
     default_input=gsl_vector_alloc(nU);
     gsl_vector_set_zero(default_input);
@@ -151,14 +171,12 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
     gsl_vector_view input_row;
     gsl_vector_view time_view;
     int N,M;
-    for (j=0;j<nE;j++) { // j is the major experiment index      
-      experiment_id=(gchar*) g_ptr_array_index(E_table->column[0],j);
-      if (default_time_column!=NULL) {
-	default_time=strtod(g_ptr_array_index(default_time_column,j),NULL);
-      } else {
-	default_time=1;
-      }
-      printf("[main] processing %s\n",experiment_id);
+    for (j=0;j<nE;j++) { // j is the major experiment index
+      if (ID!=NULL) experiment_id=(gchar*) g_ptr_array_index(ID,j);
+      else experiment_id=(gchar*) g_ptr_array_index(E_table->column[0],j);
+      
+      if (E_Name!=NULL) experiment_name=(gchar*)g_ptr_array_index(E_Name,j);
+      printf("[process_data_tables] processing %s\n",experiment_id);
       input_ID=sbtab_get_column(Input,"!ID");
       assert(input_ID!=NULL);
       gsl_vector_memcpy(E_default_input,default_input);
@@ -172,31 +190,15 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
 	}
       }
       DataTable=g_hash_table_lookup(sbtab_hash,experiment_id);
-
-      data_group_id = H5Gcreate(file_id, "/data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-      sd_group_id = H5Gcreate(file_id, "/sd_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-      //status &= H5Gclose(data_group_id);
-      //status &= H5Gclose(sd_group_id);
-
+      if (DataTable==NULL) {
+	fprintf(stderr,"\t\tCould not find Measurement Table by ID:\t«TableName='%s'», \n\t\twill try searching by Name instead:\t«TableName='%s'».\n",experiment_id,experiment_name);
+	DataTable=g_hash_table_lookup(sbtab_hash,experiment_name);
+      }
+      assert(DataTable!=NULL);
+    
       
       if (DataTable!=NULL && L1_OUT!=NULL){
-	E_type=sbtab_get_column(E_table,"!Type");
-	int ExperimentType=UNKNOWN_TYPE;
-	if (E_type!=NULL){
-	  regex_t DoseResponse;
-	  regcomp(&DoseResponse,"[[:blank:]]*[Dd]ose[[:blank:]]*[Rr]esponse", REG_EXTENDED);
-	  type=g_ptr_array_index(E_type,j);
-	  if (type!=NULL && regexec(&DoseResponse, type, 0, NULL, 0)==0){
-	    ExperimentType=DOSE_RESPONSE;
-	  } else {
-	    ExperimentType=TIME_SERIES;  
-	  }
-	}else{
-	  // default case, when !Type has not been specified
-	  ExperimentType=TIME_SERIES;
-	  printf("[process_data_tables] Experiment Type is not defined, assuming time series data. Use !Type column in Table of Experiments.\n");
-	}
-	switch(ExperimentType){
+	switch(ExperimentType[j]){
 	case UNKNOWN_TYPE:
 	  fprintf(stderr,"[process_data_table] error: unknown experiment type\n");
 	  exit(-1);
@@ -209,7 +211,8 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
 	case DOSE_RESPONSE:
 	  Y_dY=get_data_matrix(DataTable,L1_OUT);
 	  input_block=get_input_matrix(DataTable,input_ID,E_default_input);
-	  time_view=gsl_vector_view_array(&default_time,1);
+	  if (default_time!=NULL) time_view=gsl_vector_subvector(default_time,j,1);
+	  time=get_time_vector(DataTable);
 	  N=Y_dY[DATA]->size1;
 	  M=Y_dY[DATA]->size2;
 	  assert(N>0 && M>0);
@@ -217,10 +220,14 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
 	    data_sub=gsl_matrix_submatrix(Y_dY[DATA],i,0,1,M);
 	    sd_data_sub=gsl_matrix_submatrix(Y_dY[STDV],i,0,1,M);
 	    input_row=gsl_matrix_row(input_block,i);
+	    if (time!=NULL) time_view=gsl_vector_subvector(time,i,1);
 	    assert(write_data_to_hdf5(file_id,&(data_sub.matrix),&(sd_data_sub.matrix),&(time_view.vector),&(input_row.vector),j,i)==0);
 	  }
 	  break;
-	}
+	}	
+	gsl_matrix_free(Y_dY[DATA]);
+	gsl_matrix_free(Y_dY[STDV]);
+	if (time!=NULL) gsl_vector_free(time);
       } else{
 	fprintf(stderr,"Either L1 Output or DataTable %s missing (NULL).\n",experiment_id);
 	status&=EXIT_FAILURE;
@@ -403,10 +410,7 @@ gsl_vector* get_time_vector(sbtab_t *DataTable){
       }
     }
   }else{
-    printf("[get_time_vector] did not find a time column, using internal default measurement time: %f.\n",default_time);
-    T=1;
-    time=gsl_vector_alloc(T);
-    gsl_vector_set(time,0,default_time);
+    time=NULL;
   }  
   return time;  
 }
@@ -510,22 +514,20 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
 	  TableName=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
 	  printf("TableName: «%s»\n",TableName); fflush(stdout);
 	} else {
-	  fprintf(stderr,"TableName is missing.\n");
+	  fprintf(stderr,"error: TableName is missing.\n");
 	  exit(-1);
 	}
 	if (regexec(&RE_TableType,s,2,match,0)==0){
 	  TableType=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
 	  printf("TableType: «%s»\n",TableType); fflush(stdout);
 	}else {
-	  fprintf(stderr,"TableType is missing.\n");
-	  exit(-1);
+	  fprintf(stderr,"warning: TableType is missing.\n");
 	}
 	if (regexec(&RE_TableTitle,s,2,match,0)==0){
 	  TableTitle=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
 	  printf("TableTitle: «%s»\n",TableTitle); fflush(stdout);
 	}else {
-	  fprintf(stderr,"TableTitle is missing.\n");
-	  exit(-1);
+	  fprintf(stderr,"warning: TableTitle is missing.\n");
 	}
 	
       } else if (regexec(&SBkeys,s,2,match,0)==0){
