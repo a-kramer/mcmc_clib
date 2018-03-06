@@ -246,9 +246,9 @@ int write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector 
   status=EXIT_SUCCESS;
   printf("[write_data_to_hdf5] writing data set with index %i (MAJOR=%i, MINOR=%i)\n",index,major,minor);
   printf("[write_data_to_hdf5] looking up data group «H5_ROOT/data»");
-  data_group_id=H5Gopen(file_id,"/data",H5P_DEFAULT); printf(" id=%i\n",data_group_id);
+  data_group_id=H5Gopen(file_id,"/data",H5P_DEFAULT); printf(" id=%li\n",data_group_id);
   printf("[write_data_to_hdf5] looking up standard deviation group «H5_ROOT/sd_data»");
-  sd_group_id=H5Gopen(file_id,"/sd_data",H5P_DEFAULT); printf(" id=%i\n",sd_group_id);
+  sd_group_id=H5Gopen(file_id,"/sd_data",H5P_DEFAULT); printf(" id=%li\n",sd_group_id);
   assert(data_group_id>0);
   assert(sd_group_id>0);
   // write data and standard deviation to file
@@ -260,13 +260,13 @@ int write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector 
   printf("[write_data_to_hdf5] creating dataset «%s».\n",H5_data_name);
   dataset_id = H5Dcreate2(data_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   status &= H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Y->data);
-  status &= H5LTset_attribute_int(dataset_id,H5_data_name,"index",&index, 1);
-  status &= H5LTset_attribute_int(dataset_id,H5_data_name,"major",&major, 1); // major experiment index, as presented in SBtab file
-  status &= H5LTset_attribute_int(dataset_id,H5_data_name,"minor",&minor, 1); // minor experiment index, within a dose response experiment
+  status &= H5LTset_attribute_int(data_group_id,H5_data_name,"index",&index, 1);
+  status &= H5LTset_attribute_int(data_group_id,H5_data_name,"major",&major, 1); // major experiment index, as presented in SBtab file
+  status &= H5LTset_attribute_int(data_group_id,H5_data_name,"minor",&minor, 1); // minor experiment index, within a dose response experiment
   // time
-  status &= H5LTset_attribute_double(dataset_id,H5_data_name,"time",time->data, time->size);
+  status &= H5LTset_attribute_double(data_group_id,H5_data_name,"time",time->data, time->size);
   // input
-  status &= H5LTset_attribute_double(dataset_id,H5_data_name,"input",input->data, input->size);
+  status &= H5LTset_attribute_double(data_group_id,H5_data_name,"input",input->data, input->size);
   status &= H5Dclose(dataset_id);
   // dY
   sprintf(H5_data_name,"sd_data_block_%i",index);
@@ -566,7 +566,7 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
 	printf("[parse_sb_tab] skipping empty line «%s».\n",s);
       } else {
 	assert(sbtab!=NULL);
-	sbtab_append_row(sbtab,s);
+	sbtab_append_row(sbtab,s,fs);
       }      
     }
     if (sbtab!=NULL){
