@@ -5,7 +5,7 @@
 # -l ODEmodel11S26P4U.so    shared library of model
 # -c ODEmodel11S26P4U.cfg   configurations
 Model=ODEmodel11S26P4U
-SampleFile="`date +%Y-%m-%dT%Hh%Mm`.double"
+SampleFile="`date +%Y-%m-%dT%Hh%Mm`.h5"
 #SampleSize=$((1024**2))
 DefaultSampleSize=$((2**10))
 SampleSize=${2:-$DefaultSampleSize}

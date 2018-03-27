@@ -19,6 +19,9 @@
  */
 #include <stdlib.h>
 #include "mcmc_kernel.h"
+#include "hdf5.h"
+#include "hdf5_hl.h"
+
 
 void mcmc_print_sample(mcmc_kernel* kernel, FILE* s){
   int n = kernel->N;
@@ -41,6 +44,7 @@ int mcmc_write_sample(mcmc_kernel *kernel, FILE *s){
   fwrite(kernel->fx,sizeof(double),1,s);
   return EXIT_SUCCESS;
 }
+
 
 int mcmc_exchange_information(mcmc_kernel* kernel, const int DEST, void *buffer){
   return kernel->ExchangeInformation(kernel, DEST, buffer);
