@@ -235,7 +235,7 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
     }
     //printf("result of reading matrices (Y,dY):\n");
     //for (j=0;j<nE;j++) gsl_matrix_fprintf(stdout,Y[j],"%g,");
-  }
+  }  
   status &= H5Gclose(data_group_id);
   status &= H5Gclose(sd_group_id);
   status &= H5Fclose(file_id);
