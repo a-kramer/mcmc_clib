@@ -1,5 +1,9 @@
 #include "model_parameters_smmala.h"
 
+/* Data will always be stored in blocks (matrices), there will be
+ * vector views to identify specific rows.  Whether Data or data_block
+ * is used in memory allocation is up to the data read functions.
+ */
 int init_E(ode_model_parameters *omp){
   int i;
   int C=omp->size->C;
@@ -9,6 +13,8 @@ int init_E(ode_model_parameters *omp){
     omp->E[i]->t=NULL;
     omp->E[i]->init_y=NULL;
     omp->E[i]->input_u=NULL;
+    nfy=NULL; // normalising fy; temporary storage
+    nfyS=NULL; // normalising fyS; temporary storage
   }
   omp->ref_E=(experiment*) malloc(sizeof(experiment)); // just in case
   omp->ref_E->t=NULL;
@@ -17,9 +23,12 @@ int init_E(ode_model_parameters *omp){
   omp->Data=NULL;
   omp->sdData=NULL;
   for (i=0;i<C;i++) {
-    omp->data_block=NULL;
-    omp->sd_data_block=NULL;
+    omp->E[i]->data_block=NULL;
+    omp->E[i]->sd_data_block=NULL;
   }
+  omp->ref_E->data_block=NULL;
+  omp->ref_E->sd_data_block=NULL;
+  
   printf("# %i+1 experiment structures allocated.\n",C);
   return GSL_SUCCESS;
 }
@@ -39,10 +48,6 @@ int ode_model_parameters_link(ode_model_parameters *omp){
       //standard deviation
       omp->E[i]->sd_data_block_view=gsl_matrix_submatrix(omp->sdData,k,0,T,F);
       omp->E[i]->sd_data_block=&(omp->E[i]->sd_data_block_view.matrix);
-    }else{
-      fprintf();
-      omp->E[i]->data_block=gsl_matrix_alloc(T,F);
-      omp->E[i]->sd_data_block=gsl_matrix_alloc(T,F);
     }
     k+=T;
     // each row
@@ -105,6 +110,8 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
     omp->E[i]->fyS=(gsl_matrix **) malloc(sizeof(gsl_matrix*)*T);
     omp->E[i]->oS=(gsl_matrix **) malloc(sizeof(gsl_matrix*)*T);
     omp->E[i]->yS0=gsl_matrix_calloc(P,N);
+    nfy=gsl_vector_alloc(F); // normalising fy; temporary storage
+    nfyS=gsl_matrix_alloc(P,F); // normalising fyS; temporary storage
 
     for (j=0;j<T;j++){
       omp->E[i]->y[j]=gsl_vector_alloc(N);

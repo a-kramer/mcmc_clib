@@ -52,6 +52,8 @@ typedef struct {
   gsl_vector **sd_data;
   gsl_vector **y; // y[t](i) vector of size T;
   gsl_vector **fy; // measurement model output functions
+  gsl_vector *nfy; // normalising fy; temporary storage
+  gsl_matrix *nfyS; // normalising fyS; temporary storage
   gsl_vector *init_y;
   gsl_vector *input_u;
   gsl_matrix *yS0;
