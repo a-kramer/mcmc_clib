@@ -41,6 +41,7 @@
 #include <gsl/gsl_rng.h>
 #include <mpi.h>
 #include "read_cnf.h"
+#include "read_data_hdf5.h"
 #include "../mcmc/smmala.h"
 #include "../ode/ode_model.h"
 #include "../mcmc/smmala_posterior.h"
@@ -63,7 +64,7 @@
  * a multivariate normal model with known covariance matrix and zero mean.
  *
 typedef struct {
-	int D;
+	int D
 	double* Variance;
 	double* Precision;
 	double* tmpVec;
@@ -184,9 +185,10 @@ int main (int argc, char* argv[]) {
   int rank,R,DEST;
   MPI_Comm_size(MPI_COMM_WORLD,&R);
   MPI_Comm_rank(MPI_COMM_WORLD,&rank);
-
+  char* h5file=NULL;
   for (i=0;i<argc;i++){
     if (strcmp(argv[i],"-c")==0) cfilename=argv[i+1];
+    else if (strcmp(argv[i],"-d")==0) h5file=argv[i+1];
     else if (strcmp(argv[i],"-p")==0 || strcmp(argv[i],"--prior-start")==0) start_from_prior=1;
     else if (strcmp(argv[i],"-w")==0 || strcmp(argv[i],"--warm-up")==0) warm_up=strtol(argv[i+1],NULL,10);
     else if (strcmp(argv[i],"--resume")==0 || strcmp(argv[i],"-r")==0) sampling_action=SMPL_RESUME;
@@ -260,16 +262,22 @@ int main (int argc, char* argv[]) {
   //  double t_old = solver_param[2];
   
   omp.solver=solver;
-  
-  cnf=fopen(cfilename,"r");
-  if (cnf!=NULL){
-    printf("# reading configuration.\n");
-    parse_config(cnf,&omp,&cnf_options);
-  } else {
-    fprintf(stderr,"# Could not open config file %s.\n",cfilename);
-    exit(1);
+
+  if (cfilename!=NULL){
+    cnf=fopen(cfilename,"r");
+    if (cnf!=NULL){
+      printf("# reading configuration.\n");
+      parse_config(cnf,&omp,&cnf_options);
+    } else {
+      fprintf(stderr,"# Could not open config file %s.\n",cfilename);
+      exit(1);
+    }
+    fclose(cnf);
   }
-  fclose(cnf);
+
+  if (h5file!=NULL){
+    read_data(h5file,&omp);
+  }
   
   cnf_options.initial_stepsize=fabs(cnf_options.initial_stepsize);
   cnf_options.target_acceptance=fabs(cnf_options.target_acceptance);
