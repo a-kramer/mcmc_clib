@@ -34,8 +34,6 @@ int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
   int i,N;
   gchar **s;
   int status=EXIT_SUCCESS;
-  double d;
-  GPtrArray *a;
   s=g_strsplit_set(data,fs,-1);
   if (data!=NULL && s!=NULL){
     int n=g_strv_length(s);
@@ -48,6 +46,7 @@ int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
     r=malloc(sizeof(guint));
     r[0]=g_hash_table_size(sbtab->row);
     g_hash_table_insert(sbtab->row,g_strdup(s[0]),r);
+    printf("+ %i «%s»\n",r[0],s[0]);
     /* the new row can be addressed by this hash table (sbtab->row), using the
      * first column (typically !ID), returning the row index of the new
      * row, which is the previous table size (before the suuplied row was added).

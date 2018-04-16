@@ -26,6 +26,8 @@
 #include "sbtab.h"
 #include "../mcmc/model_parameters_smmala.h"
 
+#define get_table_length(Table) (Table->column[0]->len)
+
 #define DEFAULT_STR_LENGTH 128
 #define UNKNOWN_TYPE 0
 #define DOSE_RESPONSE 1
@@ -34,12 +36,22 @@
 #define DATA 0
 #define STDV 1
 
+#define NORM_STRIDE 3
+#define NORM_EXPERIMENT 0
+#define NORM_OUTPUT 1
+#define NORM_TIME 2
+
+
+
 sbtab_t* parse_sb_tab(char *);
 gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT);
 gsl_vector* get_time_vector(sbtab_t *DataTable);
 gsl_matrix* get_input_matrix(sbtab_t *DataTable, GPtrArray *input_ID, gsl_vector *default_input);
-int write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor);
-int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab_hash);
+herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, GArray **N);
+herr_t write_prior_to_hdf5(hid_t file_id, gsl_vector *mu, gsl_matrix *Sigma);
+int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_hash);
+gchar* dup_match(regmatch_t *match, char *source);
+gsl_vector* sbtab_column_to_gsl_vector(sbtab_t *table, gchar *column_name);
 
 int main(int argc, char*argv[]){
   int i,j;
@@ -76,7 +88,11 @@ int main(int argc, char*argv[]){
     printf(" %s ",table->TableName);
   }
   printf("\n");
-  status&=process_data_tables(H5FileName, sbtab, sbtab_hash);
+  hid_t file_id;
+  file_id = H5Fcreate(H5FileName, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  status &= process_data_tables(file_id, sbtab, sbtab_hash);
+  status &= process_prior(file_id, sbtab, sbtab_hash);
+  status &= H5Fclose(file_id);
   //process_input_table(H5FileName, sbtab, sbtab_hash);
   //process_prior(H5FileName, sbtab, sbtab_hash);
   return status;
@@ -85,17 +101,22 @@ int main(int argc, char*argv[]){
 gsl_vector* get_default_input(sbtab_t *Input){
   int j;
   double val;
-  guint nU=Input->column[0]->len;
+  guint nU=get_table_length(Input);
   gsl_vector *default_input;
   default_input=gsl_vector_alloc(nU);
   gsl_vector_set_zero(default_input);
   GPtrArray *u_col;
   u_col=sbtab_get_column(Input,"!DefaultValue");
+  printf("[get_default_input] ");
   if (u_col!=NULL){
     for (j=0;j<nU;j++){
       val=strtod(g_ptr_array_index(u_col,j),NULL);
       gsl_vector_set(default_input,j,val);
+      printf(" %g ",val);
     }
+    printf(";\n");
+  } else {
+    printf("none defined, defaulting to zero for all inputs.\n");
   }
   return default_input;
 }
@@ -131,46 +152,79 @@ gsl_vector *get_default_time(sbtab_t *E_table){
   gsl_vector *default_time;
   GPtrArray *default_time_column;
   default_time_column=sbtab_get_column(E_table,"!Time");
+  int nE=get_table_length(E_table);
+  int j;
+  gchar *s;
+  double t;
+  default_time=gsl_vector_alloc(nE);
+  printf("[get_default_time] ");
   if (default_time_column!=NULL){
-    default_time=gsl_vector_alloc(nE);
-    for (j=0;j<nE;j++) gsl_vector_set(default_time,j,strtod(g_ptr_array_index(default_time_column,j),NULL));
-  } else {
+    for (j=0;j<nE;j++) {
+      s=g_ptr_array_index(default_time_column,j);
+      t=strtod(s,NULL);
+      gsl_vector_set(default_time,j,t);
+      printf(" %g ",t);
+    }
+    printf(";\n");
+  } else {    
     gsl_vector_set_zero(default_time);
+    printf("not defined, setting to zero.\n");
   }
   return default_time;
 }
 
-int* get_experiment_type(int nE, GPtrArray *ID, GPtrArray *E_type, regex_t *DoseResponse){
+int* get_experiment_type(GPtrArray *E_type){
   int j;
   int *ExperimentType;
-  ExperimentType=calloc(nE,sizeof(int));  
+  gchar *Type;
+  regex_t DoseResponse;
+  regcomp(&DoseResponse,"Dose[[:blank:]]*Response", REG_EXTENDED | REG_ICASE);
+  regex_t TimeSeries;
+  regcomp(&TimeSeries,"Time[[:blank:]]*Series", REG_EXTENDED | REG_ICASE);
+  int nE=E_type->len;
+  printf("[get_experiment_type] %i Experiments:",nE);
+  ExperimentType=malloc(nE*sizeof(int));  
   for (j=0;j<nE;j++){
-    experiment_id=(gchar*) g_ptr_array_index(ID,j);
-    ExperimentType[j]=UNKNOWN_TYPE;
+    Type=NULL;
     if (E_type!=NULL){
-      type=g_ptr_array_index(E_type,j);
-      if (type!=NULL && regexec(DoseResponse, type, 0, NULL, 0)==0){
-	ExperimentType[j]=DOSE_RESPONSE;
+      Type=g_ptr_array_index(E_type,j);
+      if (Type!=NULL){
+	printf( "«%s»",Type);
+	if (regexec(&DoseResponse, Type, 0, NULL, 0)==0){
+	  ExperimentType[j]=DOSE_RESPONSE;
+	} else if (regexec(&TimeSeries, Type, 0, NULL, 0)==0){
+	  ExperimentType[j]=TIME_SERIES;  
+	} else {
+	  //fprintf(stderr,"[get_experiment_type] This type is not known: «%s».\n",Type);
+	  ExperimentType[j]=UNKNOWN_TYPE;
+	}
       } else {
-	ExperimentType[j]=TIME_SERIES;  
-      }
+	ExperimentType[j]=UNKNOWN_TYPE;
+	fprintf(stderr,"[get_experiment_type] Experiment Type is set, but is not one of: «Time Series», «Dose Response»).\n");	
+      }      
     }else{
-      // default case, when !Type has not been specified, for now
+      // default case, when !Type has not been specified at all, for now
       ExperimentType[j]=TIME_SERIES;
-      printf("[process_data_tables] Experiment Type is not defined, assuming time series data. Use !Type column in Table of Experiments (Possible Values: «Time Series», «Dose Response»).\n");
-    } 
+      printf("[get_experiment_type] Experiment Type is not defined, assuming time series data. Use !Type column in Table of Experiments (Possible Values: «Time Series», «Dose Response»).\n");
+    }
+    printf("(%i) ",ExperimentType[j]);
   }
+  printf(";\n");
+  regfree(&DoseResponse);
+  regfree(&TimeSeries);
+  fflush(stdout);
   return ExperimentType;
 }
 
-gsl_vector** get_experiment_specific_inputs(int nE, sbtab_t *Input, gsl_vector *default_input){
+gsl_vector** get_experiment_specific_inputs(sbtab_t *ExperimentTable, sbtab_t *Input, gsl_vector *default_input){
   int j,k;
-  gchar *s;
+  gchar *s, *input_id;
   GPtrArray *u_col;
   double val;
   GPtrArray *input_ID;
   gchar *experiment_id, *experiment_name;
   gsl_vector **E_default_input;
+  int nE=get_table_length(ExperimentTable);
   E_default_input=malloc(sizeof(gsl_vector*)*nE);
   assert(default_input!=NULL);
   int nU=default_input->size;
@@ -183,7 +237,7 @@ gsl_vector** get_experiment_specific_inputs(int nE, sbtab_t *Input, gsl_vector *
     
     for (k=0;k<nU;k++){
       input_id=g_ptr_array_index(input_ID,k);
-      u_col=sbtab_get_column(E_table,input_id);
+      u_col=sbtab_get_column(ExperimentTable,input_id);
       if (u_col!=NULL){
 	s=g_ptr_array_index(u_col,j);
 	val=strtod(s,NULL);
@@ -194,12 +248,151 @@ gsl_vector** get_experiment_specific_inputs(int nE, sbtab_t *Input, gsl_vector *
   return E_default_input;
 }
 
+GArray** get_normalisation(sbtab_t *ExperimentTable, int *ExperimentType, sbtab_t *OutputTable, sbtab_t **DataTable, GArray **SimUnitIdx, GArray *MajorIdx, GArray *MinorIdx){
+  regex_t ID_TimePoint, ID;
+  GPtrArray *RelativeTo;
+  int status;
+  char errbuf[DEFAULT_STR_LENGTH];
+  status=regcomp(&ID_TimePoint,"([[:alpha:]][[:alnum:]_]*)\\[?([^]]+)?\\]?", REG_EXTENDED);
+  if (status!=0){
+    regerror(status, &ID_TimePoint,errbuf,DEFAULT_STR_LENGTH);
+    perror(errbuf);
+  }
+  status=regcomp(&ID,"([[:alpha:]][[:alnum:]_]*)", REG_EXTENDED);
+  if (status!=0){
+    regerror(status, &ID_TimePoint,errbuf,DEFAULT_STR_LENGTH);
+    perror(errbuf);
+  }
+  guint *major, *minor;
+  int i,k,I,rI,ri,rk,rt;
+  int *rO;
+  int j,l;
+  gchar *field;
+  gchar *RefExp;
+  gchar *RefLine;
+  gchar *RefOut;
+  regmatch_t match[4];  
+  int nE=get_table_length(ExperimentTable);
+  guint K=MajorIdx->len;
+  GArray **N;
+  int nO=get_table_length(OutputTable);
+
+  N=malloc(sizeof(GArray*)*NORM_STRIDE);
+
+  assert(SimUnitIdx!=NULL);
+  assert(MajorIdx!=NULL);
+  assert(MinorIdx!=NULL);
+  // output normalisation
+  printf("[get_normalisation] %i outputs, normalised by: ",nO);
+  RelativeTo=sbtab_get_column(OutputTable,"!RelativeTo");
+  if (RelativeTo==NULL) RelativeTo=sbtab_get_column(OutputTable,"!NormalisedBy");
+  fflush(stdout);
+  if (RelativeTo!=NULL){
+    N[NORM_OUTPUT]=g_array_sized_new(FALSE,FALSE,sizeof(int),nO);    
+    for (j=0;j<nO;j++){      
+      field=g_ptr_array_index(RelativeTo,j);
+      assert(field!=NULL);
+      printf(" «%s» ",field); fflush(stdout);
+      status=regexec(&ID, field, 4, match, REG_EXTENDED);
+      //printf("[%i]",status); fflush(stdout);
+      if (status==0){
+	RefOut=dup_match(&match[1], field);
+	//RefOut=field;
+	assert(RefOut!=NULL);
+	printf("(%s=",RefOut);fflush(stdout);
+	rO=g_hash_table_lookup(OutputTable->row,RefOut);
+	l=(rO==NULL?(-1):rO[0]);
+	printf("%i)",l); fflush(stdout);
+	g_array_append_val(N[NORM_OUTPUT],l);
+	g_free(RefOut);
+      } else {
+	fprintf(stderr,"[get_normalisation] field «%s» is not an ID.\n",field);
+	l=-1;
+	g_array_append_val(N[NORM_OUTPUT],l);
+      }
+      field=NULL;
+    }
+  } else {
+    N[NORM_OUTPUT]=NULL;
+  }
+  printf("\n");
+  fflush(stdout);
+  // experiment normalisation and time normalisation
+  printf("[get_normalisation] %i simulation units.\n",K); fflush(stdout);
+  RelativeTo=sbtab_get_column(ExperimentTable,"!RelativeTo");
+  if (RelativeTo==NULL) RelativeTo=sbtab_get_column(ExperimentTable,"!NormalisedBy");
+
+  if (RelativeTo!=NULL){
+    N[NORM_EXPERIMENT]=g_array_sized_new(FALSE,FALSE,sizeof(int),K);
+    N[NORM_TIME]=g_array_sized_new(FALSE,FALSE,sizeof(int),K);
+    for (k=0;k<K;k++){  // normalisation array has to be of the same length as the number of simulation units
+      I=g_array_index(MajorIdx,int,k);
+      i=g_array_index(MinorIdx,int,k);
+      printf("[get_normalisation] Experiment %i.%i normalised by",I,i);
+      fflush(stdout);
+      field=g_ptr_array_index(RelativeTo,I);
+      regexec(&ID_TimePoint, field, 4, match, REG_EXTENDED);
+      RefExp=dup_match(&match[1], field);
+      RefLine=dup_match(&match[2], field);
+      if (RefExp!=NULL && strlen(RefExp)>0){
+	printf(" «%s»",RefExp);
+	if (RefLine!=NULL) printf(" at «%s».\n",RefLine);
+	else printf(" (point by point).\n");
+	major=g_hash_table_lookup(ExperimentTable->row,RefExp);
+	assert(major!=NULL);
+	rI=major[0];
+      } else {
+	printf(" ...none.\n");
+	rI=I;
+      }
+      minor=NULL;
+      if (RefLine!=NULL){
+	if (DataTable!=NULL && rI<nE){
+	  minor=g_hash_table_lookup(DataTable[rI]->row,RefLine);
+	} else {
+	  fprintf(stderr,"[get_normalisation] DataTable[%i] does not exist.\n",rI);
+	}
+	// minor can refer to a TimePoint, a Dose, or not exist at all (because of typos).
+	if (minor==NULL){
+	  fprintf(stderr,"[get_normalisation] Experiment %i.%i has an invalid normalisation key (SBtab ID reference: «%s»).\n",I,i,field);
+	  exit(-1);
+	} else if (ExperimentType[I]==DOSE_RESPONSE){
+	  // then there's only one measurement time
+	  ri=minor[0];
+	  rt=0; 
+	} else if (ExperimentType[I]==TIME_SERIES){
+	  // then there's only one simulation unit
+	  ri=0;
+	  rt=minor[0];	  
+	}
+      } else {
+	// point by point normalisation
+	assert(DataTable[I]->column[0]->len == DataTable[rI]->column[0]->len);
+	assert(ExperimentType[I]==ExperimentType[rI]);
+	ri=i;
+	rt=-1;
+      }
+      rk=g_array_index(SimUnitIdx[rI],int,ri);
+      g_array_append_val(N[NORM_EXPERIMENT],rk);
+      g_array_append_val(N[NORM_TIME],rt);
+    }
+    fflush(stdout);
+  } else{
+    N[NORM_EXPERIMENT]=NULL;
+    N[NORM_TIME]=NULL;
+  }
+  
+  regfree(&ID_TimePoint);
+  regfree(&ID);
+  return N;
+}
+
 sbtab_t* get_data_table(GHashTable *sbtab_hash, gchar *experiment_id, gchar *experiment_name){
   sbtab_t *DataTable;
   DataTable=g_hash_table_lookup(sbtab_hash,experiment_id);
   if (DataTable==NULL) {
     fprintf(stderr,"\t\tCould not find Measurement Table by ID:\t«TableName='%s'», \n\t\twill try searching by Name instead:\t«TableName='%s'».\n",experiment_id,experiment_name);
-    DataTable=g_hash_table_lookup(sbtab_hash,experiment_name);
+    if (experiment_name!=NULL) DataTable=g_hash_table_lookup(sbtab_hash,experiment_name);
   }
   assert(DataTable!=NULL);
   return DataTable;
@@ -211,13 +404,13 @@ sbtab_t* get_data_table(GHashTable *sbtab_hash, gchar *experiment_id, gchar *exp
  *
  * gsl_vector* sbtab_column_to_gsl_vector(gchar *column_name, sbtab_t *table)
  */
-gsl_vector* sbtab_column_to_gsl_vector(gchar *column_name, sbtab_t *table){
+gsl_vector* sbtab_column_to_gsl_vector(sbtab_t *table,gchar *column_name){
   int j,n;
   GPtrArray *column;
   gsl_vector *v;
   gchar *s,*r;
-  double *value;
-  column=sbtab_get_column(column_name);
+  double value;
+  column=sbtab_get_column(table,column_name);
   if (column!=NULL){
     n=column->len;
     v=gsl_vector_alloc(n);
@@ -234,60 +427,108 @@ gsl_vector* sbtab_column_to_gsl_vector(gchar *column_name, sbtab_t *table){
   return v;
 }
 
-int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab_hash){
+int  get_experiment_index_mapping(int nE, int *ExperimentType, sbtab_t **DataTable, GArray **SU_index, GArray *MajorExpIdx, GArray *MinorExpIdx){
+  int k=0,j,i;
+  int N; // number of dose response rows
+
+  for (j=0;j<nE;j++) { // j is the major experiment index
+    N=DataTable[j]->column[0]->len;
+    if (DataTable!=NULL){
+      switch(ExperimentType[j]){
+      case UNKNOWN_TYPE:
+	fprintf(stderr,"[get_experiment_index_mapping] error: unknown experiment type\n");
+	exit(-1);
+	break;
+      case TIME_SERIES:
+	i=0;
+	g_array_append_val(MajorExpIdx,j);	
+	g_array_append_val(MinorExpIdx,i);
+	SU_index[j]=g_array_new(FALSE, TRUE, sizeof(int));
+	k++;
+	g_array_append_val(SU_index[j],k);
+	break;
+      case DOSE_RESPONSE:
+	SU_index[j]=g_array_sized_new(FALSE, TRUE, sizeof(int), N);
+	for (i=0;i<N;i++){ // i is the minor "simulation unit" index
+			   // within a dose response experiment
+	  k++;	  
+	  g_array_append_val(MajorExpIdx,j);
+	  g_array_append_val(MinorExpIdx,i);
+	  g_array_append_val(SU_index[j],k);
+	}
+	break;
+      }	
+    }
+  }
+  return k;
+}
+
+int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_hash){
   sbtab_t *E_table, *Input;  
-  gchar *experiment_id, *s, *input_id, *type, *experiment_name;
-  gsl_vector *default_input;
+  gchar *experiment_id, *input_id, *experiment_name;
   gsl_vector *input;
   gsl_matrix **Y_dY; // to make one return pointer possible: Y_dY[0] is data, Y_dY[1] is standard deviation
-  sbtab_t *DataTable;
+  sbtab_t **DataTable;
   sbtab_t *L1_OUT;
   GPtrArray *ID, *E_type, *input_ID, *E_Name; 
   int status=EXIT_SUCCESS;
-  int i,j,k;
+  int i,j; // loop counters
 
-  regex_t DoseResponse;
-  regcomp(&DoseResponse,"[[:blank:]]*[Dd]ose[[:blank:]]*[Rr]esponse", REG_EXTENDED);
   // get table pointers
   Input=find_input_table(sbtab_hash);
   L1_OUT=find_output_table(sbtab_hash);
   E_table=find_experiment_table(sbtab_hash);
   // hdf5 file
-  hid_t file_id;
-  hid_t data_group_id, sd_group_id, dataspace_id, dataset_id, sd_data_id;  
-  file_id = H5Fcreate(H5FileName, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  hid_t data_group_id, sd_group_id;  
+  
   data_group_id = H5Gcreate(file_id, "/data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   sd_group_id = H5Gcreate(file_id, "/sd_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   
-  guint nE=E_table->column[0]->len;
-  ID=g_hash_table_lookup(E_table->col,"!ID");
+  guint nE=get_table_length(E_table);
+  printf("[process_data_tables] %i Experiments.\n",nE);
+  ID=sbtab_get_column(E_table,"!ID");
   assert(ID!=NULL);
   if (ID!=E_table->column[0]) printf("[process_data_tables] warning: !ID is not first column, contrary to SBtab specification.\n");
-  E_Name=g_hash_table_lookup(E_table->col,"!Name");
+  E_Name=sbtab_get_column(E_table,"!Name");
   E_type=sbtab_get_column(E_table,"!Type");
 
   gsl_vector *time, *default_time;
   default_time=get_default_time(E_table);
   int *ExperimentType;  
-  ExperimentType=get_experiment_type(nE,ID,E_type,&DoseResponse);
+  ExperimentType=get_experiment_type(E_type);
   
   printf("[process_data_tables] found list of experiments: %s with %i entries\n",E_table->TableName,nE);
   gsl_vector *default_input;
   default_input=get_default_input(Input);
   // each experiment can override the default input:
   gsl_vector **E_default_input;
-  E_default_input=get_experiment_specific_inputs(nE, Input, default_input);
+  E_default_input=get_experiment_specific_inputs(E_table, Input, default_input);
   /*
    * and this is the actual input the is decided by first setting it
    * to the default, the overriding by the experiment's default and
    * then checking the experiment's data table.
    */
+  int nU=default_input->size;
   input=gsl_vector_alloc(nU);
   gsl_matrix *input_block;
   gsl_matrix_view data_sub, sd_data_sub;
   gsl_vector_view input_row;
   gsl_vector_view time_view;
   int N,M;
+  
+  DataTable=malloc(sizeof(sbtab_t*)*nE);
+  for (j=0;j<nE;j++) { // j is the major experiment index
+    if (ID!=NULL) experiment_id=(gchar*) g_ptr_array_index(ID,j);
+    else experiment_id=(gchar*) g_ptr_array_index(E_table->column[0],j);
+      
+    if (E_Name!=NULL) {
+      experiment_name=(gchar*) g_ptr_array_index(E_Name,j);
+    } else {
+      experiment_name=NULL;
+    }
+    printf("[process_data_tables] processing %s\n",experiment_id);
+    DataTable[j]=get_data_table(sbtab_hash, experiment_id, experiment_name);
+  }
 
   // These two arrays map the overall index k of "simulation units" to major and minor
   GArray *MajorExpIdx;
@@ -297,66 +538,55 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
 
   // this entity stores the simulation unit index k, given major and minor version
   GArray **SU_index;
-  SU_index=malloc(sizeof(GArray*)*nE);
-  
+  SU_index=malloc(sizeof(GArray*)*nE);  
+  int NumSimUnits=get_experiment_index_mapping(nE,ExperimentType,DataTable,SU_index,MajorExpIdx,MinorExpIdx);
+  printf("[process_data_tables] the model will have to be simulated %i times.\n",NumSimUnits);
+  sbtab_t *OutputTable;
+  OutputTable = g_hash_table_lookup(sbtab_hash,"Output");
+  GArray **Normalisation;
+  Normalisation=get_normalisation(E_table, ExperimentType, OutputTable, DataTable, SU_index, MajorExpIdx, MinorExpIdx);
   for (j=0;j<nE;j++) { // j is the major experiment index
-    if (ID!=NULL) experiment_id=(gchar*) g_ptr_array_index(ID,j);
-    else experiment_id=(gchar*) g_ptr_array_index(E_table->column[0],j);
-      
-    if (E_Name!=NULL) experiment_name=(gchar*) g_ptr_array_index(E_Name,j);
-    printf("[process_data_tables] processing %s\n",experiment_id);
-    DataTable=get_data_table(sbtab_hash, experiment_id, experiment_name);
-    
-    if (DataTable!=NULL){
+    if (DataTable[j]!=NULL){
       switch(ExperimentType[j]){
       case UNKNOWN_TYPE:
 	fprintf(stderr,"[process_data_table] error: unknown experiment type\n");
 	exit(-1);
 	break;
       case TIME_SERIES:
-	Y_dY=get_data_matrix(DataTable,L1_OUT);
-	time=get_time_vector(DataTable);
-	i=0;
-	g_array_append_val(MajorExpIdx,j);	
-	g_array_append_val(MinorExpIdx,i);
-	SU_index[j]=g_array_new(FALSE, TRUE, sizeof(int));
-	k=write_data_to_hdf5(file_id,
+	Y_dY=get_data_matrix(DataTable[j],L1_OUT);
+	time=get_time_vector(DataTable[j]);
+	write_data_to_hdf5(file_id,
 			   Y_dY[DATA],
 			   Y_dY[STDV],
 			   time,
-			   E_default_input[j],j,0);
-	g_array_append_val(SU_index[j],k);
+			   E_default_input[j],j,0,Normalisation);
 	break;
       case DOSE_RESPONSE:
-	Y_dY=get_data_matrix(DataTable,L1_OUT);
-	input_block=get_input_matrix(DataTable,input_ID,E_default_input[j]);
+	Y_dY=get_data_matrix(DataTable[j],L1_OUT);
+	input_block=get_input_matrix(DataTable[j],input_ID,E_default_input[j]);
 	if (default_time!=NULL) time_view=gsl_vector_subvector(default_time,j,1);
-	time=get_time_vector(DataTable);
+	time=get_time_vector(DataTable[j]);
 	N=Y_dY[DATA]->size1;
 	M=Y_dY[DATA]->size2;
 	assert(N>0 && M>0);
-	SU_index[j]=g_array_sized_new(FALSE, TRUE, sizeof(int), N);
 	for (i=0;i<N;i++){ // i is the minor "simulation unit" index
 			   // within a dose response experiment
 	  data_sub=gsl_matrix_submatrix(Y_dY[DATA],i,0,1,M);
 	  sd_data_sub=gsl_matrix_submatrix(Y_dY[STDV],i,0,1,M);
 	  input_row=gsl_matrix_row(input_block,i);
 	  if (time!=NULL) time_view=gsl_vector_subvector(time,i,1);
-	  g_array_append_val(MajorExpIdx,j);
-	  g_array_append_val(MinorExpIdx,i);	  
-	  k=write_data_to_hdf5(file_id,
+	  write_data_to_hdf5(file_id,
 			     &(data_sub.matrix),
 			     &(sd_data_sub.matrix),
 			     &(time_view.vector),
-			     &(input_row.vector),j,i);
-	  g_array_append_val(SU_index[j],k);
+			     &(input_row.vector),j,i,Normalisation);	  
 	}
 	break;
       }	
       gsl_matrix_free(Y_dY[DATA]);
       gsl_matrix_free(Y_dY[STDV]);
       if (time!=NULL) gsl_vector_free(time);
-    } else{
+    } else {
       fprintf(stderr,"Either L1 Output or DataTable %s missing (NULL).\n",experiment_id);
       status&=EXIT_FAILURE;
     }
@@ -366,12 +596,79 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
     
   status &= H5Gclose(data_group_id);
   status &= H5Gclose(sd_group_id);
-  status &= H5Fclose(file_id);
+
   return status;
 }
 
-int write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor){
-  int i;
+herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash){
+  sbtab_t *Parameters;
+  Parameters=g_hash_table_lookup(sbtab_hash,"Parameters");
+  gsl_vector *mu=NULL;
+  mu=sbtab_column_to_gsl_vector(Parameters,"!DefaultValue");
+  gchar ValueNames[]="!Value !Mean !Median !Mode";
+  gchar **ValueName;
+  ValueName=g_strsplit(ValueNames," ",-1);
+  int i,n;
+  //char *s;
+  n=(int) g_strv_length(ValueName);
+  for (i=0;i<n;i++){
+    if (mu==NULL){
+      mu=sbtab_column_to_gsl_vector(Parameters,ValueName[i]);
+    } else {
+      break;
+    }
+  }
+  assert(mu!=NULL);  
+  g_strfreev(ValueName);
+  int D=mu->size;
+  printf("[process_prior] prior has size %i.\n",D);
+  gsl_matrix *Sigma;
+  Sigma=gsl_matrix_alloc(D,D);
+  gsl_matrix_set_zero(Sigma);
+  
+  gsl_vector *stdv;
+  gsl_vector *par_max, *par_min;
+  
+  stdv=sbtab_column_to_gsl_vector(Parameters,"!Std");
+  gsl_vector_view diagonal;
+  diagonal=gsl_matrix_diagonal(Sigma);
+
+  if (stdv!=NULL){
+    printf("[process_prior] using !Std column as diagonal of Sigma.\n");
+    gsl_vector_memcpy(&(diagonal.vector),stdv);
+  }else{
+    par_max=sbtab_column_to_gsl_vector(Parameters,"!Max");
+    par_min=sbtab_column_to_gsl_vector(Parameters,"!Min");
+    gsl_vector_add(&(diagonal.vector),par_max);    
+    gsl_vector_sub(&(diagonal.vector),par_min);
+    double b;
+    b=sqrt(1.0/12.0);
+    gsl_vector_scale(&(diagonal.vector),b);
+  }
+  herr_t status;
+  status = write_prior_to_hdf5(file_id, mu, Sigma);
+  return status;
+}
+
+herr_t write_prior_to_hdf5(hid_t file_id, gsl_vector *mu, gsl_matrix *Sigma){
+  herr_t status=0;
+  hid_t prior_group_id;
+  hsize_t mu_size=mu->size;
+  hsize_t Sigma_size[2];
+  Sigma_size[0]=Sigma->size1;
+  Sigma_size[1]=Sigma->size2;
+  
+  prior_group_id=H5Gcreate(file_id,"/prior",H5P_DEFAULT,H5P_DEFAULT,H5P_DEFAULT);
+  assert(prior_group_id>=0);
+  printf("[write_prior_to_hdf5] prior_group_id = %li.\n",prior_group_id);
+  //status &= H5Gopen(file_id,"/prior",H5P_DEFAULT);
+  status &= H5LTmake_dataset_double(prior_group_id,"mu",1,&mu_size,mu->data);
+  status &= H5LTmake_dataset_double(prior_group_id,"Sigma",2,Sigma_size,Sigma->data);
+  status &= H5Gclose(prior_group_id);
+  return status;
+}
+
+herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, GArray **N){
   herr_t status;
   hid_t data_group_id, sd_group_id, dataspace_id, dataset_id, sd_data_id;  
   hsize_t size[2];
@@ -403,6 +700,26 @@ int write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector 
   // input
   status &= H5LTset_attribute_double(data_group_id,H5_data_name,"input",input->data, input->size);
   status &= H5Dclose(dataset_id);
+  // Normalisation attributes
+  int *rI,*rT,*rO;
+  if (N!=NULL){
+    if (N[NORM_EXPERIMENT]!=NULL && N[NORM_EXPERIMENT]->len>0){
+      rI=&g_array_index(N[NORM_EXPERIMENT],int,index);
+      if (rI[0]!=major){
+	status &= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByExperiment",rI,1);
+      }
+    } 
+    if (N[NORM_TIME]!=NULL && N[NORM_TIME]->len>0){
+      rT=&g_array_index(N[NORM_TIME],int,index);
+      if (rT[0]>0){
+	status &= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByTimePoint",rT,1);
+      }
+    }
+    if (N[NORM_OUTPUT]!=NULL && N[NORM_OUTPUT]->len>0){
+      rO=&g_array_index(N[NORM_OUTPUT],int,0);
+      status &= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByOutput",rO,N[NORM_OUTPUT]->len);
+    }    
+  }
   // dY
   sprintf(H5_data_name,"sd_data_block_%i",index);
   sd_data_id = H5Dcreate2(sd_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -412,12 +729,12 @@ int write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector 
   status &= H5Gclose(sd_group_id);
   assert(status==0);
   int current_index=index;
-  if (status!=EXIT_SUCCESS){
-    fprintf(stderr,"[write_data_to_hdf5] something went wrong; overall H5 status=%i\n",status);
+  if (status<0){
+    fprintf(stderr,"[write_data_to_hdf5] something went wrong; overall H5 status=%i for simulation unit %i (Experiment %i.%i)\n",status,current_index,major,minor);
   }else{
     index++;
   }  
-  return current_index;
+  return status;
 }
 
 
@@ -440,9 +757,23 @@ gchar* get_reference(gchar *LinkKey, regmatch_t *match){
   return s; 
 }
 
+gchar* dup_match(regmatch_t *match, char *source){
+  regoff_t a,b;
+  int length;
+  gchar *s;
+  a=match->rm_so;
+  b=match->rm_eo;
+  length=b-a;
+  if (length>0)
+    s=g_strndup(source+a,length);
+  else
+    s=NULL;
+  return s;
+}
+
+
 int copy_match(char *sptr, regmatch_t *match, char *source, ssize_t N){
   regoff_t a,b;
-  int i;
   int length;
   a=match->rm_so;
   b=match->rm_eo;
@@ -523,7 +854,6 @@ gsl_vector* get_time_vector(sbtab_t *DataTable){
   double val;
   guint T;
   gsl_vector *time;
-  double default_time=1.0;
   //printf("[get_data_matrix] checking whether DataTable exists.\n"); fflush(stdout);
   assert(DataTable!=NULL);
   printf("[get_time_vector] getting measurement times.\n"); fflush(stdout);
@@ -589,13 +919,14 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
   gchar *fs;
   //  char *key;
   char *s; // string to hold read in lines
-  size_t n_s=DEFAULT_STR_LENGTH, m_s;
+  size_t n_s=DEFAULT_STR_LENGTH;
+  ssize_t m_s;
   regex_t SBtab;
   regex_t RE_TableName, RE_TableTitle, RE_TableType, SBcomment, SBkeys, SBkey, SBlink;
   regex_t EmptyLine;
   gchar *TableName, *TableTitle, *TableType;
   regmatch_t match[4];
-  regoff_t a,b;
+  regoff_t a;
   int r_status=0;
   gchar **keys;
   gchar *stem, *leaf;
@@ -627,79 +958,82 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
   }else{
     while (!feof(fid)){
       m_s = getline(&s,&n_s,fid);
-      if (regexec(&SBcomment,s,1,match,0)==0){
-	// remove comment from line
-	a=match[0].rm_so;
-	s[a]='\0';
-      }
-      if (regexec(&SBtab,s,0,NULL,0)==0){
-	i_sep=strcspn(s,fs);
-	L=strlen(s);
-	if (i_sep<L){
-	  g_free(fs);
-	  fs=g_strndup(&s[i_sep],1); //field separator
+      //printf("[parse_sb_tab] %i characters read.\n",m_s);
+      if (m_s>0){
+	if (regexec(&SBcomment,s,1,match,0)==0){
+	  // remove comment from line
+	  a=match[0].rm_so;
+	  s[a]='\0';
 	}
-	printf("[parse_sb_tab] separator: «%s».\n",fs);
-	if (regexec(&RE_TableName,s,2,match,0)==0){
-	  TableName=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
-	  printf("TableName: «%s»\n",TableName); fflush(stdout);
-	} else {
-	  fprintf(stderr,"error: TableName is missing.\n");
-	  exit(-1);
-	}
-	if (regexec(&RE_TableType,s,2,match,0)==0){
-	  TableType=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
-	  printf("TableType: «%s»\n",TableType); fflush(stdout);
-	}else {
-	  fprintf(stderr,"warning: TableType is missing.\n");
-	}
-	if (regexec(&RE_TableTitle,s,2,match,0)==0){
-	  TableTitle=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
-	  printf("TableTitle: «%s»\n",TableTitle); fflush(stdout);
-	}else {
-	  fprintf(stderr,"warning: TableTitle is missing.\n");
-	}
-	
-      } else if (regexec(&SBkeys,s,2,match,0)==0){
-	keys=g_strsplit_set(s,fs,-1);
-	int k=g_strv_length(keys);
-	//print all headers
-	printf("[parse_sb_tab] %i headers:",k); fflush(stdout);
-	for (i=0;i<k;i++) {
-	  g_strstrip(keys[i]);
-	  if (keys[i]!=NULL) printf("«%s» ",keys[i]);
-	  else fprintf(stderr,"key[%i/%i] is NULL. ",i,k); 
-	}
-	printf("done.\n");
-	// check headers for links and save only the id in the link as hash.
-	for (i=0;i<k;i++) {
-	  //printf("[parse_sb_tab] checking key %i of %i (%s); ",i,k,keys[i]);
-	  r_status=regexec(&SBlink,keys[i],4,match,0);
-	  fflush(stdout);
-	  fflush(stderr);
-	  if (r_status==0){
-	    //printf("key[%i] is linked.\n",i);
+	if (regexec(&SBtab,s,0,NULL,0)==0){
+	  i_sep=strcspn(s,fs);
+	  L=strlen(s);
+	  if (i_sep<L){
+	    g_free(fs);
+	    fs=g_strndup(&s[i_sep],1); //field separator
+	  }
+	  printf("[parse_sb_tab] separator: «%s».\n",fs);
+	  if (regexec(&RE_TableName,s,2,match,0)==0){
+	    TableName=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
+	    printf("TableName: «%s»\n",TableName); fflush(stdout);
+	  } else {
+	    fprintf(stderr,"error: TableName is missing.\n");
+	    exit(-1);
+	  }
+	  if (regexec(&RE_TableType,s,2,match,0)==0){
+	    TableType=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
+	    printf("TableType: «%s»\n",TableType); fflush(stdout);
+	  }else {
+	    fprintf(stderr,"warning: TableType is missing.\n");
+	  }
+	  if (regexec(&RE_TableTitle,s,2,match,0)==0){
+	    TableTitle=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
+	    printf("TableTitle: «%s»\n",TableTitle); fflush(stdout);
+	  }else {
+	    fprintf(stderr,"warning: TableTitle is missing.\n");
+	  }	
+	} else if (regexec(&SBkeys,s,2,match,0)==0){
+	  keys=g_strsplit_set(s,fs,-1);
+	  int k=g_strv_length(keys);
+	  //print all headers
+	  printf("[parse_sb_tab] %i headers:",k); fflush(stdout);
+	  for (i=0;i<k;i++) {
+	    g_strstrip(keys[i]);
+	    if (keys[i]!=NULL) printf("«%s» ",keys[i]);
+	    else fprintf(stderr,"key[%i/%i] is NULL. ",i,k); 
+	  }
+	  printf("done.\n");
+	  // check headers for links and save only the id in the link as hash.
+	  for (i=0;i<k;i++) {
+	    //printf("[parse_sb_tab] checking key %i of %i (%s); ",i,k,keys[i]);
+	    r_status=regexec(&SBlink,keys[i],4,match,0);
 	    fflush(stdout);
-	    stem=get_reference(keys[i], &match[1]);
-	    leaf=get_reference(keys[i], &match[2]);
-	    if (leaf!=NULL){
-	      printf("\t[keys] link to table «%s», ID=«%s» found. I will use ID in hash table.\n",stem,leaf);
-	      g_free(keys[i]);
-	      keys[i]=leaf;
-	    } else {
-	      fprintf(stderr,"[parse_sb_tab] could not dereference link. Will use the string as is.\n");
-	    }
-	  }else{
-	    //printf("key[%i] is not linked.\n",i);
-	  }	  
+	    fflush(stderr);
+	    if (r_status==0){
+	      //printf("key[%i] is linked.\n",i);
+	      fflush(stdout);
+	      stem=get_reference(keys[i], &match[1]);
+	      leaf=get_reference(keys[i], &match[2]);
+	      if (leaf!=NULL){
+		printf("\t[keys] link to table «%s», ID=«%s» found. I will use ID in hash table.\n",stem,leaf);
+		g_free(keys[i]);
+		keys[i]=leaf;
+	      } else {
+		fprintf(stderr,"[parse_sb_tab] could not dereference link. Will use the string as is.\n");
+	      }
+	    }else{
+	      //printf("key[%i] is not linked.\n",i);
+	    }	  
+	  }
+	  sbtab=sbtab_alloc(keys);
+	} else if (regexec(&EmptyLine,s,0,NULL,0)==0){
+	  printf("[parse_sb_tab] skipping empty line «%s».\n",s);
+	} else {
+	  assert(sbtab!=NULL);
+	  //printf("[parse_sb_tab] append «%s» (m_s=%i)\n",s,m_s);
+	  sbtab_append_row(sbtab,s,fs);
 	}
-	sbtab=sbtab_alloc(keys);
-      } else if (regexec(&EmptyLine,s,0,NULL,0)==0){
-	printf("[parse_sb_tab] skipping empty line «%s».\n",s);
-      } else {
-	assert(sbtab!=NULL);
-	sbtab_append_row(sbtab,s,fs);
-      }      
+      }
     }
     if (sbtab!=NULL){
       sbtab->TableTitle=TableTitle;

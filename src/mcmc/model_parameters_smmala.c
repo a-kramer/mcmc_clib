@@ -13,8 +13,8 @@ int init_E(ode_model_parameters *omp){
     omp->E[i]->t=NULL;
     omp->E[i]->init_y=NULL;
     omp->E[i]->input_u=NULL;
-    nfy=NULL; // normalising fy; temporary storage
-    nfyS=NULL; // normalising fyS; temporary storage
+    omp->E[i]->nfy=NULL; // normalising fy; temporary storage
+    omp->E[i]->nfyS=NULL; // normalising fyS; temporary storage
   }
   omp->ref_E=(experiment*) malloc(sizeof(experiment)); // just in case
   omp->ref_E->t=NULL;
@@ -110,8 +110,8 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
     omp->E[i]->fyS=(gsl_matrix **) malloc(sizeof(gsl_matrix*)*T);
     omp->E[i]->oS=(gsl_matrix **) malloc(sizeof(gsl_matrix*)*T);
     omp->E[i]->yS0=gsl_matrix_calloc(P,N);
-    nfy=gsl_vector_alloc(F); // normalising fy; temporary storage
-    nfyS=gsl_matrix_alloc(P,F); // normalising fyS; temporary storage
+    omp->E[i]->nfy=gsl_vector_alloc(F); // normalising fy; temporary storage
+    omp->E[i]->nfyS=gsl_matrix_alloc(P,F); // normalising fyS; temporary storage
 
     for (j=0;j<T;j++){
       omp->E[i]->y[j]=gsl_vector_alloc(N);
@@ -135,8 +135,6 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
     omp->ref_E->fyS[j]=gsl_matrix_alloc(P,F);
     omp->ref_E->oS[j]=gsl_matrix_alloc(D,F);
   }
-  
-  
   
   /* during burn-in, we slowly increase beta from 0 to 1; if no
    * burn-in is performed, beta needs to be 1.0
