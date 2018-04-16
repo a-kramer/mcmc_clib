@@ -234,17 +234,56 @@ gsl_vector* sbtab_column_to_gsl_vector(gchar *column_name, sbtab_t *table){
   return v;
 }
 
+int  get_experiment_index_mapping(int nE, int *ExperimentType, sbtab_t **DataTable, GArray **SU_index, GArray *MajorExpIdx, GArray *MinorExpIdx){
+  int k=0,j,i;
+  int N; // number of dose response rows
+  GArray *ExperimentName;
+  sbtab_t *DataTable;
+  //  nE=ExperimentTable->column[0]->len;
+
+  for (j=0;j<nE;j++) { // j is the major experiment index
+    N=DataTable[j]->column[0]->len;
+    if (DataTable!=NULL){
+      switch(ExperimentType[j]){
+      case UNKNOWN_TYPE:
+	fprintf(stderr,"[process_data_table] error: unknown experiment type\n");
+	exit(-1);
+	break;
+      case TIME_SERIES:
+	i=0;
+	g_array_append_val(MajorExpIdx,j);	
+	g_array_append_val(MinorExpIdx,i);
+	SU_index[j]=g_array_new(FALSE, TRUE, sizeof(int));
+	k++;
+	g_array_append_val(SU_index[j],k);
+	break;
+      case DOSE_RESPONSE:
+	SU_index[j]=g_array_sized_new(FALSE, TRUE, sizeof(int), N);
+	for (i=0;i<N;i++){ // i is the minor "simulation unit" index
+			   // within a dose response experiment
+	  k++;	  
+	  g_array_append_val(MajorExpIdx,j);
+	  g_array_append_val(MinorExpIdx,i);
+	  g_array_append_val(SU_index[j],k);
+	}
+	break;
+      }	
+    }
+  }
+  return k;
+}
+
 int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab_hash){
   sbtab_t *E_table, *Input;  
   gchar *experiment_id, *s, *input_id, *type, *experiment_name;
   gsl_vector *default_input;
   gsl_vector *input;
   gsl_matrix **Y_dY; // to make one return pointer possible: Y_dY[0] is data, Y_dY[1] is standard deviation
-  sbtab_t *DataTable;
+  sbtab_t **DataTable;
   sbtab_t *L1_OUT;
   GPtrArray *ID, *E_type, *input_ID, *E_Name; 
   int status=EXIT_SUCCESS;
-  int i,j,k;
+  int i,j; // loop counters
 
   regex_t DoseResponse;
   regcomp(&DoseResponse,"[[:blank:]]*[Dd]ose[[:blank:]]*[Rr]esponse", REG_EXTENDED);
@@ -263,7 +302,7 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   ID=g_hash_table_lookup(E_table->col,"!ID");
   assert(ID!=NULL);
   if (ID!=E_table->column[0]) printf("[process_data_tables] warning: !ID is not first column, contrary to SBtab specification.\n");
-  E_Name=g_hash_table_lookup(E_table->col,"!Name");
+  E_Name=sbtab_get_column(E_table->col,"!Name");
   E_type=sbtab_get_column(E_table,"!Type");
 
   gsl_vector *time, *default_time;
@@ -289,6 +328,17 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   gsl_vector_view time_view;
   int N,M;
 
+  
+  DataTable=malloc(sizeof(sbtab_t*)*nE);
+  for (j=0;j<nE;j++) { // j is the major experiment index
+    if (ID!=NULL) experiment_id=(gchar*) g_ptr_array_index(ID,j);
+    else experiment_id=(gchar*) g_ptr_array_index(E_table->column[0],j);
+      
+    if (E_Name!=NULL) experiment_name=(gchar*) g_ptr_array_index(E_Name,j);
+    printf("[process_data_tables] processing %s\n",experiment_id);
+    DataTable[j]=get_data_table(sbtab_hash, experiment_id, experiment_name);
+  }
+
   // These two arrays map the overall index k of "simulation units" to major and minor
   GArray *MajorExpIdx;
   GArray *MinorExpIdx;
@@ -297,66 +347,52 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
 
   // this entity stores the simulation unit index k, given major and minor version
   GArray **SU_index;
-  SU_index=malloc(sizeof(GArray*)*nE);
-  
+  SU_index=malloc(sizeof(GArray*)*nE);  
+  int NumSimUnits=get_experiment_index_mapping(nE,ExperimentType,DataTable,SU_index,MajorExpIdx,MinorExpIdx);
+  printf("[process_data_tables] the model will have to be simulated %i times.\n",NumSimUnits);
   for (j=0;j<nE;j++) { // j is the major experiment index
-    if (ID!=NULL) experiment_id=(gchar*) g_ptr_array_index(ID,j);
-    else experiment_id=(gchar*) g_ptr_array_index(E_table->column[0],j);
-      
-    if (E_Name!=NULL) experiment_name=(gchar*) g_ptr_array_index(E_Name,j);
-    printf("[process_data_tables] processing %s\n",experiment_id);
-    DataTable=get_data_table(sbtab_hash, experiment_id, experiment_name);
-    
-    if (DataTable!=NULL){
+    if (DataTable[j]!=NULL){
       switch(ExperimentType[j]){
       case UNKNOWN_TYPE:
 	fprintf(stderr,"[process_data_table] error: unknown experiment type\n");
 	exit(-1);
 	break;
       case TIME_SERIES:
-	Y_dY=get_data_matrix(DataTable,L1_OUT);
-	time=get_time_vector(DataTable);
-	i=0;
-	g_array_append_val(MajorExpIdx,j);	
-	g_array_append_val(MinorExpIdx,i);
-	SU_index[j]=g_array_new(FALSE, TRUE, sizeof(int));
-	k=write_data_to_hdf5(file_id,
+	Y_dY=get_data_matrix(DataTable[j],L1_OUT);
+	time=get_time_vector(DataTable[j]);
+	write_data_to_hdf5(file_id,
 			   Y_dY[DATA],
 			   Y_dY[STDV],
 			   time,
 			   E_default_input[j],j,0);
-	g_array_append_val(SU_index[j],k);
 	break;
       case DOSE_RESPONSE:
-	Y_dY=get_data_matrix(DataTable,L1_OUT);
-	input_block=get_input_matrix(DataTable,input_ID,E_default_input[j]);
+	Y_dY=get_data_matrix(DataTable[j],L1_OUT);
+	input_block=get_input_matrix(DataTable[j],input_ID,E_default_input[j]);
 	if (default_time!=NULL) time_view=gsl_vector_subvector(default_time,j,1);
-	time=get_time_vector(DataTable);
+	time=get_time_vector(DataTable[j]);
 	N=Y_dY[DATA]->size1;
 	M=Y_dY[DATA]->size2;
 	assert(N>0 && M>0);
-	SU_index[j]=g_array_sized_new(FALSE, TRUE, sizeof(int), N);
 	for (i=0;i<N;i++){ // i is the minor "simulation unit" index
 			   // within a dose response experiment
+	  k++;	  
 	  data_sub=gsl_matrix_submatrix(Y_dY[DATA],i,0,1,M);
 	  sd_data_sub=gsl_matrix_submatrix(Y_dY[STDV],i,0,1,M);
 	  input_row=gsl_matrix_row(input_block,i);
 	  if (time!=NULL) time_view=gsl_vector_subvector(time,i,1);
-	  g_array_append_val(MajorExpIdx,j);
-	  g_array_append_val(MinorExpIdx,i);	  
-	  k=write_data_to_hdf5(file_id,
+	  write_data_to_hdf5(file_id,
 			     &(data_sub.matrix),
 			     &(sd_data_sub.matrix),
 			     &(time_view.vector),
-			     &(input_row.vector),j,i);
-	  g_array_append_val(SU_index[j],k);
+			     &(input_row.vector),j,i);	  
 	}
 	break;
       }	
       gsl_matrix_free(Y_dY[DATA]);
       gsl_matrix_free(Y_dY[STDV]);
       if (time!=NULL) gsl_vector_free(time);
-    } else{
+    } else {
       fprintf(stderr,"Either L1 Output or DataTable %s missing (NULL).\n",experiment_id);
       status&=EXIT_FAILURE;
     }
@@ -370,7 +406,7 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   return status;
 }
 
-int write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor){
+herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, int RelativeToExperiment, int RelativeToTimePoint){
   int i;
   herr_t status;
   hid_t data_group_id, sd_group_id, dataspace_id, dataset_id, sd_data_id;  
@@ -412,12 +448,12 @@ int write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector 
   status &= H5Gclose(sd_group_id);
   assert(status==0);
   int current_index=index;
-  if (status!=EXIT_SUCCESS){
-    fprintf(stderr,"[write_data_to_hdf5] something went wrong; overall H5 status=%i\n",status);
+  if (status<0){
+    fprintf(stderr,"[write_data_to_hdf5] something went wrong; overall H5 status=%i for simulation unit %i (Experiment %i.%i)\n",status,current_index,major,minor);
   }else{
     index++;
   }  
-  return current_index;
+  return status;
 }
 
 
