@@ -34,6 +34,13 @@
 #define DATA 0
 #define STDV 1
 
+#define NORM_STRIDE 3
+#define NORM_EXPERIMENT 0
+#define NORM_OUTPUT 1
+#define NORM_TIME 2
+
+
+
 sbtab_t* parse_sb_tab(char *);
 gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT);
 gsl_vector* get_time_vector(sbtab_t *DataTable);
@@ -194,6 +201,80 @@ gsl_vector** get_experiment_specific_inputs(int nE, sbtab_t *Input, gsl_vector *
   return E_default_input;
 }
 
+int get_normalisation(sbtab_t *ExperimentTable, int *ExperimentType, sbtab_t *OutputTable, sbtab_t **DataTable, GArray **SimUnitIdx, GArray *MajorIdx, GArray *MinorIdx; int *n){
+  regex_t ID_TimePoint;
+  GPtrArray *RelativeTo;
+  int regcomp(&ID_TimePoint,"([^[]+)\\[?([^]]+)?\\]?", REG_EXTENDED);
+  guint *major, *minor;
+  int j,k;
+  guint I,i;
+  guint l;
+  gchar *field;
+  gchar *RefExp;
+  gchar *RefLine;
+  regmatch_t match[3];  
+  nE=ExperimentTable->column[0]->len;
+  int ref_exp_i[nE];
+  
+  nO=OutputTable->column[0]->len;
+  
+  RelativeTo=sbtab_get_column(ExperimentTable,"!RelativeTo");
+  if (RelativeTo==NULL){
+    RelativeTo=sbtab_get_column(ExperimentTable,"!NormalisedBy");
+  }
+  
+  
+  gunit K=MajorIdx->len;
+  // normalisation has to be of the same length as the number of simulation units
+  for (k=0;k<K;k++){
+    I=g_array_index(MajorIdx,guint,k);
+    i=g_array_index(MinorIdx,guint,k);
+    
+  }
+  
+  for (j=0;j<nE;j++){
+    if (RelativeTo!=NULL){
+      field=g_ptr_array_index(RelativeTo,j);
+      regexec(&ID_TimePoint, field, 3, match, REG_EXTENDED);
+      RefExp=dup_match(&match[1], field);
+      RefLine=dup_match(&match[2], field);
+      printf("[get_normalisation] Experiment %i normalised by «%s»",j,RefExp);
+      if (RefLine!=NULL) printf("at «%s».\n",RefLine);
+      else printf(" (point by point).\n");
+      major=g_hash_table_lookup(ExperimentTable->row,RefExp);
+      assert(major!=NULL);
+      I=major[0];
+      if (RefLine!=NULL){
+	minor=g_hash_table_lookup(DataTable[I]->row,RefLine);
+	i=(minor!=NULL)?minor[0]:NAN;	
+      } else {
+	printf("[get_normalisation] Experiment %i is normalised by experiment %i point by point\n",j,I);
+	assert(DataTable[j]->column[0]->len == DataTable[I]->column[0]->len);
+	i=0;
+      }
+      if (ExperimentType[I]==TIME_SERIES){
+	n[j*NORM_STRIDE+NORM_TIME]=i;
+      }else if (ExperimentType[I]==DOSE_RESPONSE) {
+	n[j*NORM_STRIDE+NORM_TIME]=NAN;
+      }else{
+	fprintf(stderr,"[get_normalisation] warning: unknown experiment type.\n");
+	n[j*NORM_STRIDE+NORM_TIME]=NAN;
+      }
+      if (SimUnitIdx!=NULL){
+	k=g_array_index(SimUnitIdx[I],i);
+      } else {
+	fprintf(stderr,"[get_normalisation] Simulation Unit Index not initialised or wrong size.\n");	
+	exit(-1);
+      }      
+    } else {
+      k=NAN;
+    }
+    n[j*NORM_STRIDE+NORM_EXPERIMENT]=k;
+  }
+  regfree(&ID_TimePoint);
+  return EXIT_SUCCESS;
+}
+
 sbtab_t* get_data_table(GHashTable *sbtab_hash, gchar *experiment_id, gchar *experiment_name){
   sbtab_t *DataTable;
   DataTable=g_hash_table_lookup(sbtab_hash,experiment_id);
@@ -286,7 +367,7 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   int i,j; // loop counters
 
   regex_t DoseResponse;
-  regcomp(&DoseResponse,"[[:blank:]]*[Dd]ose[[:blank:]]*[Rr]esponse", REG_EXTENDED);
+  regcomp(&DoseResponse,"[[:blank:]]*Dose[[:blank:]]*Response", REG_EXTENDED | REG_ICASE);
   // get table pointers
   Input=find_input_table(sbtab_hash);
   L1_OUT=find_output_table(sbtab_hash);
@@ -327,7 +408,8 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   gsl_vector_view input_row;
   gsl_vector_view time_view;
   int N,M;
-
+  int Normalisation[nE*3];
+  
   
   DataTable=malloc(sizeof(sbtab_t*)*nE);
   for (j=0;j<nE;j++) { // j is the major experiment index
@@ -475,6 +557,22 @@ gchar* get_reference(gchar *LinkKey, regmatch_t *match){
   }
   return s; 
 }
+
+gchar* dup_match(regmatch_t *match, char *source){
+  regoff_t a,b;
+  int i;
+  int length;
+  gchar *s;
+  a=match->rm_so;
+  b=match->rm_eo;
+  length=b-a;
+  if (length>0)
+    s=g_strndup(source+a,length);
+  else
+    s=NULL;
+  return s;
+}
+
 
 int copy_match(char *sptr, regmatch_t *match, char *source, ssize_t N){
   regoff_t a,b;
