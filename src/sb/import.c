@@ -201,76 +201,85 @@ gsl_vector** get_experiment_specific_inputs(int nE, sbtab_t *Input, gsl_vector *
   return E_default_input;
 }
 
-int get_normalisation(sbtab_t *ExperimentTable, int *ExperimentType, sbtab_t *OutputTable, sbtab_t **DataTable, GArray **SimUnitIdx, GArray *MajorIdx, GArray *MinorIdx; int *n){
-  regex_t ID_TimePoint;
+GArray** get_normalisation(sbtab_t *ExperimentTable, int *ExperimentType, sbtab_t *OutputTable, sbtab_t **DataTable, GArray **SimUnitIdx, GArray *MajorIdx, GArray *MinorIdx){
+  regex_t ID_TimePoint, ID;
   GPtrArray *RelativeTo;
-  int regcomp(&ID_TimePoint,"([^[]+)\\[?([^]]+)?\\]?", REG_EXTENDED);
+  regcomp(&ID_TimePoint,"([[:alpha:]][[:word:]]*)\\[?([^]]+)?\\]?", REG_EXTENDED);
+  regcomp(&ID,"([[:alpha:]][[:word:]]*)", REG_EXTENDED);
   guint *major, *minor;
-  int j,k;
-  guint I,i;
-  guint l;
+  int i,k,I,i,rI,ri,rk,rt,rO;
+  int l;
   gchar *field;
   gchar *RefExp;
   gchar *RefLine;
+  gchar *RefOut;
   regmatch_t match[3];  
   nE=ExperimentTable->column[0]->len;
   int ref_exp_i[nE];
-  
+  gunit K=MajorIdx->len;
+  GArray **N;
+  N=malloc(sizeof(GArray*)*NORM_STRIDE);
+  for (j=0;j<NORM_STRIDE;j++){
+    N[j]=g_array_sized_new(FALSE,FALSE,sizeof(int),K);
+  }
   nO=OutputTable->column[0]->len;
-  
-  RelativeTo=sbtab_get_column(ExperimentTable,"!RelativeTo");
-  if (RelativeTo==NULL){
-    RelativeTo=sbtab_get_column(ExperimentTable,"!NormalisedBy");
+
+  RelativeTo=sbtab_get_column(OutputTable,"!RelativeTo");
+  if (RelativeTo==NULL) RelativeTo=sbtab_get_column(OutputTable,"!NormalisedBy");
+  for (j=0;j<nO;j++){
+    field=g_ptr_array_index(RelativeTo,j);
+    regexec(&ID, field, 3, match, REG_EXTENDED);
+    RefOut=dup_match(&match[0], field);
+    rO=g_hash_table_lookup(OutputTable->row,RefOut);
+    assert(rO!=NULL);
+    g_array_append_val(N[NORM_OUTPUT],rO[0]);
   }
   
-  
-  gunit K=MajorIdx->len;
-  // normalisation has to be of the same length as the number of simulation units
+  RelativeTo=sbtab_get_column(ExperimentTable,"!RelativeTo");
+  if (RelativeTo==NULL) RelativeTo=sbtab_get_column(ExperimentTable,"!NormalisedBy");
+
+  // normalisation array has to be of the same length as the number of simulation units
   for (k=0;k<K;k++){
     I=g_array_index(MajorIdx,guint,k);
     i=g_array_index(MinorIdx,guint,k);
-    
-  }
-  
-  for (j=0;j<nE;j++){
     if (RelativeTo!=NULL){
-      field=g_ptr_array_index(RelativeTo,j);
+      field=g_ptr_array_index(RelativeTo,I);
       regexec(&ID_TimePoint, field, 3, match, REG_EXTENDED);
       RefExp=dup_match(&match[1], field);
       RefLine=dup_match(&match[2], field);
-      printf("[get_normalisation] Experiment %i normalised by «%s»",j,RefExp);
+      printf("[get_normalisation] Experiment %i.%i normalised by «%s»",I,i,RefExp);
       if (RefLine!=NULL) printf("at «%s».\n",RefLine);
       else printf(" (point by point).\n");
       major=g_hash_table_lookup(ExperimentTable->row,RefExp);
       assert(major!=NULL);
-      I=major[0];
+      rI=major[0];
       if (RefLine!=NULL){
-	minor=g_hash_table_lookup(DataTable[I]->row,RefLine);
-	i=(minor!=NULL)?minor[0]:NAN;	
+	minor=g_hash_table_lookup(DataTable[rI]->row,RefLine);
+	// minor can refer to a TimePoint, a Dose, or not exist at all (because of typos).
+	if (minor==NULL){
+	  fprintf(stderr,"[get_normalisation] Experiment %i.%i has an invalid normalisation key (SBtab ID reference:«%s»).\n",I,i,field);
+	  exit(-1);
+	} else if (ExperimentType[I]==DOSE_RESPONSE){
+	  // then there's only one measurement time
+	  ri=minor[0];
+	  rt=0; 
+	} else if (ExperimentType[I]==TIME_SERIES){
+	  // then there's only one simulation unit
+	  ri=0;
+	  rt=minor[0];	  
+	}	
       } else {
-	printf("[get_normalisation] Experiment %i is normalised by experiment %i point by point\n",j,I);
-	assert(DataTable[j]->column[0]->len == DataTable[I]->column[0]->len);
-	i=0;
+	// point by point normalisation
+	assert(DataTable[I]->column[0]->len == DataTable[rI]->column[0]->len);
+	assert(ExperimentType[I]==ExperimentType[rI]);
+	ri=-1;
+	rt=-1;
       }
-      if (ExperimentType[I]==TIME_SERIES){
-	n[j*NORM_STRIDE+NORM_TIME]=i;
-      }else if (ExperimentType[I]==DOSE_RESPONSE) {
-	n[j*NORM_STRIDE+NORM_TIME]=NAN;
-      }else{
-	fprintf(stderr,"[get_normalisation] warning: unknown experiment type.\n");
-	n[j*NORM_STRIDE+NORM_TIME]=NAN;
-      }
-      if (SimUnitIdx!=NULL){
-	k=g_array_index(SimUnitIdx[I],i);
-      } else {
-	fprintf(stderr,"[get_normalisation] Simulation Unit Index not initialised or wrong size.\n");	
-	exit(-1);
-      }      
-    } else {
-      k=NAN;
+      rk=g_array_index(SimUnitIdx[rI],int,(ri<0?i,ri));
+      g_array_append_val(N[NORM_EXPERIMENT],rk);
+      g_array_append_val(N[NORM_TIME],rt);
     }
-    n[j*NORM_STRIDE+NORM_EXPERIMENT]=k;
-  }
+  }  
   regfree(&ID_TimePoint);
   return EXIT_SUCCESS;
 }
@@ -408,7 +417,7 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   gsl_vector_view input_row;
   gsl_vector_view time_view;
   int N,M;
-  int Normalisation[nE*3];
+  GArray **Normalisation;
   
   
   DataTable=malloc(sizeof(sbtab_t*)*nE);
