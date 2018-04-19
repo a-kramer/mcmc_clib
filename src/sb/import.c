@@ -218,12 +218,15 @@ GArray** get_normalisation(sbtab_t *ExperimentTable, int *ExperimentType, sbtab_
   int ref_exp_i[nE];
   gunit K=MajorIdx->len;
   GArray **N;
-  N=malloc(sizeof(GArray*)*NORM_STRIDE);
-  for (j=0;j<NORM_STRIDE;j++){
-    N[j]=g_array_sized_new(FALSE,FALSE,sizeof(int),K);
-  }
+
   nO=OutputTable->column[0]->len;
 
+  N=malloc(sizeof(GArray*)*NORM_STRIDE);
+  N[NORM_EXPERIMENT]=g_array_sized_new(FALSE,FALSE,sizeof(int),K);
+  N[NORM_TIME]=g_array_sized_new(FALSE,FALSE,sizeof(int),K);
+  N[NORM_OUTPUT]=g_array_sized_new(FALSE,FALSE,sizeof(int),nO);
+
+  // output normalisation
   RelativeTo=sbtab_get_column(OutputTable,"!RelativeTo");
   if (RelativeTo==NULL) RelativeTo=sbtab_get_column(OutputTable,"!NormalisedBy");
   for (j=0;j<nO;j++){
@@ -234,12 +237,11 @@ GArray** get_normalisation(sbtab_t *ExperimentTable, int *ExperimentType, sbtab_
     assert(rO!=NULL);
     g_array_append_val(N[NORM_OUTPUT],rO[0]);
   }
-  
+  // experiment normalisation and time normalisation
   RelativeTo=sbtab_get_column(ExperimentTable,"!RelativeTo");
   if (RelativeTo==NULL) RelativeTo=sbtab_get_column(ExperimentTable,"!NormalisedBy");
 
-  // normalisation array has to be of the same length as the number of simulation units
-  for (k=0;k<K;k++){
+  for (k=0;k<K;k++){  // normalisation array has to be of the same length as the number of simulation units
     I=g_array_index(MajorIdx,guint,k);
     i=g_array_index(MinorIdx,guint,k);
     if (RelativeTo!=NULL){
@@ -281,7 +283,8 @@ GArray** get_normalisation(sbtab_t *ExperimentTable, int *ExperimentType, sbtab_
     }
   }  
   regfree(&ID_TimePoint);
-  return EXIT_SUCCESS;
+  regfree(&ID);
+  return N;
 }
 
 sbtab_t* get_data_table(GHashTable *sbtab_hash, gchar *experiment_id, gchar *experiment_name){
@@ -419,7 +422,6 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   int N,M;
   GArray **Normalisation;
   
-  
   DataTable=malloc(sizeof(sbtab_t*)*nE);
   for (j=0;j<nE;j++) { // j is the major experiment index
     if (ID!=NULL) experiment_id=(gchar*) g_ptr_array_index(ID,j);
@@ -441,6 +443,8 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   SU_index=malloc(sizeof(GArray*)*nE);  
   int NumSimUnits=get_experiment_index_mapping(nE,ExperimentType,DataTable,SU_index,MajorExpIdx,MinorExpIdx);
   printf("[process_data_tables] the model will have to be simulated %i times.\n",NumSimUnits);
+  sbtab_t OutputTable = g_hash_table_lookup(sbtab_hash,"Output");
+  Normalization=get_normalisation(E_table, ExperimentType, OutputTable, DataTable, SU_index, MajorExpIdx, MinorExpIdx);
   for (j=0;j<nE;j++) { // j is the major experiment index
     if (DataTable[j]!=NULL){
       switch(ExperimentType[j]){
@@ -455,7 +459,7 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
 			   Y_dY[DATA],
 			   Y_dY[STDV],
 			   time,
-			   E_default_input[j],j,0);
+			   E_default_input[j],j,0,Normalization);
 	break;
       case DOSE_RESPONSE:
 	Y_dY=get_data_matrix(DataTable[j],L1_OUT);
@@ -476,7 +480,7 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
 			     &(data_sub.matrix),
 			     &(sd_data_sub.matrix),
 			     &(time_view.vector),
-			     &(input_row.vector),j,i);	  
+			     &(input_row.vector),j,i,Normalization);	  
 	}
 	break;
       }	
@@ -497,7 +501,7 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   return status;
 }
 
-herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, int RelativeToExperiment, int RelativeToTimePoint){
+herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, GArray **N){
   int i;
   herr_t status;
   hid_t data_group_id, sd_group_id, dataspace_id, dataset_id, sd_data_id;  
