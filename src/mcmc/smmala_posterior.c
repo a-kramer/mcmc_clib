@@ -7,6 +7,7 @@
 #include <gsl/gsl_rng.h>
 #include <string.h>
 #include <mpi.h>
+#include <assert.h>
 #include "smmala.h"
 #include "../ode/ode_model.h"
 #include "smmala_posterior.h"

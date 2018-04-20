@@ -34,8 +34,6 @@ int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
   int i,N;
   gchar **s;
   int status=EXIT_SUCCESS;
-  double d;
-  GPtrArray *a;
   s=g_strsplit_set(data,fs,-1);
   if (data!=NULL && s!=NULL){
     int n=g_strv_length(s);
