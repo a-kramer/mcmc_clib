@@ -285,25 +285,28 @@ GArray** get_normalisation(sbtab_t *ExperimentTable, int *ExperimentType, sbtab_
   fflush(stdout);
   if (RelativeTo!=NULL){
     N[NORM_OUTPUT]=g_array_sized_new(FALSE,FALSE,sizeof(int),nO);    
-    for (j=0;j<nO;j++){
+    for (j=0;j<nO;j++){      
       field=g_ptr_array_index(RelativeTo,j);
+      assert(field!=NULL);
       printf(" «%s» ",field); fflush(stdout);
       status=regexec(&ID, field, 4, match, REG_EXTENDED);
-      printf("[%i]",status); fflush(stdout);
+      //printf("[%i]",status); fflush(stdout);
       if (status==0){
 	RefOut=dup_match(&match[1], field);
 	//RefOut=field;
 	assert(RefOut!=NULL);
 	printf("(%s=",RefOut);fflush(stdout);
 	rO=g_hash_table_lookup(OutputTable->row,RefOut);
-	l=(rO==NULL?j:rO[0]);
+	l=(rO==NULL?(-1):rO[0]);
 	printf("%i)",l); fflush(stdout);
 	g_array_append_val(N[NORM_OUTPUT],l);
 	g_free(RefOut);
       } else {
 	fprintf(stderr,"[get_normalisation] field «%s» is not an ID.\n",field);
-	g_array_append_val(N[NORM_OUTPUT],j);
+	l=-1;
+	g_array_append_val(N[NORM_OUTPUT],l);
       }
+      field=NULL;
     }
   } else {
     N[NORM_OUTPUT]=NULL;
@@ -335,6 +338,7 @@ GArray** get_normalisation(sbtab_t *ExperimentTable, int *ExperimentType, sbtab_
 	assert(major!=NULL);
 	rI=major[0];
       } else {
+	printf(" ...none.\n");
 	rI=I;
       }
       minor=NULL;
@@ -459,7 +463,7 @@ int  get_experiment_index_mapping(int nE, int *ExperimentType, sbtab_t **DataTab
 
 int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab_hash){
   sbtab_t *E_table, *Input;  
-  gchar *experiment_id, *s, *input_id, *type, *experiment_name;
+  gchar *experiment_id, *input_id, *experiment_name;
   gsl_vector *input;
   gsl_matrix **Y_dY; // to make one return pointer possible: Y_dY[0] is data, Y_dY[1] is standard deviation
   sbtab_t **DataTable;
@@ -474,7 +478,7 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   E_table=find_experiment_table(sbtab_hash);
   // hdf5 file
   hid_t file_id;
-  hid_t data_group_id, sd_group_id, dataspace_id, dataset_id, sd_data_id;  
+  hid_t data_group_id, sd_group_id;  
   file_id = H5Fcreate(H5FileName, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
   data_group_id = H5Gcreate(file_id, "/data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   sd_group_id = H5Gcreate(file_id, "/sd_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -596,7 +600,6 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
 }
 
 herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, GArray **N){
-  int i;
   herr_t status;
   hid_t data_group_id, sd_group_id, dataspace_id, dataset_id, sd_data_id;  
   hsize_t size[2];
@@ -633,14 +636,18 @@ herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vect
   if (N!=NULL){
     if (N[NORM_EXPERIMENT]!=NULL && N[NORM_EXPERIMENT]->len>0){
       rI=&g_array_index(N[NORM_EXPERIMENT],int,index);
-      status &= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByExperiment",rI,1);
+      if (rI!=major){
+	status &= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByExperiment",rI,1);
+      }
     } 
     if (N[NORM_TIME]!=NULL && N[NORM_TIME]->len>0){
       rT=&g_array_index(N[NORM_TIME],int,index);
-      status &= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByTimePoint",rT,1);
+      if (rT[0]>0){
+	status &= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByTimePoint",rT,1);
+      }
     }
     if (N[NORM_OUTPUT]!=NULL && N[NORM_OUTPUT]->len>0){
-      rO=&g_array_index(N[NORM_OUTPUT],int,index);
+      rO=&g_array_index(N[NORM_OUTPUT],int,0);
       status &= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByOutput",rO,N[NORM_OUTPUT]->len);
     }    
   }
@@ -683,7 +690,6 @@ gchar* get_reference(gchar *LinkKey, regmatch_t *match){
 
 gchar* dup_match(regmatch_t *match, char *source){
   regoff_t a,b;
-  int i;
   int length;
   gchar *s;
   a=match->rm_so;
@@ -844,13 +850,14 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
   gchar *fs;
   //  char *key;
   char *s; // string to hold read in lines
-  size_t n_s=DEFAULT_STR_LENGTH, m_s;
+  size_t n_s=DEFAULT_STR_LENGTH;
+  ssize_t m_s;
   regex_t SBtab;
   regex_t RE_TableName, RE_TableTitle, RE_TableType, SBcomment, SBkeys, SBkey, SBlink;
   regex_t EmptyLine;
   gchar *TableName, *TableTitle, *TableType;
   regmatch_t match[4];
-  regoff_t a,b;
+  regoff_t a;
   int r_status=0;
   gchar **keys;
   gchar *stem, *leaf;
@@ -882,79 +889,82 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
   }else{
     while (!feof(fid)){
       m_s = getline(&s,&n_s,fid);
-      if (regexec(&SBcomment,s,1,match,0)==0){
-	// remove comment from line
-	a=match[0].rm_so;
-	s[a]='\0';
-      }
-      if (regexec(&SBtab,s,0,NULL,0)==0){
-	i_sep=strcspn(s,fs);
-	L=strlen(s);
-	if (i_sep<L){
-	  g_free(fs);
-	  fs=g_strndup(&s[i_sep],1); //field separator
+      //printf("[parse_sb_tab] %i characters read.\n",m_s);
+      if (m_s>0){
+	if (regexec(&SBcomment,s,1,match,0)==0){
+	  // remove comment from line
+	  a=match[0].rm_so;
+	  s[a]='\0';
 	}
-	printf("[parse_sb_tab] separator: «%s».\n",fs);
-	if (regexec(&RE_TableName,s,2,match,0)==0){
-	  TableName=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
-	  printf("TableName: «%s»\n",TableName); fflush(stdout);
-	} else {
-	  fprintf(stderr,"error: TableName is missing.\n");
-	  exit(-1);
-	}
-	if (regexec(&RE_TableType,s,2,match,0)==0){
-	  TableType=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
-	  printf("TableType: «%s»\n",TableType); fflush(stdout);
-	}else {
-	  fprintf(stderr,"warning: TableType is missing.\n");
-	}
-	if (regexec(&RE_TableTitle,s,2,match,0)==0){
-	  TableTitle=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
-	  printf("TableTitle: «%s»\n",TableTitle); fflush(stdout);
-	}else {
-	  fprintf(stderr,"warning: TableTitle is missing.\n");
-	}
-	
-      } else if (regexec(&SBkeys,s,2,match,0)==0){
-	keys=g_strsplit_set(s,fs,-1);
-	int k=g_strv_length(keys);
-	//print all headers
-	printf("[parse_sb_tab] %i headers:",k); fflush(stdout);
-	for (i=0;i<k;i++) {
-	  g_strstrip(keys[i]);
-	  if (keys[i]!=NULL) printf("«%s» ",keys[i]);
-	  else fprintf(stderr,"key[%i/%i] is NULL. ",i,k); 
-	}
-	printf("done.\n");
-	// check headers for links and save only the id in the link as hash.
-	for (i=0;i<k;i++) {
-	  //printf("[parse_sb_tab] checking key %i of %i (%s); ",i,k,keys[i]);
-	  r_status=regexec(&SBlink,keys[i],4,match,0);
-	  fflush(stdout);
-	  fflush(stderr);
-	  if (r_status==0){
-	    //printf("key[%i] is linked.\n",i);
+	if (regexec(&SBtab,s,0,NULL,0)==0){
+	  i_sep=strcspn(s,fs);
+	  L=strlen(s);
+	  if (i_sep<L){
+	    g_free(fs);
+	    fs=g_strndup(&s[i_sep],1); //field separator
+	  }
+	  printf("[parse_sb_tab] separator: «%s».\n",fs);
+	  if (regexec(&RE_TableName,s,2,match,0)==0){
+	    TableName=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
+	    printf("TableName: «%s»\n",TableName); fflush(stdout);
+	  } else {
+	    fprintf(stderr,"error: TableName is missing.\n");
+	    exit(-1);
+	  }
+	  if (regexec(&RE_TableType,s,2,match,0)==0){
+	    TableType=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
+	    printf("TableType: «%s»\n",TableType); fflush(stdout);
+	  }else {
+	    fprintf(stderr,"warning: TableType is missing.\n");
+	  }
+	  if (regexec(&RE_TableTitle,s,2,match,0)==0){
+	    TableTitle=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
+	    printf("TableTitle: «%s»\n",TableTitle); fflush(stdout);
+	  }else {
+	    fprintf(stderr,"warning: TableTitle is missing.\n");
+	  }	
+	} else if (regexec(&SBkeys,s,2,match,0)==0){
+	  keys=g_strsplit_set(s,fs,-1);
+	  int k=g_strv_length(keys);
+	  //print all headers
+	  printf("[parse_sb_tab] %i headers:",k); fflush(stdout);
+	  for (i=0;i<k;i++) {
+	    g_strstrip(keys[i]);
+	    if (keys[i]!=NULL) printf("«%s» ",keys[i]);
+	    else fprintf(stderr,"key[%i/%i] is NULL. ",i,k); 
+	  }
+	  printf("done.\n");
+	  // check headers for links and save only the id in the link as hash.
+	  for (i=0;i<k;i++) {
+	    //printf("[parse_sb_tab] checking key %i of %i (%s); ",i,k,keys[i]);
+	    r_status=regexec(&SBlink,keys[i],4,match,0);
 	    fflush(stdout);
-	    stem=get_reference(keys[i], &match[1]);
-	    leaf=get_reference(keys[i], &match[2]);
-	    if (leaf!=NULL){
-	      printf("\t[keys] link to table «%s», ID=«%s» found. I will use ID in hash table.\n",stem,leaf);
-	      g_free(keys[i]);
-	      keys[i]=leaf;
-	    } else {
-	      fprintf(stderr,"[parse_sb_tab] could not dereference link. Will use the string as is.\n");
-	    }
-	  }else{
-	    //printf("key[%i] is not linked.\n",i);
-	  }	  
+	    fflush(stderr);
+	    if (r_status==0){
+	      //printf("key[%i] is linked.\n",i);
+	      fflush(stdout);
+	      stem=get_reference(keys[i], &match[1]);
+	      leaf=get_reference(keys[i], &match[2]);
+	      if (leaf!=NULL){
+		printf("\t[keys] link to table «%s», ID=«%s» found. I will use ID in hash table.\n",stem,leaf);
+		g_free(keys[i]);
+		keys[i]=leaf;
+	      } else {
+		fprintf(stderr,"[parse_sb_tab] could not dereference link. Will use the string as is.\n");
+	      }
+	    }else{
+	      //printf("key[%i] is not linked.\n",i);
+	    }	  
+	  }
+	  sbtab=sbtab_alloc(keys);
+	} else if (regexec(&EmptyLine,s,0,NULL,0)==0){
+	  printf("[parse_sb_tab] skipping empty line «%s».\n",s);
+	} else {
+	  assert(sbtab!=NULL);
+	  //printf("[parse_sb_tab] append «%s» (m_s=%i)\n",s,m_s);
+	  sbtab_append_row(sbtab,s,fs);
 	}
-	sbtab=sbtab_alloc(keys);
-      } else if (regexec(&EmptyLine,s,0,NULL,0)==0){
-	printf("[parse_sb_tab] skipping empty line «%s».\n",s);
-      } else {
-	assert(sbtab!=NULL);
-	sbtab_append_row(sbtab,s,fs);
-      }      
+      }
     }
     if (sbtab!=NULL){
       sbtab->TableTitle=TableTitle;
