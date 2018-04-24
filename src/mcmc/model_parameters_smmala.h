@@ -52,18 +52,26 @@ typedef struct {
   gsl_vector **sd_data;
   gsl_vector **y; // y[t](i) vector of size T;
   gsl_vector **fy; // measurement model output functions
-  gsl_vector *nfy; // normalising fy; temporary storage
-  gsl_matrix *nfyS; // normalising fyS; temporary storage
+  gsl_vector **nfy; // normalising fy; temporary storage
+  gsl_matrix **nfyS; // normalising fyS; temporary storage
   gsl_vector *init_y;
   gsl_vector *input_u;
   gsl_matrix *yS0;
   gsl_matrix **yS;
   gsl_matrix **fyS;
   gsl_matrix **oS; // observational sensitivities
-  int normalised_by_experiment; // index of experiment that normalises this one
-  gsl_vector_int *normalised_by_timepoint; // index-set of timepoints to use for normalisation, if any
-  gsl_vector_int *normalised_by_output; // index-set of the output channel to use for normalisation
+  int NormaliseByExperiment;
+  int NormaliseByTimePoint;
+  gsl_vector_int *NormaliseByOutput;
 } experiment;
+
+typedef struct {
+  gsl_vector *mu;
+  gsl_vector **a;
+  int na;
+  gsl_matrix *Sigma;
+  gsl_matrix *inverse_cov;  
+} prior_t;
 
 typedef struct {
   double t0;
@@ -77,11 +85,16 @@ typedef struct {
   gsl_matrix_int *norm_t; // (1|C) × F matrix
   gsl_matrix *Data; // this is a block of size C*T*F, contains all data.
   gsl_matrix *sdData; // standard deviation of the datapoints
-  gsl_vector *tmpF;
+  gsl_vector *tmpF; // temporay storage of size F
+  gsl_matrix *tmpDF; // temporary storage of size D×F
+  prior_t prior;
   gsl_vector *prior_tmp_a; // some memory allocation ..
   gsl_vector *prior_tmp_b; // .. for calculation buffers
   gsl_vector *prior_mu; // prior parameter: the medians of log normal distributions;
   gsl_matrix *prior_inverse_cov; // prior parameter: the inverse covariance in log space (where the prior is a Gaussian distribution);
+  gsl_vector *sigma; // in case Sigma is diagonal
+  gsl_matrix *Sigma; // in case it isn't
+  gsl_matrix *Sigma_LU; // then also store the LU decomposition, or QR?
   gsl_matrix *FI_l; // likelihood contribution to fisher information matrix
   gsl_matrix *FI_p; // prior contribution to fisher information matrix
   sensitivity_approximation *S_approx; 

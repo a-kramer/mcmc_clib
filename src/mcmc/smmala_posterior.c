@@ -311,42 +311,54 @@ int normalise_by_state_var(ode_model_parameters *mp){
 }
 
 
-int get_normalising_vector(experiment *E, experiment *ref_E, gsl_vector *fy, int t){
-  int i=E->normalised_by_experiment;
-  int j,nj,k,nk;
-  int f;
+int get_normalising_vector(experiment *E, experiment *ref_E, gsl_vector **fy, gsl_matrix **fyS){
+  //int i=E->NormaliseByExperiment;
+  int t;
+  int f,j,nj,k,nk;
   double val;
+  gsl_vector_view fyS_column, M_column;
+  gsl_vector *v;
+  gsl_matrix *M;
   fy=NULL;
-  if (ref_E!=NULL){
-    assert(ref_E->normalised_by_experiment<0);
-    assert(ref_E->normalised_by_output==NULL);
-    assert(ref_E->normalised_by_timepoint==NULL);
-  }else{
+  j=E->NormaliseByTimePoint;
+  if(ref_E==NULL){
     ref_E=E;
+    assert(j>=0);
   }
-  int F=E->fy[t]->size;  
-  if (E->normalised_by_timepoint!=NULL){
-    nj=E->normalised_by_timepoint->size;
-    if (nj==1){ // easy case: all outputs are normalised by themselves at time j
-      j=gsl_vector_get(E->normalised_by_timepoint,1);
-      fy=ref_E->fy[j];
+  int F=E->fy[t]->size;
+  int T=E->t->size;
+  int rT=ref_E->t->size;
+
+  assert(j<T);
+  for (t=0;t<T;t++){
+    // find the right reference fy and fyS:
+    if (j>=0){
+      v=ref_E->fy[j];
+      M=ref_E->fyS[j];
+    } else {
+      v=ref_E->fy[t%T];
+      M=ref_E->fyS[t%T];
+    }  
+    if (E->NormaliseByOutput==NULL){
+      // just link fy and fyS with the reference objects:
+      fy[t]=v;
+      fyS[t]=M;
     }else{ // each output is normalised differently
-      fy=E->nfy;
+      fy[t]=E->nfy;
+      fyS[t]=E->nfyS;
+      // copy elements to fy and fyS
       for (f=0;f<F;f++){
-	j=gsl_vector_get(E->normalised_by_timepoint,f%nj);
-	if (E->normalised_by_output!=NULL){
-	  nk=ref_E->normalised_by_output->size;
-	  k=gsl_vector_get(E->normalised_by_output,f%nk);
-	}else{
-	  k=f;
-	}	 
-	val=gsl_vector_get(ref_E->fy[j],k);
-	gsl_vector_set(fy,f,val);
+	// output function:
+	k=gsl_vector_get(E->NormaliseByOutput,f);
+	val=gsl_vector_get(v,k);
+	gsl_vector_set(fy[t],f,val);
+	// its sensitivity:
+        fyS_column=gsl_matrix_column(fyS[t],f);
+	M_column=gsl_matrix_column(M,f);
+        gsl_vector_memcpy(&(fyS_column.vector),&(M_column.vector));
       }
     }
-  }else{
-    fy=ref_E->fy[t];
-  }  
+  }
   return GSL_SUCCESS;
 }
 
@@ -355,58 +367,65 @@ int get_normalising_vector(experiment *E, experiment *ref_E, gsl_vector *fy, int
  * experiment differently, as specified. (work in progress)
  */
 int normalise(ode_model_parameters *mp){
-  int r,c,j,k,l;
+  int c,j,k,l;
   int C=mp->size->C;
   int T=mp->size->T;
   int D=mp->size->D;
-  gsl_vector *fy,*l_fy;
+  int F=mp->size->F;
+  assert(T>0);
+  gsl_vector *fy;
+  gsl_vector *rfy[T];
+  gsl_matrix *rfyS[T];
   gsl_matrix *fyS, *oS;
-  gsl_vector *tmp;
-  gsl_vector_view fyS_k_view; // 
+  gsl_matrix_view fyS_D_sub, rfyS_D_sub; // the first D rows of fyS;
+  gsl_matrix *fySD, *rfySD; // pointer to the above;
+  gsl_vector *v;
+  gsl_matrix *M;
+  gsl_vector_view M_row;
+  gsl_vector_view fyS_k_row; // 
   gsl_vector *fyS_k; // the raw fy sensitivity for one parameter k
-  gsl_vector_view l_fyS_k_view; // 
-  gsl_vector *l_fyS_k; // the raw fy sensitivity for one parameter k
-  gsl_vector_view oS_k_view; // 
+  gsl_vector_view rfyS_k_row; // 
+  gsl_vector *rfyS_k; // the raw fy sensitivity for one parameter k
+  gsl_vector_view oS_k_row; // 
   gsl_vector *oS_k; // the normalised output sensitivity for one parameter k
-  int i;
+  int i,nt;
   experiment *ref_E=NULL;
-  tmp=mp->tmpF;
-  r=mp->norm_t->size1;
+  v=mp->tmpF;
+  M=mp->tmpDF;
+
   for (c=0;c<C;c++){
-    T=mp->E[c]->t->size;
-    i=mp->E[c]->normalised_by_experiment;
+    nt=mp->E[c]->t->size;
+    assert(nt<=T);
+    i=mp->E[c]->NormaliseByExperiment;
     ref_E=(i>0)?(mp->E[i]):NULL;
+    get_normalising_vector(mp->E[c], ref_E, rfy, rfyS);
     for (j=0;j<T;j++){
-      get_normalising_vector(mp->E[c], ref_E,l_fy, j);
       fy=mp->E[c]->fy[j];
       fyS=mp->E[c]->fyS[j];
       oS=mp->E[c]->oS[j];
-      gsl_vector_div(fy,l_fy);
-      for (k=0;k<D;k++){
-	// set up vector views for the sensitivity of:
-	// the normalising raw output row fy at time index l
-	l_fyS_k_view=gsl_matrix_row(mp->E[c]->fyS[l],k);
-	l_fyS_k=&(l_fyS_k_view.vector);
-	// the raw output functions
-	fyS_k_view=gsl_matrix_row(fyS,k);
-	fyS_k=&(fyS_k_view.vector);
-	// normalised output (or observation)
-	oS_k_view=gsl_matrix_row(oS,k);
-	oS_k=&(oS_k_view.vector);
-	// calculate normalised output sensitivity
-	gsl_vector_memcpy(oS_k,fyS_k);
-	gsl_vector_memcpy(tmp,fy);
-	gsl_vector_mul(tmp,l_fyS_k);
-	gsl_vector_sub(oS_k,tmp);
-	gsl_vector_div(oS_k,l_fy);
+      gsl_vector_div(fy,rfy[j]);
+      // views of the right size for convenience:
+      fyS_D_sub=gsl_matrix_submatrix(fyS,0,0,D,F);
+      rfyS_D_sub=gsl_matrix_submatrix(rfyS[j],0,0,D,F);
+      fySD=&(fyS_D_sub.matrix);
+      rfySD=&(rfyS_D_sub.matrix);
+      gsl_matrix_memcpy(oS,fySD);
+      gsl_matrix_memcpy(M,rfySD);
+      for (k=0;k<D;k++) {
+	M_row=gsl_matrix_row(M,k);
+	gsl_vector_mul(&(M_row.vector),fy);
+      }
+      gsl_matrix_sub(oS,M);
+      for (k=0;k<D;k++) {
+	oS_k_row=gsl_matrix_row(oS,k);
+	oS_k=&(oS_k_row.vector);
+	gsl_vector_div(oS_k,rfy[j]);
 	gsl_vector_scale(oS_k,gsl_vector_get(mp->p,k));
       }
     }	     
   }
   return GSL_SUCCESS;
 }
-
-
 
 int assign_oS_fyS(ode_model_parameters *mp){
   int i,j,k,c;

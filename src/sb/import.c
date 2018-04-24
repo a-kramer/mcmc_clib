@@ -48,7 +48,8 @@ gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT);
 gsl_vector* get_time_vector(sbtab_t *DataTable);
 gsl_matrix* get_input_matrix(sbtab_t *DataTable, GPtrArray *input_ID, gsl_vector *default_input);
 herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, GArray **N);
-int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab_hash);
+herr_t write_prior_to_hdf5(hid_t file_id, gsl_vector *mu, gsl_matrix *Sigma);
+int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_hash);
 gchar* dup_match(regmatch_t *match, char *source);
 gsl_vector* sbtab_column_to_gsl_vector(sbtab_t *table, gchar *column_name);
 
@@ -87,7 +88,11 @@ int main(int argc, char*argv[]){
     printf(" %s ",table->TableName);
   }
   printf("\n");
-  status&=process_data_tables(H5FileName, sbtab, sbtab_hash);
+  hid_t file_id;
+  file_id = H5Fcreate(H5FileName, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  status &= process_data_tables(file_id, sbtab, sbtab_hash);
+  status &= process_prior(file_id, sbtab, sbtab_hash);
+  status &= H5Fclose(file_id);
   //process_input_table(H5FileName, sbtab, sbtab_hash);
   //process_prior(H5FileName, sbtab, sbtab_hash);
   return status;
@@ -268,7 +273,6 @@ GArray** get_normalisation(sbtab_t *ExperimentTable, int *ExperimentType, sbtab_
   gchar *RefOut;
   regmatch_t match[4];  
   int nE=get_table_length(ExperimentTable);
-  int ref_exp_i[nE];
   guint K=MajorIdx->len;
   GArray **N;
   int nO=get_table_length(OutputTable);
@@ -426,8 +430,6 @@ gsl_vector* sbtab_column_to_gsl_vector(sbtab_t *table,gchar *column_name){
 int  get_experiment_index_mapping(int nE, int *ExperimentType, sbtab_t **DataTable, GArray **SU_index, GArray *MajorExpIdx, GArray *MinorExpIdx){
   int k=0,j,i;
   int N; // number of dose response rows
-  GArray *ExperimentName;
-  //  nE=ExperimentTable->column[0]->len;
 
   for (j=0;j<nE;j++) { // j is the major experiment index
     N=DataTable[j]->column[0]->len;
@@ -461,7 +463,7 @@ int  get_experiment_index_mapping(int nE, int *ExperimentType, sbtab_t **DataTab
   return k;
 }
 
-int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab_hash){
+int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_hash){
   sbtab_t *E_table, *Input;  
   gchar *experiment_id, *input_id, *experiment_name;
   gsl_vector *input;
@@ -477,9 +479,8 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
   L1_OUT=find_output_table(sbtab_hash);
   E_table=find_experiment_table(sbtab_hash);
   // hdf5 file
-  hid_t file_id;
   hid_t data_group_id, sd_group_id;  
-  file_id = H5Fcreate(H5FileName, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  
   data_group_id = H5Gcreate(file_id, "/data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   sd_group_id = H5Gcreate(file_id, "/sd_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   
@@ -595,7 +596,75 @@ int process_data_tables(gchar *H5FileName,  GPtrArray *sbtab,  GHashTable *sbtab
     
   status &= H5Gclose(data_group_id);
   status &= H5Gclose(sd_group_id);
-  status &= H5Fclose(file_id);
+
+  return status;
+}
+
+herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash){
+  sbtab_t *Parameters;
+  Parameters=g_hash_table_lookup(sbtab_hash,"Parameters");
+  gsl_vector *mu=NULL;
+  mu=sbtab_column_to_gsl_vector(Parameters,"!DefaultValue");
+  gchar ValueNames[]="!Value !Mean !Median !Mode";
+  gchar **ValueName;
+  ValueName=g_strsplit(ValueNames," ",-1);
+  int i,n;
+  //char *s;
+  n=(int) g_strv_length(ValueName);
+  for (i=0;i<n;i++){
+    if (mu==NULL){
+      mu=sbtab_column_to_gsl_vector(Parameters,ValueName[i]);
+    } else {
+      break;
+    }
+  }
+  assert(mu!=NULL);  
+  g_strfreev(ValueName);
+  int D=mu->size;
+  printf("[process_prior] prior has size %i.\n",D);
+  gsl_matrix *Sigma;
+  Sigma=gsl_matrix_alloc(D,D);
+  gsl_matrix_set_zero(Sigma);
+  
+  gsl_vector *stdv;
+  gsl_vector *par_max, *par_min;
+  
+  stdv=sbtab_column_to_gsl_vector(Parameters,"!Std");
+  gsl_vector_view diagonal;
+  diagonal=gsl_matrix_diagonal(Sigma);
+
+  if (stdv!=NULL){
+    printf("[process_prior] using !Std column as diagonal of Sigma.\n");
+    gsl_vector_memcpy(&(diagonal.vector),stdv);
+  }else{
+    par_max=sbtab_column_to_gsl_vector(Parameters,"!Max");
+    par_min=sbtab_column_to_gsl_vector(Parameters,"!Min");
+    gsl_vector_add(&(diagonal.vector),par_max);    
+    gsl_vector_sub(&(diagonal.vector),par_min);
+    double b;
+    b=sqrt(1.0/12.0);
+    gsl_vector_scale(&(diagonal.vector),b);
+  }
+  herr_t status;
+  status = write_prior_to_hdf5(file_id, mu, Sigma);
+  return status;
+}
+
+herr_t write_prior_to_hdf5(hid_t file_id, gsl_vector *mu, gsl_matrix *Sigma){
+  herr_t status=0;
+  hid_t prior_group_id;
+  hsize_t mu_size=mu->size;
+  hsize_t Sigma_size[2];
+  Sigma_size[0]=Sigma->size1;
+  Sigma_size[1]=Sigma->size2;
+  
+  prior_group_id=H5Gcreate(file_id,"/prior",H5P_DEFAULT,H5P_DEFAULT,H5P_DEFAULT);
+  assert(prior_group_id>=0);
+  printf("[write_prior_to_hdf5] prior_group_id = %li.\n",prior_group_id);
+  //status &= H5Gopen(file_id,"/prior",H5P_DEFAULT);
+  status &= H5LTmake_dataset_double(prior_group_id,"mu",1,&mu_size,mu->data);
+  status &= H5LTmake_dataset_double(prior_group_id,"Sigma",2,Sigma_size,Sigma->data);
+  status &= H5Gclose(prior_group_id);
   return status;
 }
 
@@ -636,7 +705,7 @@ herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vect
   if (N!=NULL){
     if (N[NORM_EXPERIMENT]!=NULL && N[NORM_EXPERIMENT]->len>0){
       rI=&g_array_index(N[NORM_EXPERIMENT],int,index);
-      if (rI!=major){
+      if (rI[0]!=major){
 	status &= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByExperiment",rI,1);
       }
     } 

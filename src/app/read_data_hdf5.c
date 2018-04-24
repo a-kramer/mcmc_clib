@@ -22,6 +22,7 @@ herr_t load_stdv_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   int rank;
   herr_t status=H5LTget_dataset_ndims(g_id, name, &rank);
   hsize_t *size;
+  static int index=0;
   size=malloc(sizeof(size_t)*rank);
   status&=H5LTget_dataset_info(g_id,name,size,NULL,NULL);
   assert(status>=0); // I think that hdf5 functions return negative error codes
@@ -30,6 +31,7 @@ herr_t load_stdv_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   status&=H5LTread_dataset_double(g_id, name, stdv_block->data);
   if (index < mp->size->C){
     mp->E[index]->sd_data_block=stdv_block;
+    index++;
   }else{
     fprintf(stderr,"[load_stdv_block] error: experiment index is larger than number ofexperiments (simulation units).\n");
     exit(-1);
@@ -64,19 +66,19 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   // normalisation properties
   int NormaliseByExperiment;
   int NormaliseByTimePoint;
-  gsl_vector_int NormaliseByOutput;
+  gsl_vector_int *NormaliseByOutput;
   herr_t attr_err;
-  attr_err=H5LTset_attribute_int(g_id, name,"NormaliseByExperiment",&NormaliseByExperiment,1);
+  attr_err=H5LTget_attribute_int(g_id, name,"NormaliseByExperiment",&NormaliseByExperiment,1);
   if (attr_err<0) NormaliseByExperiment=-1;
-  attr_err=H5LTset_attribute_int(g_id, name,"NormaliseByTimePoint",&NormaliseByTimePoint,1);
+  attr_err=H5LTget_attribute_int(g_id, name,"NormaliseByTimePoint",&NormaliseByTimePoint,1);
   if (attr_err<0) NormaliseByTimePoint=-1;
   hsize_t nO;  
-  attr_err=H5LTget_attribute_info(g_id,name,"NormaliseByOutput",&nT,NULL,NULL);
+  attr_err=H5LTget_attribute_info(g_id,name,"NormaliseByOutput",&nO,NULL,NULL);
   if (attr_err<0) {
     NormaliseByOutput=NULL;
   } else {
     NormaliseByOutput=gsl_vector_int_alloc(nO);
-    attr_err=H5LTset_attribute_int(g_id,name,"NormaliseByOutput",&NormaliseByOutput->data,nO);
+    attr_err=H5LTget_attribute_int(g_id,name,"NormaliseByOutput",NormaliseByOutput->data,nO);
     assert(attr_err>=0);
   }
   
@@ -87,7 +89,8 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
     mp->E[index]->input_u=input;
     mp->E[index]->NormaliseByTimePoint=NormaliseByTimePoint;
     mp->E[index]->NormaliseByTimePoint=NormaliseByTimePoint;
-    mp->E[index]->NormaliseByTimePoint=NormaliseByTimePoint;      
+    mp->E[index]->NormaliseByTimePoint=NormaliseByTimePoint;
+    mp->size->T=GSL_MAX(mp->size->T,mp->E[index]->t->size);
   }else{
     fprintf(stderr,"[load_experiment_block] error: experiment index is larger than number ofexperiments (simulation units).\n");
     exit(-1);
@@ -120,6 +123,7 @@ int read_data(const char *file, void *model_parameters){
   hsize_t idx,nE;
   status&=H5Gget_num_objs(data_group_id, &nE); //number of experiments
   mp->size->C=(int) nE;
+  mp->size->T=0;
   init_E(mp);
   idx=0;
   status=H5Literate(data_group_id, H5_INDEX_NAME, H5_ITER_INC, &idx, load_data_block, mp);
@@ -129,9 +133,21 @@ int read_data(const char *file, void *model_parameters){
   if (status<0) fprintf(stderr,"[read_data] iteration over stdv group was not successful.\n");  
   H5Gclose(data_group_id);
   H5Gclose(stdv_group_id);
+  hid_t prior_group_id=H5Gopen2(file_id,"/prior",H5P_DEFAULT);
+  int D;
+  status&=H5LTget_dataset_info(prior_group_id,"mu",&D,NULL,NULL);
+
+  mp->prior_mu=gsl_vector_alloc(D);
+  status&=H5LTread_dataset_double(prior_group_id, "mu", mp->prior_mu->data);
+  
+  mp->Sigma=gsl_matrix_alloc(D,D);
+  status&=H5LTread_dataset_double(prior_group_id, "Sigma", mp->prior_mu->data);
+
+  H5Gclose(prior_group_id);
   H5Fclose(file_id);
   // determine sizes:
-  mp->size->
+  mp->size->U=mp->E[0]->input_u->size;
+  mp->size->D=D;
   ode_model_parameters_link(mp);
   return (int) status;
 }
