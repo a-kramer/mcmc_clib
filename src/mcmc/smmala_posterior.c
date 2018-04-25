@@ -349,7 +349,7 @@ int get_normalising_vector(experiment *E, experiment *ref_E, gsl_vector **fy, gs
       // copy elements to fy and fyS
       for (f=0;f<F;f++){
 	// output function:
-	k=gsl_vector_get(E->NormaliseByOutput,f);
+	k=gsl_vector_int_get(E->NormaliseByOutput,f);
 	val=gsl_vector_get(v,k);
 	gsl_vector_set(fy[t],f,val);
 	// its sensitivity:

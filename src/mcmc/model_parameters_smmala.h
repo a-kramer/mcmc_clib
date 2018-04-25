@@ -11,6 +11,7 @@
 #define DATA_NORMALISED_BY_REFERENCE 1
 #define DATA_NORMALISED_BY_TIMEPOINT 2
 #define DATA_NORMALISED_BY_STATE_VAR 3
+#define DATA_NORMALISED_INDIVIDUALLY 4
 
 #define get_number_of_state_variables(omp) (omp->problem_size->N)
 #define get_number_of_MCMC_variables(omp) (omp->problem_size->D)
@@ -67,10 +68,14 @@ typedef struct {
 
 typedef struct {
   gsl_vector *mu;
-  gsl_vector **a;
-  int na;
-  gsl_matrix *Sigma;
-  gsl_matrix *inverse_cov;  
+  gsl_vector **tmp; // temporary storage for prior calculations
+  int n; // number of temporary vectors above
+  union {
+    gsl_matrix *Sigma_LU; // LU factors of the Sigma matrix
+    gsl_matrix *inverse_cov; // Same matrix already given in inverted form
+    gsl_vector *sigma; // If Sigma is diagonal, this is the diagonal vector.
+  };
+  int type;
 } prior_t;
 
 typedef struct {

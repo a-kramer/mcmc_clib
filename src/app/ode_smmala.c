@@ -167,6 +167,7 @@ int main (int argc, char* argv[]) {
   //int output_is_binary=0;
   double seed = 1;
   double gamma=0.25;
+  double t0=0;
   int sampling_action=SMPL_FRESH;
   size_t resume_count;
   gsl_error_handler_t *gsl_error_handler;
@@ -185,25 +186,32 @@ int main (int argc, char* argv[]) {
   int rank,R,DEST;
   MPI_Comm_size(MPI_COMM_WORLD,&R);
   MPI_Comm_rank(MPI_COMM_WORLD,&rank);
-  char* h5file=NULL;
+  char *h5file=NULL;
   for (i=0;i<argc;i++){
-    if (strcmp(argv[i],"-c")==0) cfilename=argv[i+1];
-    else if (strcmp(argv[i],"-d")==0) h5file=argv[i+1];
-    else if (strcmp(argv[i],"-p")==0 || strcmp(argv[i],"--prior-start")==0) start_from_prior=1;
-    else if (strcmp(argv[i],"-w")==0 || strcmp(argv[i],"--warm-up")==0) warm_up=strtol(argv[i+1],NULL,10);
+    if (strcmp(argv[i],"-c")==0){
+      cfilename=argv[i+1];
+      h5file=NULL;
+    } else if (strcmp(argv[i],"-p")==0 || strcmp(argv[i],"--prior-start")==0) {
+      start_from_prior=1;
+    } else if (strcmp(argv[i],"-d")==0 || strcmp(argv[i],"--hdf5")==0) {
+      h5file=argv[i+1];
+      cfilename=NULL;
+    } else if (strcmp(argv[i],"-t")==0 || strcmp(argv[i],"--init_at_t")==0) {
+      t0=strtod(argv[i+1],NULL);
+    } else if (strcmp(argv[i],"-w")==0 || strcmp(argv[i],"--warm-up")==0) warm_up=strtol(argv[i+1],NULL,10);
     else if (strcmp(argv[i],"--resume")==0 || strcmp(argv[i],"-r")==0) sampling_action=SMPL_RESUME;
     else if (strcmp(argv[i],"--sens-approx")==0) sensitivity_approximation=1;
     else if (strcmp(argv[i],"-l")==0) strcpy(cnf_options.library_file,argv[i+1]);
     //    else if (strcmp(argv[i],"-n")==0) Tuning=0;
     else if (strcmp(argv[i],"-s")==0) cnf_options.sample_size=strtol(argv[i+1],NULL,0);
-    else if (strcmp(argv[i],"-o")==0) strcpy(cnf_options.output_file,argv[i+1]);
+    else if (strcmp(argv[i],"-o")==0) strncpy(cnf_options.output_file,argv[i+1],BUFSZ);
     //    else if (strcmp(argv[i],"-b")==0) output_is_binary=1;
     else if (strcmp(argv[i],"-a")==0) cnf_options.target_acceptance=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"-i")==0) cnf_options.initial_stepsize=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"-g")==0) gamma=strtod(argv[i+1],NULL);
     
     else if (strcmp(argv[i],"--seed")==0) seed=strtod(argv[i+1],NULL);
-    else if (strcmp(argv[i],"-h")==0) {print_help(); exit(0);}
+    else if (strcmp(argv[i],"-h")==0 || strcmp(argv[i],"--help")==0) {print_help(); exit(0);}
     
     //else printf("unknown option {%s}.\n",argv[i]);
   }
@@ -231,10 +239,10 @@ int main (int argc, char* argv[]) {
   
   ode_solver* solver = ode_solver_alloc(odeModel); /* alloc */
   if (solver == NULL) {
-    fprintf(stderr, "# Solver %s could not be created.\n",lib_name);
+    fprintf(stderr, "# [main] Solver %s could not be created.\n",lib_name);
     ode_model_free(odeModel);
     exit(1);
-  } else printf("# Solver for %s created.\n",lib_name);
+  } else printf("# [main] Solver for %s created.\n",lib_name);
   
   if (sensitivity_approximation){
     ode_solver_disable_sens(solver);
@@ -251,7 +259,7 @@ int main (int argc, char* argv[]) {
   omp.size->N=N;
   omp.size->P=P;
   omp.size->F=F;
-  
+  omp.t0=t0;
   double y[N];
   gsl_vector_view y_view=gsl_vector_view_array(y,N);
   
@@ -266,17 +274,20 @@ int main (int argc, char* argv[]) {
   if (cfilename!=NULL){
     cnf=fopen(cfilename,"r");
     if (cnf!=NULL){
-      printf("# reading configuration.\n");
+      printf("# [main] reading configuration file (cnf).\n");
       parse_config(cnf,&omp,&cnf_options);
     } else {
-      fprintf(stderr,"# Could not open config file %s.\n",cfilename);
+      fprintf(stderr,"# [main] Could not open config file %s.\n",cfilename);
       exit(1);
     }
     fclose(cnf);
-  }
-
-  if (h5file!=NULL){
+  } else if (h5file!=NULL){
+    printf("# [main] reading hdf5 file, loading data.\n"); fflush(stdout);
     read_data(h5file,&omp);
+    exit(0);
+  } else {
+    printf("# [main] no data provided (-c or -d option), exiting.\n");
+    exit(0);
   }
   
   cnf_options.initial_stepsize=fabs(cnf_options.initial_stepsize);
