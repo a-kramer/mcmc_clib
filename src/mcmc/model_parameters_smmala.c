@@ -1,5 +1,4 @@
 #include "model_parameters_smmala.h"
-
 /* Data will always be stored in blocks (matrices), there will be
  * vector views to identify specific rows.  Whether Data or data_block
  * is used in memory allocation is up to the data read functions.
@@ -28,24 +27,27 @@ int init_E(ode_model_parameters *omp){
   }
   omp->ref_E->data_block=NULL;
   omp->ref_E->sd_data_block=NULL;
-  
+
+  omp->prior=malloc(sizeof(prior_t));
+  omp->prior->p=gsl_permutation_alloc;
   printf("# %i+1 experiment structures allocated.\n",C);
   return GSL_SUCCESS;
 }
 
 int ode_model_parameters_link(ode_model_parameters *omp){
   int i,j,k=0;
-  int T,C,F;
-  C=omp->size->C;
-  F=omp->size->F;
+  int T=0;
+  int C=omp->size->C;
+  int F=omp->size->F;
 
   for (i=0;i<C;i++){
     T=omp->E[i]->t->size; // there is one data block per experiment, with T rows
     //data
     if (omp->E[i]->data_block==NULL && omp->Data!=NULL){
+      // submatrix views have to be created based on measurement times
       omp->E[i]->data_block_view=gsl_matrix_submatrix(omp->Data,k,0,T,F);
       omp->E[i]->data_block=&(omp->E[i]->data_block_view.matrix);
-      //standard deviation
+      //standard deviation same treatment
       omp->E[i]->sd_data_block_view=gsl_matrix_submatrix(omp->sdData,k,0,T,F);
       omp->E[i]->sd_data_block=&(omp->E[i]->sd_data_block_view.matrix);
     }
@@ -65,7 +67,6 @@ int ode_model_parameters_link(ode_model_parameters *omp){
   //printf("data rows linked.\n");
   // shortcuts for input rows;
   return GSL_SUCCESS;
-
 }
 
 int ode_model_parameters_alloc(ode_model_parameters *omp){
@@ -87,7 +88,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
   int P=omp->size->P; // number of total parameters D+U (a consistency check
 	       // between ode_model and mcmc configuration file)
   
-  //printf("# allocating model parameters with: N=%i,\tP=%i,\tT=%i.\n",N,P,T);
+  printf("[model_parameters_alloc] allocating model parameters with: N=%i,\tP=%i,\tT=%i.\n",N,P,T);
   /* initialise gsl_vectors and matrices these will hold the
    * differential equation data for each experimental condition c and
    * time point t_j, like this: y[c*T+j]=gsl_vector(N)
@@ -101,7 +102,8 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
   omp->S_approx->r=gsl_vector_alloc(N);
   omp->S_approx->eJt=gsl_matrix_alloc(N,N);
   omp->S_approx->Jt=gsl_matrix_alloc(N,N);
-  //printf("alloc norm f and t\n");
+  
+  printf("[model_parameters_alloc] y, fy,yS, fyS, oS, yS0, nfy and nfyS.\n");
   for (i=0;i<C;i++){
     T=omp->E[i]->t->size;
     omp->E[i]->y=(gsl_vector **) malloc(sizeof(gsl_vector*)*T);
@@ -121,6 +123,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
       omp->E[i]->oS[j]=gsl_matrix_alloc(D,F);
     }
   }
+
   omp->ref_E->y=(gsl_vector **) malloc(sizeof(gsl_vector*)*T);
   omp->ref_E->fy=(gsl_vector **) malloc(sizeof(gsl_vector*)*T);
   omp->ref_E->yS=(gsl_matrix **) malloc(sizeof(gsl_vector*)*T);
@@ -140,9 +143,13 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
    * burn-in is performed, beta needs to be 1.0
    */
   omp->p=gsl_vector_alloc(P);
-  // prior 
-  omp->prior_tmp_a=gsl_vector_alloc(D);
-  omp->prior_tmp_b=gsl_vector_alloc(D);
+  // prior
+  omp->prior->n=3;
+  omp->prior->tmp=malloc(sizeof(gsl_vector*) * omp->prior->n);
+  for (i=0;i< omp->prior->n;i++){
+    omp->prior->tmp[i]=gsl_vector_alloc(D);
+  }
+  printf("[model_parameters_alloc] done.\n");
   return EXIT_SUCCESS;
 }
 
@@ -159,7 +166,7 @@ int ode_model_parameters_free(ode_model_parameters *omp){
   gsl_matrix_free(omp->S_approx->Jt);
   gsl_matrix_free(omp->S_approx->eJt);
   free(omp->S_approx);
-  
+
   for (i=0;i<C;i++){
     free(omp->E[i]->data_row);
     free(omp->E[i]->sd_data_row);
@@ -183,11 +190,7 @@ int ode_model_parameters_free(ode_model_parameters *omp){
     gsl_matrix_free(omp->ref_E->oS[j]);
   }
   free(omp->ref_E);
-  gsl_vector_free(omp->prior_tmp_a);
-  gsl_vector_free(omp->prior_tmp_b);
-  gsl_vector_free(omp->prior_mu);
   gsl_vector_free(omp->p);
-  gsl_matrix_free(omp->prior_inverse_cov);
   free(omp->size);
   return EXIT_SUCCESS;
 }

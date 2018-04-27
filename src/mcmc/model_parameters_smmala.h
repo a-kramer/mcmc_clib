@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_vector.h>
+#include <gsl/gsl_permutation.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include "../ode/ode_model.h"
@@ -12,6 +13,17 @@
 #define DATA_NORMALISED_BY_TIMEPOINT 2
 #define DATA_NORMALISED_BY_STATE_VAR 3
 #define DATA_NORMALISED_INDIVIDUALLY 4
+
+// prior types
+#define PRIOR_IS_UNKNOWN 0
+#define PRIOR_IS_GAUSSIAN 1
+#define PRIOR_IS_MULTIVARIATE 2
+#define PRIOR_IS_GENERALISED 4
+#define PRIOR_IS_KERNEL_DENSITY_ESTIMATE 8
+#define PRIOR_IS_DVINE_COPULA 16
+#define PRIOR_SIGMA_GIVEN 32
+#define PRIOR_PRECISION_GIVEN 64
+#define PTYPE(OPT,PROPERTY) (((OPT) & (PROPERTY)) > 0)
 
 #define get_number_of_state_variables(omp) (omp->problem_size->N)
 #define get_number_of_MCMC_variables(omp) (omp->problem_size->D)
@@ -40,11 +52,21 @@ typedef struct {
   gsl_vector *r;
 } sensitivity_approximation; 
 
+/* Data can be stored in one of two places:
+ * 1. in the model parameters structure (in the Data matrix).
+ * 2. in the experiment structure, individually for each experiment.
+ *
+ * If method 1 is used, then the experiments have a view of the part
+ * of [Data] that belongs to them. Otherwise data_block is just a normal matrix.
+ *
+ * If method 2 is used, then the main Data matrix is NULL, and
+ * data_block is actually the primary owner of its contents.
+ */
 typedef struct {
   double t0;
   gsl_vector *t;
-  gsl_matrix_view data_block_view; // view of this experiments data block
-  gsl_matrix *data_block;
+  gsl_matrix_view data_block_view; // view of this experiments data block inside the Data array, if that has been used
+  gsl_matrix *data_block;  // either a pointer to a submatrix or self-allocated storage
   gsl_matrix_view sd_data_block_view; // standard deviation of this data block
   gsl_matrix *sd_data_block;
   gsl_vector_view *data_row; // for convenience, we define views for each row
@@ -72,34 +94,29 @@ typedef struct {
   int n; // number of temporary vectors above
   union {
     gsl_matrix *Sigma_LU; // LU factors of the Sigma matrix
-    gsl_matrix *inverse_cov; // Same matrix already given in inverted form
+    gsl_matrix *inv_cov; // Same matrix already given in inverted form
     gsl_vector *sigma; // If Sigma is diagonal, this is the diagonal vector.
   };
-  int type;
+  gsl_permutation *p; // used whenever LU decomposition is used
+  int signum;         // also belongs to LU decomposition
+  int type;           // for later use if maybe generalised prior is available, but also, diagonal/non-diagonal stuff;
 } prior_t;
 
 typedef struct {
   double t0;
   problem_size *size;
   gsl_vector *p; // memory for the ODE's parameters (they are
-		 // exponential) and input parameters, appended
+		 // exponential) and input parameters, appended: p=[exp(x),u];
   experiment **E; // an experiment (data, initial conditions, inputs, simulation results)
   experiment *ref_E;
   int normalisation_type;
-  gsl_matrix_int *norm_f; // (1|C) × F matrix
-  gsl_matrix_int *norm_t; // (1|C) × F matrix
-  gsl_matrix *Data; // this is a block of size C*T*F, contains all data.
+  gsl_matrix_int *norm_f; // (1|C) × F matrix that stores normalisation information [old]
+  gsl_matrix_int *norm_t; // (1|C) × F matrix that stores normalisation information [old]
+  gsl_matrix *Data; // this is a block of size C*T*F, contains all data, if data is read as one huge array; otherwise this is NULL and data is stored in the experiment structure.
   gsl_matrix *sdData; // standard deviation of the datapoints
   gsl_vector *tmpF; // temporay storage of size F
   gsl_matrix *tmpDF; // temporary storage of size D×F
-  prior_t prior;
-  gsl_vector *prior_tmp_a; // some memory allocation ..
-  gsl_vector *prior_tmp_b; // .. for calculation buffers
-  gsl_vector *prior_mu; // prior parameter: the medians of log normal distributions;
-  gsl_matrix *prior_inverse_cov; // prior parameter: the inverse covariance in log space (where the prior is a Gaussian distribution);
-  gsl_vector *sigma; // in case Sigma is diagonal
-  gsl_matrix *Sigma; // in case it isn't
-  gsl_matrix *Sigma_LU; // then also store the LU decomposition, or QR?
+  prior_t *prior;
   gsl_matrix *FI_l; // likelihood contribution to fisher information matrix
   gsl_matrix *FI_p; // prior contribution to fisher information matrix
   sensitivity_approximation *S_approx; 

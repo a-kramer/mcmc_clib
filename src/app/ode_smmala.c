@@ -350,7 +350,7 @@ int main (int argc, char* argv[]) {
     rFile=fopen(resume_filename,"r");
     if (rFile==NULL) {
       printf("Could not open resume file. Starting from: ");
-      for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior_mu,i);
+      for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior->mu,i);
     } else {
       resume_count=fread(init_x, sizeof(double), D, rFile);
       fclose(rFile);
@@ -361,7 +361,7 @@ int main (int argc, char* argv[]) {
     }
   } else if (start_from_prior==1){
     printf("# setting initial mcmc vector to prior mean.\n");
-    for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior_mu,i);
+    for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior->mu,i);
   } else {
     printf("# setting mcmc initial value to log(default parameters)\n");
     for (i=0;i<D;i++) init_x[i]=gsl_sf_log(p[i]);

@@ -385,9 +385,9 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
 	  r=G->gsl->matrix->size1;
 	  c=G->gsl->matrix->size2;
 	  omp->size->D=(r>c?r:c);
-	  omp->prior_mu=gsl_vector_alloc(omp->size->D);
+	  omp->prior->mu=gsl_vector_alloc(omp->size->D);
 	  //	  for (i=0;i<omp->size->D;i++) gsl_vector_set(omp->prior_mu,i,G->gsl->matrix->data[i]);
-	  memcpy(omp->prior_mu->data,G->gsl->matrix->data,(omp->size->D)*sizeof(double));
+	  memcpy(omp->prior->mu->data,G->gsl->matrix->data,(omp->size->D)*sizeof(double));
 	  nda_free(nda);
 	  //read_block(ps->D,1,cnf,DOUBLE_BLOCK,omp->prior_mu->data,comment);
 	  printf("# prior mean read.\n");
@@ -398,9 +398,10 @@ int read_problem_definition(FILE *cnf, ode_model_parameters *omp, const field_ex
 	  nda_to_gsl(nda,G);
 	  r=G->gsl->matrix->size1;
 	  c=G->gsl->matrix->size2;
-	  omp->prior_inverse_cov=gsl_matrix_alloc(r,c);
-	  omp->FI_p=omp->prior_inverse_cov; // the fisher information of the prior is just its inverse covariance matrix
-	  gsl_matrix_memcpy(omp->prior_inverse_cov, G->gsl->matrix);
+	  omp->prior->inv_cov=gsl_matrix_alloc(r,c);
+	  omp->FI_p=omp->prior->inv_cov; // the fisher information of the prior is just its inverse covariance matrix
+	  gsl_matrix_memcpy(omp->prior->inv_cov, G->gsl->matrix);
+	  omp->prior->type=(PRIOR_IS_GAUSSIAN | PRIOR_IS_MULTIVARIATE | PRIOR_PRECISION_GIVEN);
 	  nda_free(nda);
 	  //read_block(ps->D,ps->D,cnf,DOUBLE_BLOCK,omp->prior_inverse_cov->data,comment);
 	  printf("# prior inverse covariance matrix read.\n");

@@ -11,6 +11,7 @@
 #include <gsl/gsl_sort_vector.h>
 #include <gsl/gsl_statistics_double.h>
 #include <gsl/gsl_rng.h>
+#include <gsl/gsl_permutation.h>
 #include "hdf5.h"
 #include "hdf5_hl.h"
 #include "../ode/ode_model.h"
@@ -163,12 +164,28 @@ int read_data(const char *file, void *model_parameters){
   hsize_t D;
   status&=H5LTget_dataset_info(prior_group_id,"mu",&D,NULL,NULL);
   printf("[read_data] MCMC sampling will be performed on the first %lli parameters.\n",D);  
-  mp->prior_mu=gsl_vector_alloc(D);
-  status&=H5LTread_dataset_double(prior_group_id, "mu", mp->prior_mu->data);
-  
-  mp->Sigma=gsl_matrix_alloc(D,D);
-  status&=H5LTread_dataset_double(prior_group_id, "Sigma", mp->prior_mu->data);
-  
+  mp->prior->mu=gsl_vector_alloc(D);
+  status&=H5LTread_dataset_double(prior_group_id, "mu", mp->prior->mu->data);
+  int gsl_err=GSL_SUCCESS;
+  if (H5LTfind_attribute(prior_group_id,"Sigma")==1){
+    mp->prior->Sigma_LU=gsl_matrix_alloc(D,D);
+    status&=H5LTread_dataset_double(prior_group_id, "Sigma", mp->prior->Sigma_LU->data);
+    mp->prior->type=(PRIOR_IS_GAUSSIAN | PRIOR_IS_MULTIVARIATE | PRIOR_SIGMA_GIVEN);
+    mp->prior->p=gsl_permutation_alloc((size_t) D);
+    gsl_err&=gsl_linalg_LU_decomp(mp->prior->Sigma_LU, mp->prior->p, &(mp->prior->signum));
+  } else if (H5LTfind_attribute(prior_group_id,"sigma")==1){
+    mp->prior->sigma=gsl_vector_alloc(D);
+    status&=H5LTread_dataset_double(prior_group_id, "sigma", mp->prior->sigma->data);
+    mp->prior->type=(PRIOR_IS_GAUSSIAN);
+  } else if (H5LTfind_attribute(prior_group_id,"inverse_covariance")==1){
+    mp->prior->inv_cov=gsl_matrix_alloc(D,D);
+    status&=H5LTread_dataset_double(prior_group_id, "inverse_covariance", mp->prior->inv_cov->data);
+    mp->prior->type=(PRIOR_IS_GAUSSIAN | PRIOR_IS_MULTIVARIATE | PRIOR_PRECISION_GIVEN);
+  } else {
+    fprintf(stderr,"[read_data] not enough prior information given. (Specify either Sigma, sigma, or inverse_covariance)\n");
+    exit(-1);
+  }
+  assert(gsl_err==GSL_SUCCESS);
   H5Gclose(prior_group_id);
   H5Fclose(file_id);
   // determine sizes:
@@ -176,6 +193,8 @@ int read_data(const char *file, void *model_parameters){
   printf("[read_data] Simulations require %i known input parameters.\n",mp->size->U);
   mp->size->D=(int) D;
   mp->normalisation_type=DATA_NORMALISED_INDIVIDUALLY;
+  
+  ode_model_parameters_alloc(mp);
   ode_model_parameters_link(mp);
   // normalise data with error propagation: todo;
   printf("[read_data] data import done.\n");

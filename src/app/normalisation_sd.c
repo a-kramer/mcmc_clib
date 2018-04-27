@@ -179,3 +179,18 @@ int ratio_with_sd(gsl_matrix_sd *A, gsl_matrix_sd *B){
   gsl_matrix_free(R);
   return EXIT_SUCCESS;
 }
+
+int get_normalising_vector_with_sd(experiment *E, experiment *ref_E, gsl_vector *ref_data){
+
+}
+
+int normalise_with_sd(void *mp){
+  ode_model_parameters *omp = mp;
+  int C = omp->size->C;
+  int c,j,k;
+  int T,F,D;
+  for (c=0;c<C;c++){
+    T=omp->E[c]->t->size;    
+  }
+  return EXIT_SUCCESS;
+}

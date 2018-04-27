@@ -540,9 +540,11 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
     return i_flag;
   }else{
     //printf("pre normalisation\n");
-    //printf_omp(mp);
-    
+    //printf_omp(mp);    
     switch (mp->normalisation_type){
+    case DATA_NORMALISED_INDIVIDUALLY:
+      normalise(mp);
+      break;      
     case DATA_NORMALISED_BY_TIMEPOINT:
       normalise_by_timepoint(mp);
       break;
@@ -613,50 +615,77 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
   return i_flag & status;
 }
 
-
+int LogPrior(const prior_t *prior, const gsl_vector *x, double *prior_value, gsl_vector *dprior, gsl_matrix *fi){
+  int D=prior->mu->size;
+  gsl_vector *prior_diff;
+  
+  prior_value=0;                     // the prior distribution related sum of squares
+  prior_diff=prior->tmp[0];
+  // 0. prior_diff = (x-mu)
+  gsl_vector_memcpy(prior_diff,x);
+  gsl_vector_sub(prior_diff,prior->mu);
+ 
+  int gsl_status=GSL_SUCCESS;
+  // get the ode model's prior type
+  int opt=prior->type;
+  if (PTYPE(opt,PRIOR_IS_GAUSSIAN)){
+    if (PTYPE(opt,PRIOR_IS_MULTIVARIATE)){
+      // 1. dprior=-Sigma\(x-mu)
+      if (PTYPE(opt,PRIOR_SIGMA_GIVEN)){
+	// solve linear equation (Ax=b <-> x=A\b):
+	gsl_status &= gsl_linalg_LU_solve(prior->Sigma_LU, prior->p, prior_diff,dprior);
+	gsl_vector_scale(dprior,-1.0);
+	// fisher information.... Sigma\eye(D);
+	gsl_status &= gsl_linalg_LU_invert(prior->Sigma_LU, prior->p,fi);
+      } else if (PTYPE(opt,PRIOR_PRECISION_GIVEN)) {
+	// do (matrix * vector) operation
+	gsl_status &= gsl_blas_dsymv(CblasUpper,-1.0,prior->inv_cov,prior_diff,0.0,dprior);	
+	gsl_status &= gsl_matrix_memcpy(fi,prior->inv_cov);
+      } else {
+	fprintf(stderr,"[prior] type %i is GAUSSIAN but neither SIGMA nor PRECISION is given.\n",opt);
+      }
+    } else {
+      // alternatively: product distribution ...
+      gsl_status &= gsl_vector_memcpy(dprior,prior_diff);     // (x-mu)
+      gsl_status &= gsl_vector_scale(dprior,-1.0);            // -(x-mu)
+      gsl_status &= gsl_vector_div(dprior,prior->sigma); // -(x-mu)/sigma
+      gsl_status &= gsl_vector_div(dprior,prior->sigma); // -(x-mu)/sigma²     
+    }
+    // 2. log_prior_value = -0.5 * (x-mu)*Sigma\(x-mu)
+    gsl_status &= gsl_blas_ddot(prior_diff,dprior,prior_value);
+    prior_value[0]*=0.5;
+    assert(gsl_status==GSL_SUCCESS);
+  } else{
+    fprintf(stderr,"[prior] type %i is not handled right now.\n",prior->type);
+  }
+  return gsl_status;
+}
 
 /* Calculates the unormalised log-posterior fx, the gradient dfx, the
  * Fisher information FI.
  */
 int LogPosterior(const double beta, const gsl_vector *x,  void* model_params, double *fx, gsl_vector **dfx, gsl_matrix **FI){
-	
   ode_model_parameters* omp =  (ode_model_parameters*) model_params;
-  double prior_value=0;            // the prior distribution related sum of squares
   int i;
-  gsl_vector *prior_diff;  
-  int logL_stat;
-  int D=omp->prior_mu->size;
+  int status=GSL_SUCCESS;
+  int D=omp->prior->mu->size;
 
-  prior_diff=omp->prior_tmp_a;
-
-  fx[0]=0;
   for (i=0;i<D;i++) gsl_vector_set(omp->p,i,gsl_sf_exp(gsl_vector_get(x,i)));
-
-  logL_stat=LogLikelihood(omp, &fx[1], dfx[1], FI[1]); // likelihood contribution
-  //printf("likelihood: %g\n",fx[0]);
-  
-  gsl_vector_memcpy(prior_diff,x);
-  gsl_vector_sub(prior_diff,omp->prior_mu);
-
-  gsl_blas_dsymv(CblasUpper,-0.5,omp->prior_inverse_cov,prior_diff,0.0,dfx[2]);
-  gsl_blas_ddot(prior_diff,dfx[2],&prior_value);
-  fx[2]=prior_value;
-  
-  gsl_matrix_memcpy(FI[2],omp->prior_inverse_cov);
-  int status=logL_stat;
+  status &= LogLikelihood(omp, &fx[i_likelihood], dfx[i_likelihood], FI[i_likelihood]); 
+  status &= LogPrior(omp->prior, x, &fx[i_prior], dfx[i_prior], FI[i_prior]);
   //printf("PosteriorFI: prior_value=%f\n",prior_value);
 
-  fx[0]=fx[1];
-  fx[0]*=beta;
-  fx[0]+=fx[2];
+  fx[i_posterior]=fx[i_likelihood];
+  fx[i_posterior]*=beta;
+  fx[i_posterior]+=fx[i_prior];
 
-  gsl_vector_memcpy(dfx[0],dfx[1]);
-  gsl_vector_scale(dfx[0],beta);
-  gsl_vector_add(dfx[0],dfx[2]);
+  gsl_vector_memcpy(dfx[i_posterior],dfx[i_likelihood]);
+  gsl_vector_scale(dfx[i_posterior],beta);
+  gsl_vector_add(dfx[i_posterior],dfx[i_prior]);
 
-  gsl_matrix_memcpy(FI[0],FI[1]);
-  gsl_matrix_scale(FI[0],beta*beta);
-  gsl_matrix_add(FI[0],FI[2]);
+  gsl_matrix_memcpy(FI[i_posterior],FI[i_likelihood]);
+  gsl_matrix_scale(FI[i_posterior],beta*beta);
+  gsl_matrix_add(FI[i_posterior],FI[i_prior]);
   //printf("[LogPosterior] done.\n"); fflush(stdout);
   return status;
 }
