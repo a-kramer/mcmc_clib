@@ -211,7 +211,7 @@ int main (int argc, char* argv[]) {
     else if (strcmp(argv[i],"-g")==0) gamma=strtod(argv[i+1],NULL);
     
     else if (strcmp(argv[i],"--seed")==0) seed=strtod(argv[i+1],NULL);
-    else if (strcmp(argv[i],"-h")==0 || strcmp(argv[i],"--help")==0) {print_help(); exit(0);}
+    else if (strcmp(argv[i],"-h")==0 || strcmp(argv[i],"--help")==0) {print_help(); MPI_Abort(MPI_COMM_WORLD,0);}
     
     //else printf("unknown option {%s}.\n",argv[i]);
   }
@@ -221,9 +221,9 @@ int main (int argc, char* argv[]) {
   /* load model */
   ode_model *odeModel = ode_model_loadFromFile(lib_name);  /* alloc */
   if (odeModel == NULL) {
-    fprintf(stderr, "# Library %s could not be loaded.\n",lib_name);
+    fprintf(stderr, "# [main] Library %s could not be loaded.\n",lib_name);
     exit(1);
-  } else printf( "# Library %s loaded.\n",lib_name);
+  } else printf( "# [main] Library %s loaded.\n",lib_name);
   
   char *dot;
   char *lib_base;
@@ -282,12 +282,12 @@ int main (int argc, char* argv[]) {
     }
     fclose(cnf);
   } else if (h5file!=NULL){
-    printf("# [main] reading hdf5 file, loading data.\n"); fflush(stdout);
+    printf("# [main] reading hdf5 file, loading data..."); fflush(stdout);
     read_data(h5file,&omp);
-    exit(0);
+    printf("done.\n"); fflush(stdout);
   } else {
     printf("# [main] no data provided (-c or -d option), exiting.\n");
-    exit(0);
+    MPI_Abort(MPI_COMM_WORLD,-1);
   }
   
   cnf_options.initial_stepsize=fabs(cnf_options.initial_stepsize);
@@ -299,15 +299,17 @@ int main (int argc, char* argv[]) {
   } else {
     gsl_vector_set_all(&(y_view.vector),1.0);
   }
-  
-  /* if (rank==0){ */
-  /*   gsl_printf("data",omp.Data,GSL_IS_DOUBLE | GSL_IS_MATRIX); */
-  /*   gsl_printf("sd data",omp.sdData,GSL_IS_DOUBLE | GSL_IS_MATRIX); */
-  /*   //gsl_vector_fprintf(stdout,omp.E[0]->input_u,"%g"); fflush(stdout); */
-  /*   //printf("Experiment %i\n",c); */
-  /*   for (c=0;c<omp.size->C;c++) gsl_printf("u",omp.E[c]->input_u,GSL_IS_DOUBLE | GSL_IS_VECTOR); */
-  /*   for (c=0;c<omp.size->C;c++) gsl_printf("t",omp.E[c]->t,GSL_IS_DOUBLE | GSL_IS_VECTOR); */
-  /* } */
+  int C=omp.size->C;
+  if (rank==0){
+    for (c=0;c<C;c++){
+      printf("[main] Experiment %i:\n",c);
+      gsl_printf("data",omp.E[c]->data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);
+      gsl_printf("standard deviation",omp.E[c]->sd_data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);    }
+    //gsl_vector_fprintf(stdout,omp.E[0]->input_u,"%g"); fflush(stdout);
+    //printf("Experiment %i\n",c);
+    for (c=0;c<C;c++) gsl_printf("u",omp.E[c]->input_u,GSL_IS_DOUBLE | GSL_IS_VECTOR);
+    for (c=0;c<C;c++) gsl_printf("t",omp.E[c]->t,GSL_IS_DOUBLE | GSL_IS_VECTOR);    
+  }
   // unspecified initial conditions
   if (omp.ref_E->init_y==NULL){
     omp.ref_E->init_y=gsl_vector_alloc(N);
@@ -320,16 +322,16 @@ int main (int argc, char* argv[]) {
       gsl_vector_memcpy(omp.E[i]->init_y,&(y_view.vector));
     }
   }  
-  printf("# init ivp: t0=%g\n",omp.t0); fflush(stdout);
+  printf("# [main] init ivp: t0=%g\n",omp.t0); fflush(stdout);
   ode_solver_init(solver, omp.t0, y, N, p, P);
-  printf("# solver initialised.\n"); fflush(stdout);
+  printf("# [main] solver initialised.\n"); fflush(stdout);
   ode_solver_setErrTol(solver, solver_param[1], &solver_param[0], 1);
   if (ode_model_has_sens(odeModel)) {
     ode_solver_init_sens(solver, omp.ref_E->yS0->data, P, N);
-    printf("# sensitivity analysis initiated.\n");
+    printf("# [main] sensitivity analysis initiated.\n");
   }
   
-  printf("# allocating memory for the SMMALA model.\n");
+  printf("# [main] allocating memory for the SMMALA model.\n");
   fflush(stdout);
   smmala_model* model = smmala_model_alloc(LogPosterior, NULL, &omp);
   
@@ -337,7 +339,7 @@ int main (int argc, char* argv[]) {
   D=omp.size->D;
   double init_x[D];
   /* allocate a new RMHMC MCMC kernel */
-  printf("# allocating memory for a new SMMALA MCMC kernel.\n");
+  printf("# [main] allocating memory for a new SMMALA MCMC kernel.\n");
   double beta=BETA(rank,R);
   mcmc_kernel* kernel = smmala_kernel_alloc(beta,D,
 					    cnf_options.initial_stepsize,
@@ -350,7 +352,7 @@ int main (int argc, char* argv[]) {
     rFile=fopen(resume_filename,"r");
     if (rFile==NULL) {
       printf("Could not open resume file. Starting from: ");
-      for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior_mu,i);
+      for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior->mu,i);
     } else {
       resume_count=fread(init_x, sizeof(double), D, rFile);
       fclose(rFile);
@@ -360,29 +362,28 @@ int main (int argc, char* argv[]) {
       }
     }
   } else if (start_from_prior==1){
-    printf("# setting initial mcmc vector to prior mean.\n");
-    for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior_mu,i);
+    printf("# [main] setting initial mcmc vector to prior mean.\n");
+    for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior->mu,i);
   } else {
-    printf("# setting mcmc initial value to log(default parameters)\n");
+    printf("# [main] setting mcmc initial value to log(default parameters)\n");
     for (i=0;i<D;i++) init_x[i]=gsl_sf_log(p[i]);
   }
-  
-  printf("# initializing MCMC.\n");
-  printf("# init_x:");
+  display_prior_information(omp.prior);
+  printf("# [main] initializing MCMC.\n");
+  printf("# [main] init_x:");
   for (i=0;i<D;i++) printf(" %g ",init_x[i]);
   printf("\n");
   mcmc_init(kernel, init_x);
-  /* if (rank==0){ */
-  /*   gsl_printf("Normalised Data",omp.Data,GSL_IS_DOUBLE | GSL_IS_MATRIX); */
-  /*   gsl_printf("standard deviation",omp.sdData,GSL_IS_DOUBLE | GSL_IS_MATRIX); //exit(0); */
-  /*   fflush(stdout); */
-  /* } */
-  printf("# test evaluation of Posterior function done:\n");
-  printf("# θ=θ₀; Posterior(θ|D)=%+g;\n# where θ₀:",kernel->fx[0]); 
+  printf("# [main] init complete .\n");
+  gsl_printf("mu",omp.prior->mu,GSL_IS_DOUBLE|GSL_IS_VECTOR);  
+  printf("# [main] test evaluation of Posterior function done:\n");
+  printf("# \tθ=θ₀; LogPosterior(θ|D)=%+g;\n# where θ₀:",kernel->fx[0]); 
   for (i=0;i<D;i++) printf(" %+g ",kernel->x[i]); printf("\n");
+  printf("# [main] LogLikelihood(D|θ)=%+g\tLogPrior(θ)=%+g.\n",kernel->fx[1],kernel->fx[2]);
   ode_solver_print_stats(solver, stdout);
   fflush(stdout);
   fflush(stderr);
+  //MPI_Abort(MPI_COMM_WORLD,0);
 
   void *buffer=(void *) smmala_comm_buffer_alloc(D);
   size_t acc_c = 0;

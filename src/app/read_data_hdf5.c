@@ -11,6 +11,7 @@
 #include <gsl/gsl_sort_vector.h>
 #include <gsl/gsl_statistics_double.h>
 #include <gsl/gsl_rng.h>
+#include <gsl/gsl_permutation.h>
 #include "hdf5.h"
 #include "hdf5_hl.h"
 #include "../ode/ode_model.h"
@@ -91,18 +92,31 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   int NormaliseByTimePoint;
   gsl_vector_int *NormaliseByOutput;
   herr_t attr_err;
-  attr_err=H5LTget_attribute_int(g_id, name,"NormaliseByExperiment",&NormaliseByExperiment);
-  if (attr_err<0) NormaliseByExperiment=-1;
-  attr_err=H5LTget_attribute_int(g_id, name,"NormaliseByTimePoint",&NormaliseByTimePoint);
-  if (attr_err<0) NormaliseByTimePoint=-1;
-  hsize_t nO;  
-  attr_err=H5LTget_attribute_info(g_id,name,"NormaliseByOutput",&nO,&type_class,&type_size);
-  if (attr_err<0) {
-    NormaliseByOutput=NULL;
-  } else {
-    NormaliseByOutput=gsl_vector_int_alloc(nO);
-    attr_err=H5LTget_attribute_int(g_id,name,"NormaliseByOutput",NormaliseByOutput->data);
+  hid_t d_id=H5Dopen2(g_id, name, H5P_DEFAULT);
+  if (H5LTfind_attribute(d_id,"NormaliseByExperiment")){
+    attr_err=H5LTget_attribute_int(g_id, name,"NormaliseByExperiment",&NormaliseByExperiment);
     assert(attr_err>=0);
+  } else {
+    NormaliseByExperiment=-1;
+  }  
+  if (H5LTfind_attribute(d_id,"NormaliseByTimePoint")){
+    attr_err=H5LTget_attribute_int(g_id, name,"NormaliseByTimePoint",&NormaliseByTimePoint);
+    assert(attr_err>=0);
+  } else{
+    NormaliseByTimePoint=-1;
+  }
+  hsize_t nO;
+  if (H5LTfind_attribute(d_id,"NormaliseByOutput")){
+    attr_err=H5LTget_attribute_info(g_id,name,"NormaliseByOutput",&nO,&type_class,&type_size);    
+    if (attr_err>=0) {
+      NormaliseByOutput=gsl_vector_int_alloc(nO);
+      attr_err=H5LTget_attribute_int(g_id,name,"NormaliseByOutput",NormaliseByOutput->data);
+      assert(attr_err>=0);
+    } else {
+      fprintf(stderr,"[load_data_block] read error for NormaliseByOutput vector.\n");
+    }
+  } else {
+    NormaliseByOutput=NULL;
   }
   
   if (index < mp->size->C){
@@ -110,9 +124,9 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
     mp->E[index]->input_u=input;
     mp->E[index]->t=time;
     mp->E[index]->input_u=input;
+    mp->E[index]->NormaliseByExperiment=NormaliseByExperiment;
     mp->E[index]->NormaliseByTimePoint=NormaliseByTimePoint;
-    mp->E[index]->NormaliseByTimePoint=NormaliseByTimePoint;
-    mp->E[index]->NormaliseByTimePoint=NormaliseByTimePoint;
+    mp->E[index]->NormaliseByOutput=NormaliseByOutput;
     mp->size->T=GSL_MAX(mp->size->T,mp->E[index]->t->size);
   }else{
     fprintf(stderr,"[load_experiment_block] error: experiment index is larger than number ofexperiments (simulation units).\n");
@@ -163,12 +177,29 @@ int read_data(const char *file, void *model_parameters){
   hsize_t D;
   status&=H5LTget_dataset_info(prior_group_id,"mu",&D,NULL,NULL);
   printf("[read_data] MCMC sampling will be performed on the first %lli parameters.\n",D);  
-  mp->prior_mu=gsl_vector_alloc(D);
-  status&=H5LTread_dataset_double(prior_group_id, "mu", mp->prior_mu->data);
-  
-  mp->Sigma=gsl_matrix_alloc(D,D);
-  status&=H5LTread_dataset_double(prior_group_id, "Sigma", mp->prior_mu->data);
-  
+  mp->prior->mu=gsl_vector_alloc(D);
+  status&=H5LTread_dataset_double(prior_group_id, "mu", mp->prior->mu->data);
+  int gsl_err=GSL_SUCCESS;
+  if (H5LTfind_dataset(prior_group_id,"Sigma")==1){
+    mp->prior->Sigma_LU=gsl_matrix_alloc(D,D);
+    status&=H5LTread_dataset_double(prior_group_id, "Sigma", mp->prior->Sigma_LU->data);
+    mp->prior->type=(PRIOR_IS_GAUSSIAN | PRIOR_IS_MULTIVARIATE | PRIOR_SIGMA_GIVEN);
+    mp->prior->p=gsl_permutation_alloc((size_t) D);
+    gsl_err&=gsl_linalg_LU_decomp(mp->prior->Sigma_LU, mp->prior->p, &(mp->prior->signum));
+    assert(gsl_err == GSL_SUCCESS);
+  } else if (H5LTfind_dataset(prior_group_id,"sigma")==1){
+    mp->prior->sigma=gsl_vector_alloc(D);
+    status&=H5LTread_dataset_double(prior_group_id, "sigma", mp->prior->sigma->data);
+    mp->prior->type=(PRIOR_IS_GAUSSIAN);
+  } else if (H5LTfind_dataset(prior_group_id,"inverse_covariance")==1){
+    mp->prior->inv_cov=gsl_matrix_alloc(D,D);
+    status&=H5LTread_dataset_double(prior_group_id, "inverse_covariance", mp->prior->inv_cov->data);
+    mp->prior->type=(PRIOR_IS_GAUSSIAN | PRIOR_IS_MULTIVARIATE | PRIOR_PRECISION_GIVEN);
+  } else {
+    fprintf(stderr,"[read_data] not enough prior information given. (Specify either Sigma, sigma, or inverse_covariance)\n");
+    exit(-1);
+  }
+  assert(gsl_err==GSL_SUCCESS);
   H5Gclose(prior_group_id);
   H5Fclose(file_id);
   // determine sizes:
@@ -176,6 +207,8 @@ int read_data(const char *file, void *model_parameters){
   printf("[read_data] Simulations require %i known input parameters.\n",mp->size->U);
   mp->size->D=(int) D;
   mp->normalisation_type=DATA_NORMALISED_INDIVIDUALLY;
+  
+  ode_model_parameters_alloc(mp);
   ode_model_parameters_link(mp);
   // normalise data with error propagation: todo;
   printf("[read_data] data import done.\n");
