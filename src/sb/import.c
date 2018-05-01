@@ -444,17 +444,17 @@ int  get_experiment_index_mapping(int nE, int *ExperimentType, sbtab_t **DataTab
 	g_array_append_val(MajorExpIdx,j);	
 	g_array_append_val(MinorExpIdx,i);
 	SU_index[j]=g_array_new(FALSE, TRUE, sizeof(int));
-	k++;
 	g_array_append_val(SU_index[j],k);
+	k++;
 	break;
       case DOSE_RESPONSE:
 	SU_index[j]=g_array_sized_new(FALSE, TRUE, sizeof(int), N);
 	for (i=0;i<N;i++){ // i is the minor "simulation unit" index
 			   // within a dose response experiment
-	  k++;	  
 	  g_array_append_val(MajorExpIdx,j);
 	  g_array_append_val(MinorExpIdx,i);
 	  g_array_append_val(SU_index[j],k);
+	  k++;
 	}
 	break;
       }	
@@ -701,15 +701,20 @@ herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vect
   status &= H5LTset_attribute_double(data_group_id,H5_data_name,"input",input->data, input->size);
   status &= H5Dclose(dataset_id);
   // Normalisation attributes
-  int *rI,*rT,*rO;
+  int *rK,*rT,*rO;
   if (N!=NULL){
-    if (N[NORM_EXPERIMENT]!=NULL && N[NORM_EXPERIMENT]->len>0){
-      rI=&g_array_index(N[NORM_EXPERIMENT],int,index);
-      if (rI[0]!=major){
-	status &= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByExperiment",rI,1);
-      }
+    if (N[NORM_EXPERIMENT]!=NULL && N[NORM_EXPERIMENT]->len>index){
+      rK=&g_array_index(N[NORM_EXPERIMENT],int,index);
+      //printf("[write_data] Simulation Unit %i is normalised by unit %i .. ",index,rK[0]);
+      if (rK[0]!=index){
+	//printf("creating");
+	status &= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByExperiment",rK,1);
+      } //else {
+	//printf("omitting");
+      //}
+      //printf(" attribute.\n");
     } 
-    if (N[NORM_TIME]!=NULL && N[NORM_TIME]->len>0){
+    if (N[NORM_TIME]!=NULL && N[NORM_TIME]->len>index){
       rT=&g_array_index(N[NORM_TIME],int,index);
       if (rT[0]>0){
 	status &= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByTimePoint",rT,1);

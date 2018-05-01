@@ -92,18 +92,29 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   int NormaliseByTimePoint;
   gsl_vector_int *NormaliseByOutput;
   herr_t attr_err;
-  attr_err=H5LTget_attribute_int(g_id, name,"NormaliseByExperiment",&NormaliseByExperiment);
-  if (attr_err<0) NormaliseByExperiment=-1;
-  attr_err=H5LTget_attribute_int(g_id, name,"NormaliseByTimePoint",&NormaliseByTimePoint);
-  if (attr_err<0) NormaliseByTimePoint=-1;
-  hsize_t nO;  
-  attr_err=H5LTget_attribute_info(g_id,name,"NormaliseByOutput",&nO,&type_class,&type_size);
-  if (attr_err<0) {
-    NormaliseByOutput=NULL;
+  hid_t d_id=H5Dopen2(g_id, name, H5P_DEFAULT);
+  if (H5LTfind_attribute(d_id,"NormaliseByExperiment")){
+    attr_err=H5LTget_attribute_int(g_id, name,"NormaliseByExperiment",&NormaliseByExperiment);
   } else {
-    NormaliseByOutput=gsl_vector_int_alloc(nO);
-    attr_err=H5LTget_attribute_int(g_id,name,"NormaliseByOutput",NormaliseByOutput->data);
-    assert(attr_err>=0);
+    NormaliseByExperiment=-1;
+  }  
+  if (H5LTfind_attribute(d_id,"NormaliseByTimePoint")){
+    attr_err=H5LTget_attribute_int(g_id, name,"NormaliseByTimePoint",&NormaliseByTimePoint);
+  } else{
+    NormaliseByTimePoint=-1;
+  }
+  hsize_t nO;
+  if (H5LTfind_attribute(d_id,"NormaliseByOutput")){
+    attr_err=H5LTget_attribute_info(g_id,name,"NormaliseByOutput",&nO,&type_class,&type_size);
+    if (attr_err>=0) {
+      NormaliseByOutput=gsl_vector_int_alloc(nO);
+      attr_err=H5LTget_attribute_int(g_id,name,"NormaliseByOutput",NormaliseByOutput->data);
+      assert(attr_err>=0);
+    } else {
+      fprintf(stderr,"[load_data_block] read error for NormaliseByOutput vector.\n");
+    }
+  } else {
+    NormaliseByOutput=NULL;
   }
   
   if (index < mp->size->C){
@@ -167,17 +178,17 @@ int read_data(const char *file, void *model_parameters){
   mp->prior->mu=gsl_vector_alloc(D);
   status&=H5LTread_dataset_double(prior_group_id, "mu", mp->prior->mu->data);
   int gsl_err=GSL_SUCCESS;
-  if (H5LTfind_attribute(prior_group_id,"Sigma")==1){
+  if (H5LTfind_dataset(prior_group_id,"Sigma")==1){
     mp->prior->Sigma_LU=gsl_matrix_alloc(D,D);
     status&=H5LTread_dataset_double(prior_group_id, "Sigma", mp->prior->Sigma_LU->data);
     mp->prior->type=(PRIOR_IS_GAUSSIAN | PRIOR_IS_MULTIVARIATE | PRIOR_SIGMA_GIVEN);
     mp->prior->p=gsl_permutation_alloc((size_t) D);
     gsl_err&=gsl_linalg_LU_decomp(mp->prior->Sigma_LU, mp->prior->p, &(mp->prior->signum));
-  } else if (H5LTfind_attribute(prior_group_id,"sigma")==1){
+  } else if (H5LTfind_dataset(prior_group_id,"sigma")==1){
     mp->prior->sigma=gsl_vector_alloc(D);
     status&=H5LTread_dataset_double(prior_group_id, "sigma", mp->prior->sigma->data);
     mp->prior->type=(PRIOR_IS_GAUSSIAN);
-  } else if (H5LTfind_attribute(prior_group_id,"inverse_covariance")==1){
+  } else if (H5LTfind_dataset(prior_group_id,"inverse_covariance")==1){
     mp->prior->inv_cov=gsl_matrix_alloc(D,D);
     status&=H5LTread_dataset_double(prior_group_id, "inverse_covariance", mp->prior->inv_cov->data);
     mp->prior->type=(PRIOR_IS_GAUSSIAN | PRIOR_IS_MULTIVARIATE | PRIOR_PRECISION_GIVEN);

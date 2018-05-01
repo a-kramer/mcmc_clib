@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <assert.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_matrix_int.h>
 #include "normalisation_sd.h"
@@ -180,17 +181,92 @@ int ratio_with_sd(gsl_matrix_sd *A, gsl_matrix_sd *B){
   return EXIT_SUCCESS;
 }
 
-int get_normalising_vector_with_sd(experiment *E, experiment *ref_E, gsl_vector *ref_data){
+int get_normalising_vector_with_sd(experiment *E, experiment *ref_E, gsl_vector **ref_data, gsl_vector **ref_stdv){
+  //int i=E->NormaliseByExperiment;
+  int t;
+  int f,j,nj,k,nk;
+  double val, dval;
+  gsl_vector *v, *dv;
+  assert(ref_data!=NULL && ref_stdv!=NULL);
+  j=E->NormaliseByTimePoint;
+  
+  if(ref_E==NULL){
+    ref_E=E;
+    assert(j>=0);
+  }
+  int F=E->data[0]->size;
+  int T=E->t->size;
+  int rT=ref_E->t->size;
 
+  assert(j<T);
+  
+  // v and dv are used to handle the NormaliseByTimePoint property
+  for (t=0;t<T;t++){
+    // find the right reference data and stdv
+    if (j>=0){
+      v=ref_E->data[j];
+      dv=ref_E->sd_data[j];
+    } else {
+      v=ref_E->data[t%T];
+      dv=ref_E->sd_data[t%T];
+    }  
+    if (E->NormaliseByOutput==NULL){
+      // just link fy and fyS with the reference objects:
+      ref_data[t]=v;
+      ref_stdv[t]=dv;
+    }else{ // each output is normalised differently
+      ref_data[t]=E->normalise->data[t];
+      ref_stdv[t]=E->normalise->stdv[t];
+      // copy elements to fy and fyS
+      for (f=0;f<F;f++){
+	// output function:
+	k=gsl_vector_int_get(E->NormaliseByOutput,f);
+	val=gsl_vector_get(v,k);
+	dval=gsl_vector_get(dv,k);
+	gsl_vector_set(ref_data[t],f,val);
+	gsl_vector_set(ref_stdv[t],f,val);
+      }
+    }
+  }
+  return GSL_SUCCESS;
 }
 
-int normalise_with_sd(void *mp){
-  ode_model_parameters *omp = mp;
-  int C = omp->size->C;
-  int c,j,k;
-  int T,F,D;
+int normalise_with_sd(void *model_parameters){
+  ode_model_parameters *mp=model_parameters;
+  int c,j,k,l;
+  int C=mp->size->C;
+  int T=mp->size->T;
+  int D=mp->size->D;
+  int F=mp->size->F;
+  assert(T>0);
+  gsl_vector **data, **stdv;
+  gsl_vector *r_data[T], *r_stdv[T];
+  gsl_vector *v;
+  int i,nt;
+  experiment *ref_E=NULL;
+  v=mp->tmpF;
+
   for (c=0;c<C;c++){
-    T=omp->E[c]->t->size;    
+    nt=mp->E[c]->t->size;
+    assert(nt<=T);
+    if (NEEDS_NORMALISATION(mp->E[c])){
+      i=mp->E[c]->NormaliseByExperiment;
+      ref_E=(i>=0)?(mp->E[i]):NULL;
+      get_normalising_vector_with_sd(mp->E[c], ref_E, r_data, r_stdv);
+      data=mp->E[c]->data;
+      stdv=mp->E[c]->sd_data;      
+      for (j=0;j<nt;j++){
+	assert(gsl_vector_ispos(r_data[j]));
+	gsl_vector_div(data[j],r_data[j]);
+	//
+	gsl_vector_div(stdv[j],r_data[j]);
+	gsl_vector_memcpy(v,r_stdv[j]);
+	assert(gsl_vector_isnonneg(v) && gsl_vector_isnonneg(data[j]));
+	gsl_vector_div(v,r_data[j]);
+	gsl_vector_mul(v,data[j]);
+	gsl_vector_add(stdv[j],v);
+      }
+    }
   }
-  return EXIT_SUCCESS;
+  return GSL_SUCCESS;
 }

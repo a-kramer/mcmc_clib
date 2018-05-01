@@ -311,7 +311,7 @@ int normalise_by_state_var(ode_model_parameters *mp){
 }
 
 
-int get_normalising_vector(experiment *E, experiment *ref_E, gsl_vector **fy, gsl_matrix **fyS){
+int get_normalising_vector(experiment *E, experiment *ref_E, gsl_vector *nfy[], gsl_matrix *nfyS[]){
   //int i=E->NormaliseByExperiment;
   int t;
   int f,j,nj,k,nk;
@@ -319,11 +319,10 @@ int get_normalising_vector(experiment *E, experiment *ref_E, gsl_vector **fy, gs
   gsl_vector_view fyS_column, M_column;
   gsl_vector *v;
   gsl_matrix *M;
-  fy=NULL;
+  assert(nfy!=NULL && nfyS!=NULL);
   j=E->NormaliseByTimePoint;
   if(ref_E==NULL){
     ref_E=E;
-    assert(j>=0);
   }
   int F=E->fy[t]->size;
   int T=E->t->size;
@@ -341,19 +340,19 @@ int get_normalising_vector(experiment *E, experiment *ref_E, gsl_vector **fy, gs
     }  
     if (E->NormaliseByOutput==NULL){
       // just link fy and fyS with the reference objects:
-      fy[t]=v;
-      fyS[t]=M;
+      nfy[t]=v;
+      nfyS[t]=M;
     }else{ // each output is normalised differently
-      fy[t]=E->nfy;
-      fyS[t]=E->nfyS;
+      nfy[t]=E->normalise->fy[t];
+      nfyS[t]=E->normalise->fyS[t];
       // copy elements to fy and fyS
       for (f=0;f<F;f++){
 	// output function:
 	k=gsl_vector_int_get(E->NormaliseByOutput,f);
 	val=gsl_vector_get(v,k);
-	gsl_vector_set(fy[t],f,val);
+	gsl_vector_set(nfy[t],f,val);
 	// its sensitivity:
-        fyS_column=gsl_matrix_column(fyS[t],f);
+        fyS_column=gsl_matrix_column(nfyS[t],f);
 	M_column=gsl_matrix_column(M,f);
         gsl_vector_memcpy(&(fyS_column.vector),&(M_column.vector));
       }
@@ -389,6 +388,7 @@ int normalise(ode_model_parameters *mp){
   gsl_vector_view oS_k_row; // 
   gsl_vector *oS_k; // the normalised output sensitivity for one parameter k
   int i,nt;
+  int rt;
   experiment *ref_E=NULL;
   v=mp->tmpF;
   M=mp->tmpDF;
@@ -396,33 +396,40 @@ int normalise(ode_model_parameters *mp){
   for (c=0;c<C;c++){
     nt=mp->E[c]->t->size;
     assert(nt<=T);
-    i=mp->E[c]->NormaliseByExperiment;
-    ref_E=(i>0)?(mp->E[i]):NULL;
-    get_normalising_vector(mp->E[c], ref_E, rfy, rfyS);
-    for (j=0;j<T;j++){
-      fy=mp->E[c]->fy[j];
-      fyS=mp->E[c]->fyS[j];
-      oS=mp->E[c]->oS[j];
-      gsl_vector_div(fy,rfy[j]);
-      // views of the right size for convenience:
-      fyS_D_sub=gsl_matrix_submatrix(fyS,0,0,D,F);
-      rfyS_D_sub=gsl_matrix_submatrix(rfyS[j],0,0,D,F);
-      fySD=&(fyS_D_sub.matrix);
-      rfySD=&(rfyS_D_sub.matrix);
-      gsl_matrix_memcpy(oS,fySD);
-      gsl_matrix_memcpy(M,rfySD);
-      for (k=0;k<D;k++) {
-	M_row=gsl_matrix_row(M,k);
-	gsl_vector_mul(&(M_row.vector),fy);
-      }
-      gsl_matrix_sub(oS,M);
-      for (k=0;k<D;k++) {
-	oS_k_row=gsl_matrix_row(oS,k);
-	oS_k=&(oS_k_row.vector);
-	gsl_vector_div(oS_k,rfy[j]);
-	gsl_vector_scale(oS_k,gsl_vector_get(mp->p,k));
-      }
-    }	     
+    if (NEEDS_NORMALISATION(mp->E[c])){
+      i=mp->E[c]->NormaliseByExperiment;
+      ref_E=(i>0)?(mp->E[i]):NULL;
+      rt=mp->E[c]->NormaliseByTimePoint;
+      if (ref_E==NULL && rt<0){
+	fprintf(stderr,"[get_normalising_vector] reference experiment is NULL, but no Normalising TimePoint was specified.\n[get_normalising_vector] Experiment %i, TimePoint=%i.\n",c,rt);
+	
+      };
+      get_normalising_vector(mp->E[c], ref_E, rfy, rfyS);
+      for (j=0;j<nt;j++){
+	fy=mp->E[c]->fy[j];
+	fyS=mp->E[c]->fyS[j];
+	oS=mp->E[c]->oS[j];
+	gsl_vector_div(fy,rfy[j]);
+	// views of the right size for convenience:
+	fyS_D_sub=gsl_matrix_submatrix(fyS,0,0,D,F);
+	rfyS_D_sub=gsl_matrix_submatrix(rfyS[j],0,0,D,F);
+	fySD=&(fyS_D_sub.matrix);
+	rfySD=&(rfyS_D_sub.matrix);
+	gsl_matrix_memcpy(oS,fySD);
+	gsl_matrix_memcpy(M,rfySD);
+	for (k=0;k<D;k++) {
+	  M_row=gsl_matrix_row(M,k);
+	  gsl_vector_mul(&(M_row.vector),fy);
+	}
+	gsl_matrix_sub(oS,M);
+	for (k=0;k<D;k++) {
+	  oS_k_row=gsl_matrix_row(oS,k);
+	  oS_k=&(oS_k_row.vector);
+	  gsl_vector_div(oS_k,rfy[j]);
+	  gsl_vector_scale(oS_k,gsl_vector_get(mp->p,k));
+	}
+      }	     
+    }
   }
   return GSL_SUCCESS;
 }

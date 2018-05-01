@@ -211,7 +211,7 @@ int main (int argc, char* argv[]) {
     else if (strcmp(argv[i],"-g")==0) gamma=strtod(argv[i+1],NULL);
     
     else if (strcmp(argv[i],"--seed")==0) seed=strtod(argv[i+1],NULL);
-    else if (strcmp(argv[i],"-h")==0 || strcmp(argv[i],"--help")==0) {print_help(); exit(0);}
+    else if (strcmp(argv[i],"-h")==0 || strcmp(argv[i],"--help")==0) {print_help(); MPI_Abort(MPI_COMM_WORLD,0);}
     
     //else printf("unknown option {%s}.\n",argv[i]);
   }
@@ -284,10 +284,9 @@ int main (int argc, char* argv[]) {
   } else if (h5file!=NULL){
     printf("# [main] reading hdf5 file, loading data.\n"); fflush(stdout);
     read_data(h5file,&omp);
-    exit(0);
   } else {
     printf("# [main] no data provided (-c or -d option), exiting.\n");
-    exit(0);
+    MPI_Abort(MPI_COMM_WORLD,-1);
   }
   
   cnf_options.initial_stepsize=fabs(cnf_options.initial_stepsize);

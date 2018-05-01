@@ -13,6 +13,8 @@
 #define DATA_NORMALISED_BY_TIMEPOINT 2
 #define DATA_NORMALISED_BY_STATE_VAR 3
 #define DATA_NORMALISED_INDIVIDUALLY 4
+// for individual normalisation:
+#define NEEDS_NORMALISATION(E) (((E)->NormaliseByExperiment>=0) || ((E)->NormaliseByTimePoint)>=0 || ((E)->NormaliseByOutput)!=NULL)
 
 // prior types
 #define PRIOR_IS_UNKNOWN 0
@@ -37,7 +39,7 @@ typedef struct {
   int P; // number of total parameters of the ODE-Model (including dependent and known parameters)
   int N; // number of state varibales
   int F; // number of output functions
-  int T; // number of measurement time-points for NORMALISATION_BY_REFERENCE case
+  int T; // maximum size of time vectors over all experiments: T = max_c E[c]->t->size
   int U; // number of input parameters
   int C; // number of experimental conditions, excluding control (reference measurement)
 } problem_size;
@@ -52,6 +54,28 @@ typedef struct {
   gsl_vector *r;
 } sensitivity_approximation; 
 
+/* helpful views of the data matrices, which can be used to address
+ * rows as vectors. Once created, the views function in the background
+ * and are not explicitely used.
+ */
+typedef struct {
+  gsl_matrix_view data_block; // view of this experiments data block inside the Data array, if that has been used
+  gsl_matrix_view sd_data_block; // standard deviation of this data block
+  gsl_vector_view *data_row; // for convenience, we define views for each row
+  gsl_vector_view *sd_data_row; // same for the standard deviations.
+} view_t;
+
+
+/* This structure contains some pre-allocated space for normalisation
+ * purposes.
+ */
+typedef struct {
+  gsl_vector **fy; // normalising fy; simulation result
+  gsl_matrix **fyS; // normalising fyS; simulation result
+  gsl_vector **data; // normalising data vector  (from a lab)
+  gsl_vector **stdv; // and its standard deviation;
+} normalisation_t;
+
 /* Data can be stored in one of two places:
  * 1. in the model parameters structure (in the Data matrix).
  * 2. in the experiment structure, individually for each experiment.
@@ -65,18 +89,14 @@ typedef struct {
 typedef struct {
   double t0;
   gsl_vector *t;
-  gsl_matrix_view data_block_view; // view of this experiments data block inside the Data array, if that has been used
+  view_t *view;
+  normalisation_t *normalise;
   gsl_matrix *data_block;  // either a pointer to a submatrix or self-allocated storage
-  gsl_matrix_view sd_data_block_view; // standard deviation of this data block
-  gsl_matrix *sd_data_block;
-  gsl_vector_view *data_row; // for convenience, we define views for each row
+  gsl_matrix *sd_data_block;  // either a pointer to a submatrix or self-allocated storage
   gsl_vector **data;        // data at time[j] is accessed as experiment[i]->data[j]
-  gsl_vector_view *sd_data_row; // same for the standard deviations.
   gsl_vector **sd_data;
   gsl_vector **y; // y[t](i) vector of size T;
   gsl_vector **fy; // measurement model output functions
-  gsl_vector **nfy; // normalising fy; temporary storage
-  gsl_matrix **nfyS; // normalising fyS; temporary storage
   gsl_vector *init_y;
   gsl_vector *input_u;
   gsl_matrix *yS0;
@@ -89,13 +109,17 @@ typedef struct {
 } experiment;
 
 typedef struct {
-  gsl_vector *mu;
+  union{
+    gsl_vector *mu;
+    gsl_vector *alpha;
+  };
   gsl_vector **tmp; // temporary storage for prior calculations
   int n; // number of temporary vectors above
   union {
     gsl_matrix *Sigma_LU; // LU factors of the Sigma matrix
     gsl_matrix *inv_cov; // Same matrix already given in inverted form
     gsl_vector *sigma; // If Sigma is diagonal, this is the diagonal vector.
+    gsl_vector *beta;
   };
   gsl_permutation *p; // used whenever LU decomposition is used
   int signum;         // also belongs to LU decomposition
@@ -112,8 +136,8 @@ typedef struct {
   int normalisation_type;
   gsl_matrix_int *norm_f; // (1|C) × F matrix that stores normalisation information [old]
   gsl_matrix_int *norm_t; // (1|C) × F matrix that stores normalisation information [old]
-  gsl_matrix *Data; // this is a block of size C*T*F, contains all data, if data is read as one huge array; otherwise this is NULL and data is stored in the experiment structure.
-  gsl_matrix *sdData; // standard deviation of the datapoints
+  gsl_matrix *Data; // this is a block of size C*T*F, contains all data, if data is read as one huge array; otherwise this is NULL and data is stored in the experiment structure directly.
+  gsl_matrix *sdData; // standard deviation of the datapoints above, NULL if Data is NULL;
   gsl_vector *tmpF; // temporay storage of size F
   gsl_matrix *tmpDF; // temporary storage of size D×F
   prior_t *prior;
