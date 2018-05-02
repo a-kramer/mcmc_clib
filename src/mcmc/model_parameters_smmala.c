@@ -95,6 +95,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
    * time point t_j, like this: y[c*T+j]=gsl_vector(N)
    */
   omp->tmpF=gsl_vector_alloc(F);
+  omp->tmpDF=gsl_matrix_alloc(D,F);
 
   omp->S_approx->jacobian_y=gsl_matrix_alloc(N,N);
   omp->S_approx->jacobian_p=gsl_matrix_alloc(P,N);

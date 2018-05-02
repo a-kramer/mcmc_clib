@@ -95,17 +95,19 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   hid_t d_id=H5Dopen2(g_id, name, H5P_DEFAULT);
   if (H5LTfind_attribute(d_id,"NormaliseByExperiment")){
     attr_err=H5LTget_attribute_int(g_id, name,"NormaliseByExperiment",&NormaliseByExperiment);
+    assert(attr_err>=0);
   } else {
     NormaliseByExperiment=-1;
   }  
   if (H5LTfind_attribute(d_id,"NormaliseByTimePoint")){
     attr_err=H5LTget_attribute_int(g_id, name,"NormaliseByTimePoint",&NormaliseByTimePoint);
+    assert(attr_err>=0);
   } else{
     NormaliseByTimePoint=-1;
   }
   hsize_t nO;
   if (H5LTfind_attribute(d_id,"NormaliseByOutput")){
-    attr_err=H5LTget_attribute_info(g_id,name,"NormaliseByOutput",&nO,&type_class,&type_size);
+    attr_err=H5LTget_attribute_info(g_id,name,"NormaliseByOutput",&nO,&type_class,&type_size);    
     if (attr_err>=0) {
       NormaliseByOutput=gsl_vector_int_alloc(nO);
       attr_err=H5LTget_attribute_int(g_id,name,"NormaliseByOutput",NormaliseByOutput->data);
@@ -122,9 +124,9 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
     mp->E[index]->input_u=input;
     mp->E[index]->t=time;
     mp->E[index]->input_u=input;
+    mp->E[index]->NormaliseByExperiment=NormaliseByExperiment;
     mp->E[index]->NormaliseByTimePoint=NormaliseByTimePoint;
-    mp->E[index]->NormaliseByTimePoint=NormaliseByTimePoint;
-    mp->E[index]->NormaliseByTimePoint=NormaliseByTimePoint;
+    mp->E[index]->NormaliseByOutput=NormaliseByOutput;
     mp->size->T=GSL_MAX(mp->size->T,mp->E[index]->t->size);
   }else{
     fprintf(stderr,"[load_experiment_block] error: experiment index is larger than number ofexperiments (simulation units).\n");
@@ -184,6 +186,7 @@ int read_data(const char *file, void *model_parameters){
     mp->prior->type=(PRIOR_IS_GAUSSIAN | PRIOR_IS_MULTIVARIATE | PRIOR_SIGMA_GIVEN);
     mp->prior->p=gsl_permutation_alloc((size_t) D);
     gsl_err&=gsl_linalg_LU_decomp(mp->prior->Sigma_LU, mp->prior->p, &(mp->prior->signum));
+    assert(gsl_err == GSL_SUCCESS);
   } else if (H5LTfind_dataset(prior_group_id,"sigma")==1){
     mp->prior->sigma=gsl_vector_alloc(D);
     status&=H5LTread_dataset_double(prior_group_id, "sigma", mp->prior->sigma->data);

@@ -335,29 +335,36 @@ int get_normalising_vector(experiment *E, experiment *ref_E, gsl_vector *nfy[], 
       v=ref_E->fy[j];
       M=ref_E->fyS[j];
     } else {
-      v=ref_E->fy[t%T];
-      M=ref_E->fyS[t%T];
+      assert(T==rT);
+      v=ref_E->fy[t];
+      M=ref_E->fyS[t];
     }  
     if (E->NormaliseByOutput==NULL){
       // just link fy and fyS with the reference objects:
+      //printf("[get_normalising_vector] normalising vector will be a link to reference experiment at line %i.\n",(j>=0?j:t)); fflush(stdout);
+
       nfy[t]=v;
       nfyS[t]=M;
     }else{ // each output is normalised differently
+      assert(E->normalise->fy!=NULL && E->normalise->fy[t]!=NULL && E->normalise->fy[t]->data!=NULL);
+      assert(E->normalise->fyS!=NULL && E->normalise->fyS[t]!=NULL && E->normalise->fyS[t]->data!=NULL);
       nfy[t]=E->normalise->fy[t];
       nfyS[t]=E->normalise->fyS[t];
       // copy elements to fy and fyS
       for (f=0;f<F;f++){
 	// output function:
 	k=gsl_vector_int_get(E->NormaliseByOutput,f);
+	if (k<0 || k>=F) k=f;
 	val=gsl_vector_get(v,k);
 	gsl_vector_set(nfy[t],f,val);
 	// its sensitivity:
         fyS_column=gsl_matrix_column(nfyS[t],f);
-	M_column=gsl_matrix_column(M,f);
+	M_column=gsl_matrix_column(M,k);
         gsl_vector_memcpy(&(fyS_column.vector),&(M_column.vector));
       }
     }
   }
+  //printf("[get_normalising_vector] done.\n"); fflush(stdout);
   return GSL_SUCCESS;
 }
 
@@ -392,7 +399,9 @@ int normalise(ode_model_parameters *mp){
   experiment *ref_E=NULL;
   v=mp->tmpF;
   M=mp->tmpDF;
-
+  assert(v!=NULL && M!=NULL);
+  //printf("[normalise] normalising all Experiments according to the flags: NormaliseByExperiment, NormaliseByTimePoint and NormaliseByOutput.\n");
+  
   for (c=0;c<C;c++){
     nt=mp->E[c]->t->size;
     assert(nt<=T);
@@ -400,10 +409,16 @@ int normalise(ode_model_parameters *mp){
       i=mp->E[c]->NormaliseByExperiment;
       ref_E=(i>0)?(mp->E[i]):NULL;
       rt=mp->E[c]->NormaliseByTimePoint;
-      if (ref_E==NULL && rt<0){
-	fprintf(stderr,"[get_normalising_vector] reference experiment is NULL, but no Normalising TimePoint was specified.\n[get_normalising_vector] Experiment %i, TimePoint=%i.\n",c,rt);
+      //printf("[normalise] normalisation is needed: %i, %i and (",i,rt);
+      //if (mp->E[c]->NormaliseByOutput!=NULL) gsl_vector_fprintf(stdout,mp->E[c]->NormaliseByOutput," %g ");
+      //else printf("NULL");
+      //printf(").\n");
+      //fflush(stdout);
+      
+      /* if (ref_E==NULL && rt<0){ */
+      /* 	fprintf(stderr,"[get_normalising_vector] reference experiment is NULL, but no Normalising TimePoint was specified.\n[get_normalising_vector] Experiment %i, TimePoint=%i.\n",c,rt); */
 	
-      };
+      /* }; */
       get_normalising_vector(mp->E[c], ref_E, rfy, rfyS);
       for (j=0;j<nt;j++){
 	fy=mp->E[c]->fy[j];
@@ -429,7 +444,9 @@ int normalise(ode_model_parameters *mp){
 	  gsl_vector_scale(oS_k,gsl_vector_get(mp->p,k));
 	}
       }	     
-    }
+    } //else {
+      //printf("[normalise] no normalisation needed, data is absolute.\n");
+    //}
   }
   return GSL_SUCCESS;
 }
@@ -608,6 +625,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 	 */
 	for (i=0;i<D;i++) {
 	  oS_row=gsl_matrix_row(mp->E[c]->oS[j],i);
+	  assert(gsl_vector_ispos(mp->E[c]->sd_data[j]));
 	  gsl_vector_div(&(oS_row.vector),mp->E[c]->sd_data[j]);
 	}
 	gsl_blas_dgemm(CblasNoTrans,
@@ -619,19 +637,63 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
     } //end for different experimental conditions (i.e. inputs)
     //exit(0);
   }
+  //printf("[LogLikelihood] done.\n"); fflush(stdout);
   return i_flag & status;
 }
 
-int LogPrior(const prior_t *prior, const gsl_vector *x, double *prior_value, gsl_vector *dprior, gsl_matrix *fi){
+int display_prior_information(const void *Prior_str){
+  prior_t *prior=(prior_t*) Prior_str;
   int D=prior->mu->size;
   gsl_vector *prior_diff;
-  
-  prior_value=0;                     // the prior distribution related sum of squares
+  assert(prior!=NULL);
+  // get the ode model's prior type
+  int opt=prior->type;
+  printf("[prior info] prior structure of type %i:",opt);  
+  if (PTYPE(opt,PRIOR_IS_GAUSSIAN)){
+    printf("Gaussian ");
+    if (PTYPE(opt,PRIOR_IS_MULTIVARIATE)){
+      printf("multivariate ");
+      // 1. dprior=-Sigma\(x-mu)
+      if (PTYPE(opt,PRIOR_SIGMA_GIVEN)){
+	printf("with given Sigma, LU decomposed: \n");
+	// solve linear equation (Ax=b <-> x=A\b):
+	assert(prior->Sigma_LU!=NULL && prior->p!=NULL);
+	gsl_printf("Sigma LU",prior->Sigma_LU,GSL_IS_DOUBLE | GSL_IS_MATRIX);
+	gsl_permutation_fprintf(stdout, prior->p, " %i ");
+      } else if (PTYPE(opt,PRIOR_PRECISION_GIVEN)) {
+	// do (matrix * vector) operation
+	printf("with given inverted Sigma: \n");
+	assert(prior->inv_cov!=NULL && prior->inv_cov->size1==D);
+	gsl_printf("inv(Sigma)",prior->inv_cov,GSL_IS_DOUBLE | GSL_IS_MATRIX);
+      } else {
+	fprintf(stderr,"[LogPrior] type %i is GAUSSIAN but neither SIGMA nor PRECISION is given.\n",opt);
+      }
+    } else {
+      // alternatively: product distribution ...
+      printf("product distribution:\n");
+      gsl_printf("sigma",prior->sigma,GSL_IS_DOUBLE | GSL_IS_VECTOR);
+    }
+  } else{
+    printf("[prior info] prior is unknown.\n");
+    fprintf(stderr,"[prior] type %i is not handled right now.\n",prior->type);
+  }
+  gsl_printf("mu",prior->mu,GSL_IS_DOUBLE | GSL_IS_VECTOR);
+  fflush(stdout);
+  return GSL_SUCCESS;
+}
+
+int LogPrior(const prior_t *prior, const gsl_vector *x, double *prior_value, gsl_vector *dprior, gsl_matrix *fi){
+  assert(prior_value!=NULL && dprior!=NULL);
+  int D=prior->mu->size;
+  gsl_vector *prior_diff;
+  assert(prior!=NULL);
+  prior_value[0]=0;                     // the prior distribution related sum of squares
   prior_diff=prior->tmp[0];
+  assert(prior_diff!=NULL && prior->n>0);
   // 0. prior_diff = (x-mu)
   gsl_vector_memcpy(prior_diff,x);
   gsl_vector_sub(prior_diff,prior->mu);
- 
+  //printf("[LogPrior] calculating prior.\n");
   int gsl_status=GSL_SUCCESS;
   // get the ode model's prior type
   int opt=prior->type;
@@ -640,17 +702,19 @@ int LogPrior(const prior_t *prior, const gsl_vector *x, double *prior_value, gsl
       // 1. dprior=-Sigma\(x-mu)
       if (PTYPE(opt,PRIOR_SIGMA_GIVEN)){
 	// solve linear equation (Ax=b <-> x=A\b):
+	assert(prior->Sigma_LU!=NULL && prior->p!=NULL);
 	gsl_status &= gsl_linalg_LU_solve(prior->Sigma_LU, prior->p, prior_diff,dprior);
 	gsl_vector_scale(dprior,-1.0);
 	// fisher information.... Sigma\eye(D);
 	gsl_status &= gsl_linalg_LU_invert(prior->Sigma_LU, prior->p,fi);
       } else if (PTYPE(opt,PRIOR_PRECISION_GIVEN)) {
 	// do (matrix * vector) operation
-	gsl_status &= gsl_blas_dsymv(CblasUpper,-1.0,prior->inv_cov,prior_diff,0.0,dprior);	
+	assert(prior->inv_cov!=NULL && prior->inv_cov->size1==D);
+	gsl_status &= gsl_blas_dsymv(CblasUpper,-1.0,prior->inv_cov,prior_diff,0.0,dprior);
 	gsl_status &= gsl_matrix_memcpy(fi,prior->inv_cov);
-      } else {
-	fprintf(stderr,"[prior] type %i is GAUSSIAN but neither SIGMA nor PRECISION is given.\n",opt);
-      }
+      } //else {
+	//fprintf(stderr,"[prior] type %i is GAUSSIAN but neither SIGMA nor PRECISION is given.\n",opt);
+      //}
     } else {
       // alternatively: product distribution ...
       gsl_status &= gsl_vector_memcpy(dprior,prior_diff);     // (x-mu)
@@ -658,13 +722,15 @@ int LogPrior(const prior_t *prior, const gsl_vector *x, double *prior_value, gsl
       gsl_status &= gsl_vector_div(dprior,prior->sigma); // -(x-mu)/sigma
       gsl_status &= gsl_vector_div(dprior,prior->sigma); // -(x-mu)/sigma²     
     }
-    // 2. log_prior_value = -0.5 * (x-mu)*Sigma\(x-mu)
+    // 2. log_prior_value = 0.5 * [(-1)(x-mu)*Sigma\(x-mu)]
     gsl_status &= gsl_blas_ddot(prior_diff,dprior,prior_value);
     prior_value[0]*=0.5;
     assert(gsl_status==GSL_SUCCESS);
   } else{
     fprintf(stderr,"[prior] type %i is not handled right now.\n",prior->type);
   }
+  //printf("[LogPrior] (%g) done.\n",prior_value[0]);
+  //fflush(stdout);
   return gsl_status;
 }
 
