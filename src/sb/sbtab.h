@@ -30,3 +30,4 @@ sbtab_t* sbtab_alloc(gchar **keys);
 int sbtab_append_row(const sbtab_t *sbtab, const gchar *data, const char *fs);
 GPtrArray* sbtab_get_column(const sbtab_t *sbtab, char *key);
 void sbtab_free(void *tab);
+sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names);

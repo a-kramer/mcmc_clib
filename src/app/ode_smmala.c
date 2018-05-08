@@ -74,24 +74,33 @@ typedef struct {
 
 int print_help(){
   printf("Usage:\n");
+  printf("-a $ACCEPTANCE_RATE\n");
+  printf("\t\t\tTarget acceptance value (all markov chains will be tuned for this acceptance).\n\n");
   printf("-c ./data.cfg\n");
-  printf("\t\t\tdata.cfg contains the data points and the conditions of measurement.\n\n");
+  printf("\t\t\tdata.cfg contains the data points and the conditions of measurement. This and hdf5 data are mutually exclusive. See tha manual on how to write the .cfg file\n\n");
+  printf("-d, --hdf5 ./data.h5\n");
+  printf("\t\t\tdata.h5 contains the data points and the conditions of measurement in hdf5 format. This and .cfg files are mutually exclusive. A suitable h5 file is produced by the hdf5_import program.\n\n");
+  printf("-g $G\n");
+  printf("\t\t\tThis will define how the inverse MCMC temperatures β are chosen: β = exp(-G*MPI_Rank).\n\n");
+  printf("-i $STEP_SIZE\n");
+  printf("\t\t\tThe initial step size of each markov chain, this will usually be tuned to get the desired acceptance rate $A (-a $A).\n\n");
   printf("-l ./ode_model.so\n");
   printf("\t\t\tode_model.so is a shared library containing the CVODE functions of the model.\n\n");
-  printf("-s $N\n");
-  printf("\t\t\t$N sample size. default N=10.\n\n");
+  printf("-o ./output_file.h5\n");
+  printf("\t\t\tFilename for hdf5 output. This file will contain the log-parameter sample and log-posterior values. The samples will have attributes that reflect the markov chain setup.\n\n");
+  printf("-p, --prior-start\n");
+  printf("\t\t\tStart the markov chain at the center of the prior.\n");
   printf("-r, --resume\n");
   printf("\t\t\tResume from last sampled MCMC point. Only the last MCMC position is read from the file named «resume.double». Everything else about the problem can be changed.\n");
-  printf("-o ./output_file.h5\n");
-  printf("\t\t\tFilename for hdf5 output. This file will contain the log-parameter sample and log-posterior values\n\n");
+  printf("-s $N\n");
+  printf("\t\t\t$N sample size. default N=10.\n\n");
+  printf("-t,--init-at-t $T_INITIAL\n");
+  printf("\t\t\tSpecifies the initial time «t0» of the model integration [initial value problem for the ordinary differential equation in x; x(t0)=x0]\n\n");
   //printf("-b\n");
   //printf("\t\t\tOutput mode: binary.\n\n");
-  printf("-a $a\n");
-  printf("\t\t\tTarget acceptance value $a (all markov chains will be tuned for this acceptance).\n\n");
-  printf("--seed $seed\n");
-  printf("\t\tSet the gsl pseudo random number generator seed to $seed.\n\n");
-  
-  //  printf("test for 1/Inf=%f\n",1.0/INFINITY);
+  printf("--seed $SEED\n");
+  printf("\t\tSet the gsl pseudo random number generator seed to $SEED. (perhaps --seed $RANDOM)\n\n");
+  MPI_Finalize();
   return EXIT_SUCCESS;
 }
 
@@ -196,7 +205,7 @@ int main (int argc, char* argv[]) {
     } else if (strcmp(argv[i],"-d")==0 || strcmp(argv[i],"--hdf5")==0) {
       h5file=argv[i+1];
       cfilename=NULL;
-    } else if (strcmp(argv[i],"-t")==0 || strcmp(argv[i],"--init_at_t")==0) {
+    } else if (strcmp(argv[i],"-t")==0 || strcmp(argv[i],"--init-at-t")==0) {
       t0=strtod(argv[i+1],NULL);
     } else if (strcmp(argv[i],"-w")==0 || strcmp(argv[i],"--warm-up")==0) warm_up=strtol(argv[i+1],NULL,10);
     else if (strcmp(argv[i],"--resume")==0 || strcmp(argv[i],"-r")==0) sampling_action=SMPL_RESUME;
@@ -305,8 +314,6 @@ int main (int argc, char* argv[]) {
       printf("[main] Experiment %i:\n",c);
       gsl_printf("data",omp.E[c]->data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);
       gsl_printf("standard deviation",omp.E[c]->sd_data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);    }
-    //gsl_vector_fprintf(stdout,omp.E[0]->input_u,"%g"); fflush(stdout);
-    //printf("Experiment %i\n",c);
     for (c=0;c<C;c++) gsl_printf("u",omp.E[c]->input_u,GSL_IS_DOUBLE | GSL_IS_VECTOR);
     for (c=0;c<C;c++) gsl_printf("t",omp.E[c]->t,GSL_IS_DOUBLE | GSL_IS_VECTOR);    
   }
@@ -477,6 +484,7 @@ int main (int argc, char* argv[]) {
   gsl_vector_view current;
   gsl_vector_view x_state;
   swaps=0;
+  acc_c = 0;
   for (it = 0; it < Samples; it++) {
     /* draw a sample using RMHMC */
     mcmc_sample(kernel, &acc);

@@ -697,6 +697,10 @@ int LogPrior(const prior_t *prior, const gsl_vector *x, double *prior_value, gsl
   int gsl_status=GSL_SUCCESS;
   // get the ode model's prior type
   int opt=prior->type;
+  gsl_matrix_set_zero(fi);
+  gsl_vector_set_zero(dprior);
+  gsl_vector_view fi_diag;
+  
   if (PTYPE(opt,PRIOR_IS_GAUSSIAN)){
     if (PTYPE(opt,PRIOR_IS_MULTIVARIATE)){
       // 1. dprior=-Sigma\(x-mu)
@@ -720,7 +724,12 @@ int LogPrior(const prior_t *prior, const gsl_vector *x, double *prior_value, gsl
       gsl_status &= gsl_vector_memcpy(dprior,prior_diff);     // (x-mu)
       gsl_status &= gsl_vector_scale(dprior,-1.0);            // -(x-mu)
       gsl_status &= gsl_vector_div(dprior,prior->sigma); // -(x-mu)/sigma
-      gsl_status &= gsl_vector_div(dprior,prior->sigma); // -(x-mu)/sigma²     
+      gsl_status &= gsl_vector_div(dprior,prior->sigma); // -(x-mu)/sigma²
+      // fisher information
+      fi_diag=gsl_matrix_diagonal(fi);
+              gsl_matrix_set_identity(fi);
+      gsl_status &= gsl_vector_div(&(fi_diag.vector),prior->sigma);
+      gsl_status &= gsl_vector_div(&(fi_diag.vector),prior->sigma);
     }
     // 2. log_prior_value = 0.5 * [(-1)(x-mu)*Sigma\(x-mu)]
     gsl_status &= gsl_blas_ddot(prior_diff,dprior,prior_value);
