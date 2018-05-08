@@ -598,42 +598,43 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
     for (c=0; c<C; c++){
       t=mp->E[c]->t;
       T=t->size;
-      for (j=0; j<T; j++){
-	/* Calculate log-likelihood value
-	 */
-      
-	gsl_vector_sub(mp->E[c]->fy[j],mp->E[c]->data[j]);
-	gsl_vector_div(mp->E[c]->fy[j],mp->E[c]->sd_data[j]); // (fy-data)/sd_data
-	if (gsl_blas_ddot (mp->E[c]->fy[j],mp->E[c]->fy[j], &l_t_j)!=GSL_SUCCESS){
-	  printf("ddot was unsuccessful\n");
-	  exit(-1);
-	} // sum((fy-data)²/sd_data²)
-      
-	l[0]+=-0.5*l_t_j;
-	/* Calculate The Likelihood Gradient and Fisher Information:
-	 */
-	gsl_vector_div(mp->E[c]->fy[j],mp->E[c]->sd_data[j]); // (fy-data)/sd_data²
-	//gsl_dgemv(TransA,alpha,A,x,beta,y)
-	status=gsl_blas_dgemv(CblasNoTrans,-1.0,mp->E[c]->oS[j],mp->E[c]->fy[j],1.0,grad_l);
-	if (status!=GSL_SUCCESS){
-	  gsl_printf("oS",mp->E[c]->oS[j],1);
-	  gsl_printf("(fy-data)/sd_data²",mp->E[c]->fy[j],0);
-	  fprintf(stderr,"dgemv was unsuccessful: %i %s\n",status,gsl_strerror(status));
-	  //exit(-1);
-	}
-	/* Calculate the Fisher information
-	 */
-	for (i=0;i<D;i++) {
-	  oS_row=gsl_matrix_row(mp->E[c]->oS[j],i);
-	  assert(gsl_vector_ispos(mp->E[c]->sd_data[j]));
-	  gsl_vector_div(&(oS_row.vector),mp->E[c]->sd_data[j]);
-	}
-	gsl_blas_dgemm(CblasNoTrans,
-		       CblasTrans, 1.0,
-		       mp->E[c]->oS[j],
-		       mp->E[c]->oS[j], 1.0,
-		       fisher_information);	
-      } // end for loop for time points
+      if (mp->E[c]->lflag){
+	for (j=0; j<T; j++){
+	  /* Calculate log-likelihood value
+	   */      
+	  gsl_vector_sub(mp->E[c]->fy[j],mp->E[c]->data[j]);
+	  gsl_vector_div(mp->E[c]->fy[j],mp->E[c]->sd_data[j]); // (fy-data)/sd_data
+	  if (gsl_blas_ddot (mp->E[c]->fy[j],mp->E[c]->fy[j], &l_t_j)!=GSL_SUCCESS){
+	    printf("ddot was unsuccessful\n");
+	    exit(-1);
+	  } // sum((fy-data)²/sd_data²)
+	  
+	  l[0]+=-0.5*l_t_j;
+	  /* Calculate The Likelihood Gradient and Fisher Information:
+	   */
+	  gsl_vector_div(mp->E[c]->fy[j],mp->E[c]->sd_data[j]); // (fy-data)/sd_data²
+	  //gsl_dgemv(TransA,alpha,A,x,beta,y)
+	  status=gsl_blas_dgemv(CblasNoTrans,-1.0,mp->E[c]->oS[j],mp->E[c]->fy[j],1.0,grad_l);
+	  if (status!=GSL_SUCCESS){
+	    gsl_printf("oS",mp->E[c]->oS[j],1);
+	    gsl_printf("(fy-data)/sd_data²",mp->E[c]->fy[j],0);
+	    fprintf(stderr,"dgemv was unsuccessful: %i %s\n",status,gsl_strerror(status));
+	    //exit(-1);
+	  }
+	  /* Calculate the Fisher information
+	   */
+	  for (i=0;i<D;i++) {
+	    oS_row=gsl_matrix_row(mp->E[c]->oS[j],i);
+	    assert(gsl_vector_ispos(mp->E[c]->sd_data[j]));
+	    gsl_vector_div(&(oS_row.vector),mp->E[c]->sd_data[j]);
+	  }
+	  gsl_blas_dgemm(CblasNoTrans,
+			 CblasTrans, 1.0,
+			 mp->E[c]->oS[j],
+			 mp->E[c]->oS[j], 1.0,
+			 fisher_information);	
+	} // end for loop for time points
+      } // if lflag
     } //end for different experimental conditions (i.e. inputs)
     //exit(0);
   }
@@ -697,6 +698,10 @@ int LogPrior(const prior_t *prior, const gsl_vector *x, double *prior_value, gsl
   int gsl_status=GSL_SUCCESS;
   // get the ode model's prior type
   int opt=prior->type;
+  gsl_matrix_set_zero(fi);
+  gsl_vector_set_zero(dprior);
+  gsl_vector_view fi_diag;
+  
   if (PTYPE(opt,PRIOR_IS_GAUSSIAN)){
     if (PTYPE(opt,PRIOR_IS_MULTIVARIATE)){
       // 1. dprior=-Sigma\(x-mu)
@@ -716,11 +721,16 @@ int LogPrior(const prior_t *prior, const gsl_vector *x, double *prior_value, gsl
 	//fprintf(stderr,"[prior] type %i is GAUSSIAN but neither SIGMA nor PRECISION is given.\n",opt);
       //}
     } else {
-      // alternatively: product distribution ...
+      // alternatively: product distribution ... Gaussians
       gsl_status &= gsl_vector_memcpy(dprior,prior_diff);     // (x-mu)
       gsl_status &= gsl_vector_scale(dprior,-1.0);            // -(x-mu)
       gsl_status &= gsl_vector_div(dprior,prior->sigma); // -(x-mu)/sigma
-      gsl_status &= gsl_vector_div(dprior,prior->sigma); // -(x-mu)/sigma²     
+      gsl_status &= gsl_vector_div(dprior,prior->sigma); // -(x-mu)/sigma²
+      // fisher information
+      fi_diag=gsl_matrix_diagonal(fi);
+              gsl_matrix_set_identity(fi);
+      gsl_status &= gsl_vector_div(&(fi_diag.vector),prior->sigma);
+      gsl_status &= gsl_vector_div(&(fi_diag.vector),prior->sigma);
     }
     // 2. log_prior_value = 0.5 * [(-1)(x-mu)*Sigma\(x-mu)]
     gsl_status &= gsl_blas_ddot(prior_diff,dprior,prior_value);

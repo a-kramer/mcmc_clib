@@ -20,7 +20,11 @@ sbtab_t* sbtab_alloc(gchar **keys){
     sb=malloc(sizeof(sbtab_t));                    // allocate the sbtab_t element
     sb->key=keys;                                  // store the keys as column labels
     sb->column=malloc(sizeof(GPtrArray*)*n);
-    sb->row=g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    if (g_strcmp0(keys[0],"!ID")==0 || g_strcmp0(keys[0],"!Name")==0){
+      sb->row=g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    }else{
+      sb->row=NULL;
+    }
     sb->col=g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     for (i=0;i<n;i++){
       sb->column[i]=g_ptr_array_new_full(DefaultSize, g_free);
@@ -30,9 +34,31 @@ sbtab_t* sbtab_alloc(gchar **keys){
   return sb;
 }
 
+sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names){
+  sbtab_t *table=NULL;
+  gchar **Name;
+  printf("[sbtab_find] Looking up any of: %s.\n",Names);
+  Name=g_strsplit(Names," ",-1);
+  guint n=(int) g_strv_length(Name);
+  //printf("[sbtab_find] %i tokens.\n",n); fflush(stdout);
+  gint i=-1;
+  while (table==NULL && i+1<n){
+    table=g_hash_table_lookup(sbtab_hash,Name[++i]);
+  }
+  if (table!=NULL){
+    printf("[sbtab_find] found table «%s».\n",Name[i]);
+  } else {
+    printf("[sbtab_find] not found (%s).\n",Name[i]);
+  }
+  g_strfreev(Name);  
+  return table;
+}
+
+
 int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
   int i,N;
   gchar **s;
+  guint *r;
   int status=EXIT_SUCCESS;
   s=g_strsplit_set(data,fs,-1);
   if (data!=NULL && s!=NULL){
@@ -40,17 +66,14 @@ int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
     guint c=g_hash_table_size(sbtab->col);
     N=c<n?c:n;
     for (i=0;i<n;i++) g_strstrip(s[i]);
-    assert(sbtab!=NULL && sbtab->row!=NULL);
-    // get number of rows;
-    guint *r;
-    r=malloc(sizeof(guint));
-    r[0]=g_hash_table_size(sbtab->row);
-    g_hash_table_insert(sbtab->row,g_strdup(s[0]),r);
-    printf("+ %i «%s»\n",r[0],s[0]);
-    /* the new row can be addressed by this hash table (sbtab->row), using the
-     * first column (typically !ID), returning the row index of the new
-     * row, which is the previous table size (before the suuplied row was added).
-     */
+    assert(sbtab!=NULL);
+    if (sbtab->row!=NULL){
+      // get number of rows;
+      r=malloc(sizeof(guint));
+      r[0]=g_hash_table_size(sbtab->row);
+      g_hash_table_insert(sbtab->row,g_strdup(s[0]),r);
+      printf("+ %i «%s»\n",r[0],s[0]);
+    }
     for (i=0;i<N;i++){
       g_ptr_array_add(sbtab->column[i],g_strdup(s[i]));
     }      

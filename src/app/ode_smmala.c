@@ -74,24 +74,33 @@ typedef struct {
 
 int print_help(){
   printf("Usage:\n");
+  printf("-a $ACCEPTANCE_RATE\n");
+  printf("\t\t\tTarget acceptance value (all markov chains will be tuned for this acceptance).\n\n");
   printf("-c ./data.cfg\n");
-  printf("\t\t\tdata.cfg contains the data points and the conditions of measurement.\n\n");
+  printf("\t\t\tdata.cfg contains the data points and the conditions of measurement. This and hdf5 data are mutually exclusive. See tha manual on how to write the .cfg file\n\n");
+  printf("-d, --hdf5 ./data.h5\n");
+  printf("\t\t\tdata.h5 contains the data points and the conditions of measurement in hdf5 format. This and .cfg files are mutually exclusive. A suitable h5 file is produced by the hdf5_import program.\n\n");
+  printf("-g $G\n");
+  printf("\t\t\tThis will define how the inverse MCMC temperatures β are chosen: β = exp(-G*MPI_Rank).\n\n");
+  printf("-i $STEP_SIZE\n");
+  printf("\t\t\tThe initial step size of each markov chain, this will usually be tuned to get the desired acceptance rate $A (-a $A).\n\n");
   printf("-l ./ode_model.so\n");
   printf("\t\t\tode_model.so is a shared library containing the CVODE functions of the model.\n\n");
-  printf("-s $N\n");
-  printf("\t\t\t$N sample size. default N=10.\n\n");
+  printf("-o ./output_file.h5\n");
+  printf("\t\t\tFilename for hdf5 output. This file will contain the log-parameter sample and log-posterior values. The samples will have attributes that reflect the markov chain setup.\n\n");
+  printf("-p, --prior-start\n");
+  printf("\t\t\tStart the markov chain at the center of the prior.\n");
   printf("-r, --resume\n");
   printf("\t\t\tResume from last sampled MCMC point. Only the last MCMC position is read from the file named «resume.double». Everything else about the problem can be changed.\n");
-  printf("-o ./output_file.h5\n");
-  printf("\t\t\tFilename for hdf5 output. This file will contain the log-parameter sample and log-posterior values\n\n");
+  printf("-s $N\n");
+  printf("\t\t\t$N sample size. default N=10.\n\n");
+  printf("-t,--init-at-t $T_INITIAL\n");
+  printf("\t\t\tSpecifies the initial time «t0» of the model integration [initial value problem for the ordinary differential equation in x; x(t0)=x0]\n\n");
   //printf("-b\n");
   //printf("\t\t\tOutput mode: binary.\n\n");
-  printf("-a $a\n");
-  printf("\t\t\tTarget acceptance value $a (all markov chains will be tuned for this acceptance).\n\n");
-  printf("--seed $seed\n");
-  printf("\t\tSet the gsl pseudo random number generator seed to $seed.\n\n");
-  
-  //  printf("test for 1/Inf=%f\n",1.0/INFINITY);
+  printf("--seed $SEED\n");
+  printf("\t\tSet the gsl pseudo random number generator seed to $SEED. (perhaps --seed $RANDOM)\n\n");
+  MPI_Finalize();
   return EXIT_SUCCESS;
 }
 
@@ -146,7 +155,25 @@ void print_chunk_graph(gsl_matrix *X, gsl_vector *lP){
   printf("%+4.4g\n",max);  
 }
 
-
+char* flatten(char **a, size_t n, char *sep){
+  int i;
+  size_t la=0; // overall length
+  size_t nsep=(sep!=NULL?strlen(sep):0);
+  size_t l[n];
+  for (i=0;i<n;i++){
+    l[i]=strlen(a[i]);
+    la+=l[i];
+  }
+  char *s;
+  s=malloc(sizeof(char)*(la+nsep*n+1));
+  char *to=s;
+  for (i=0;i<n;i++){
+    to=mempcpy(to,a[i],l[i]);
+    if (nsep>0) to=mempcpy(to,sep,nsep);
+  }
+  to[0]='\0';
+  return s;
+}
 
 int main (int argc, char* argv[]) {
   int D = 0; // number of MCMC sampling variables, i.e. model parameters
@@ -196,7 +223,7 @@ int main (int argc, char* argv[]) {
     } else if (strcmp(argv[i],"-d")==0 || strcmp(argv[i],"--hdf5")==0) {
       h5file=argv[i+1];
       cfilename=NULL;
-    } else if (strcmp(argv[i],"-t")==0 || strcmp(argv[i],"--init_at_t")==0) {
+    } else if (strcmp(argv[i],"-t")==0 || strcmp(argv[i],"--init-at-t")==0) {
       t0=strtod(argv[i+1],NULL);
     } else if (strcmp(argv[i],"-w")==0 || strcmp(argv[i],"--warm-up")==0) warm_up=strtol(argv[i+1],NULL,10);
     else if (strcmp(argv[i],"--resume")==0 || strcmp(argv[i],"-r")==0) sampling_action=SMPL_RESUME;
@@ -230,12 +257,11 @@ int main (int argc, char* argv[]) {
   lib_base=basename(lib_name);
   dot=strchr(lib_base,'.');
   dot[0]='\0';
-  
-  sprintf(resume_filename,"%s_resume_%04i.double",lib_base,rank);
-  sprintf(rank_sample_file,"rank_%04i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options.output_file));
+  sprintf(resume_filename,"%s_resume_%02i.double",lib_base,rank);
+  sprintf(rank_sample_file,"mcmc_rank_%02i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options.output_file));
   cnf_options.output_file=rank_sample_file;
   
-  printf("#\tlib_name: %s\nrank_sammple_file: %s\n#\tresume_filename: %s\n",lib_name,rank_sample_file,resume_filename);
+  //printf("#\tlib_name: %s\nrank_sammple_file: %s\n#\tresume_filename: %s\n",lib_name,rank_sample_file,resume_filename);
   
   ode_solver* solver = ode_solver_alloc(odeModel); /* alloc */
   if (solver == NULL) {
@@ -250,6 +276,11 @@ int main (int argc, char* argv[]) {
   }
   /* init solver */
   realtype solver_param[3] = {ODE_SOLVER_ABS_ERR, ODE_SOLVER_REL_ERR, 0};
+
+  char **x_name, **p_name, **f_name;
+  x_name=ode_model_get_var_names(odeModel);
+  p_name=ode_model_get_param_names(odeModel);
+  f_name=ode_model_get_func_names(odeModel);
   
   /* define local variables for parameters and inital conditions */
   int N = ode_model_getN(odeModel);
@@ -300,28 +331,40 @@ int main (int argc, char* argv[]) {
     gsl_vector_set_all(&(y_view.vector),1.0);
   }
   int C=omp.size->C;
-  if (rank==0){
-    for (c=0;c<C;c++){
-      printf("[main] Experiment %i:\n",c);
-      gsl_printf("data",omp.E[c]->data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);
-      gsl_printf("standard deviation",omp.E[c]->sd_data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);    }
-    //gsl_vector_fprintf(stdout,omp.E[0]->input_u,"%g"); fflush(stdout);
-    //printf("Experiment %i\n",c);
-    for (c=0;c<C;c++) gsl_printf("u",omp.E[c]->input_u,GSL_IS_DOUBLE | GSL_IS_VECTOR);
-    for (c=0;c<C;c++) gsl_printf("t",omp.E[c]->t,GSL_IS_DOUBLE | GSL_IS_VECTOR);    
-  }
+  /* if (rank==0){ */
+  /*   for (c=0;c<C;c++){ */
+  /*     printf("[main] Experiment %i:\n",c); */
+  /*     gsl_printf("data",omp.E[c]->data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX); */
+  /*     gsl_printf("standard deviation",omp.E[c]->sd_data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);    } */
+  /*   for (c=0;c<C;c++) gsl_printf("u",omp.E[c]->input_u,GSL_IS_DOUBLE | GSL_IS_VECTOR); */
+  /*   for (c=0;c<C;c++) gsl_printf("t",omp.E[c]->t,GSL_IS_DOUBLE | GSL_IS_VECTOR);     */
+  /* } */
   // unspecified initial conditions
   if (omp.ref_E->init_y==NULL){
     omp.ref_E->init_y=gsl_vector_alloc(N);
     gsl_vector_memcpy(omp.ref_E->init_y,&(y_view.vector));
   }
-  
-  for (i=0;i<omp.size->C;i++){
+
+  int NNE=0; // number of normalising experiments
+  int LE=0;  
+  for (i=0;i<C;i++){
     if (omp.E[i]->init_y==NULL){
       omp.E[i]->init_y=gsl_vector_alloc(N);
       gsl_vector_memcpy(omp.E[i]->init_y,&(y_view.vector));
     }
-  }  
+    NNE+=(omp.E[i]->lflag==0);
+  }
+  
+  LE=C-NNE;
+  if (rank==0){
+    printf("# [main] There are %i experiments",C);
+    if (NNE>0){
+      printf(", %i of which ",NNE);
+      if (NNE==1) printf("is");
+      else printf("are");
+      printf(" used only for the normalisation of the %i experiments that explicitly contribute to the LogLikelihood(NormalisedData[1:%i]|θ).\n",LE,LE); 	
+    }  else printf(".\n");
+  }    
   printf("# [main] init ivp: t0=%g\n",omp.t0); fflush(stdout);
   ode_solver_init(solver, omp.t0, y, N, p, P);
   printf("# [main] solver initialised.\n"); fflush(stdout);
@@ -331,15 +374,18 @@ int main (int argc, char* argv[]) {
     printf("# [main] sensitivity analysis initiated.\n");
   }
   
-  printf("# [main] allocating memory for the SMMALA model.\n");
+  //printf("# [main] allocating memory for the SMMALA model.\n");
   fflush(stdout);
   smmala_model* model = smmala_model_alloc(LogPosterior, NULL, &omp);
-  
+  if (!model){
+    fprintf(stderr,"smmala_model could not be allocated.");
+    MPI_Abort(MPI_COMM_WORLD,-1);
+  }
   /* initial parameter values */
   D=omp.size->D;
   double init_x[D];
   /* allocate a new RMHMC MCMC kernel */
-  printf("# [main] allocating memory for a new SMMALA MCMC kernel.\n");
+  //printf("# [main] allocating memory for a new SMMALA MCMC kernel.\n");
   double beta=BETA(rank,R);
   mcmc_kernel* kernel = smmala_kernel_alloc(beta,D,
 					    cnf_options.initial_stepsize,
@@ -347,44 +393,48 @@ int main (int argc, char* argv[]) {
 					    seed,
 					    cnf_options.target_acceptance);
   /* initialise MCMC */
-  // if (rank==0) gsl_printf("prior mean",omp.prior_mu,GSL_IS_DOUBLE | GSL_IS_VECTOR);  
+  // if (rank==0) gsl_printf("prior mean",omp.prior_mu,GSL_IS_DOUBLE | GSL_IS_VECTOR);
   if (sampling_action==SMPL_RESUME){
     rFile=fopen(resume_filename,"r");
     if (rFile==NULL) {
-      printf("Could not open resume file. Starting from: ");
+      fprintf(stderr,"[rank %i] Could not open resume file. Starting from: ",rank);
       for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior->mu,i);
     } else {
       resume_count=fread(init_x, sizeof(double), D, rFile);
       fclose(rFile);
       if (resume_count!=D) {
-	fprintf(stderr,"Reading from resume file returned a wrong number of values.");
+	fprintf(stderr,"[rank %i] Reading from resume file returned a wrong number of values.",rank);
 	exit(-1);
       }
     }
-  } else if (start_from_prior==1){
-    printf("# [main] setting initial mcmc vector to prior mean.\n");
+  } else if (start_from_prior==1){     
+    if (rank==0) printf("# [main] setting initial mcmc vector to prior mean.\n");
     for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior->mu,i);
   } else {
-    printf("# [main] setting mcmc initial value to log(default parameters)\n");
+    if (rank==0) printf("# [main] setting mcmc initial value to log(default parameters)\n");
     for (i=0;i<D;i++) init_x[i]=gsl_sf_log(p[i]);
   }
-  display_prior_information(omp.prior);
-  printf("# [main] initializing MCMC.\n");
-  printf("# [main] init_x:");
-  for (i=0;i<D;i++) printf(" %g ",init_x[i]);
-  printf("\n");
-  mcmc_init(kernel, init_x);
-  printf("# [main] init complete .\n");
-  gsl_printf("mu",omp.prior->mu,GSL_IS_DOUBLE|GSL_IS_VECTOR);  
-  printf("# [main] test evaluation of Posterior function done:\n");
-  printf("# \tθ=θ₀; LogPosterior(θ|D)=%+g;\n# where θ₀:",kernel->fx[0]); 
-  for (i=0;i<D;i++) printf(" %+g ",kernel->x[i]); printf("\n");
-  printf("# [main] LogLikelihood(D|θ)=%+g\tLogPrior(θ)=%+g.\n",kernel->fx[1],kernel->fx[2]);
+  //display_prior_information(omp.prior);
+  if (rank==0){
+    printf("# [main] initializing MCMC.\n");
+    printf("# [main] init_x:");
+    for (i=0;i<D;i++) printf(" %g ",init_x[i]);
+    printf("\n");
+  }
+  mcmc_init(kernel, init_x);  
+  printf("# [main] rank %i init complete .\n",rank);
+  //gsl_printf("mu",omp.prior->mu,GSL_IS_DOUBLE|GSL_IS_VECTOR);
+  if (rank==0){
+    printf("# [main] test evaluation of Posterior function done:\n");
+    printf("# \tθ=θ₀; LogPosterior(θ|D)=%+g;\n# where θ₀:",kernel->fx[0]); 
+    for (i=0;i<D;i++) printf(" %+g ",kernel->x[i]); printf("\n");
+    printf("# [main] LogLikelihood(D|θ):");
+    printf("%+g\tLogPrior(θ)=%+g.\n",kernel->fx[1],kernel->fx[2]);    
+  }
   ode_solver_print_stats(solver, stdout);
   fflush(stdout);
   fflush(stderr);
-  //MPI_Abort(MPI_COMM_WORLD,0);
-
+  
   void *buffer=(void *) smmala_comm_buffer_alloc(D);
   size_t acc_c = 0;
   double acc_rate;
@@ -396,9 +446,23 @@ int main (int argc, char* argv[]) {
   hsize_t chunk_size[2];
   hid_t file_id = H5Fcreate(cnf_options.output_file, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
   assert(file_id>0);
+
+  char *x_names=flatten(x_name, (size_t) N, "; ");
+  char *p_names=flatten(p_name, (size_t) P, "; ");
+  char *f_names=flatten(f_name, (size_t) F, "; ");
+
+  herr_t NameWriteError=0;
+  NameWriteError&=H5LTmake_dataset_string(file_id,"StateVariableNames",x_names);
+  NameWriteError&=H5LTmake_dataset_string(file_id,"ParameterNames",p_names);
+  NameWriteError&=H5LTmake_dataset_string(file_id,"OutputFunctionNames",f_names);
+  if (NameWriteError==0) printf("# [main] all names have been written to file «%s».\n",cnf_options.output_file);
+  free(x_names);
+  free(p_names);
+  free(f_names);
+  
   hid_t para_property_id = H5Pcreate(H5P_DATASET_CREATE);
   hid_t post_property_id = H5Pcreate(H5P_DATASET_CREATE);
-
+  
   /* here we set a «chunk size», which will coincide with the hyperslabs we select to write output*/
   // parameter sample chunk size:
   chunk_size[0]=CHUNK;
@@ -457,17 +521,14 @@ int main (int argc, char* argv[]) {
     //mcmc_print_sample(kernel, stdout);
     if ( ((it + 1) % CHUNK) == 0 ) {
       acc_rate = ((double) acc_c) / ((double) CHUNK);
-      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %4li) acc. rate: %3.2g; %2i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
+      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %4li) acc. rate: %3.2f; % 2i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       mcmc_adapt(kernel, acc_rate);
       acc_c = 0;
       swaps=0;
     }
-  }
-  
+  }  
   fprintf(stdout, "\n# Burn-in complete, sampling from the posterior.\n");
-  
-  
   /* full Posterior loop */
   clock_t ct=clock();
   gsl_matrix *log_para_chunk;
@@ -477,8 +538,8 @@ int main (int argc, char* argv[]) {
   gsl_vector_view current;
   gsl_vector_view x_state;
   swaps=0;
+  acc_c = 0;
   for (it = 0; it < Samples; it++) {
-    /* draw a sample using RMHMC */
     mcmc_sample(kernel, &acc);
     acc_c += acc;
     master=(it%2==rank%2);
@@ -499,7 +560,7 @@ int main (int argc, char* argv[]) {
     /* print sample log and statistics every 100 samples */
     if ( ((it + 1) % CHUNK) == 0 ) {
       acc_rate = ((double) acc_c) / ((double) CHUNK);
-      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %5li) acc. rate: %3.2g; %3i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
+      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %5li) acc. rate: %3.2f; %3i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       acc_c = 0;
 
@@ -515,16 +576,33 @@ int main (int argc, char* argv[]) {
     }
   }
   // write remaining data to the output hdf5 file
-  if (Samples%CHUNK > 0){
-    block[0]=Samples%CHUNK;
+  int Rest=Samples % CHUNK;
+  printf("[main] last iteration done %i points remain to write.\n",Rest);
+  if (Rest > 0){
+    chunk_size[0]=Rest;
+    chunk_size[1]=D;
+    para_chunk_id=H5Screate_simple(2, chunk_size, NULL);    
+    
+    chunk_size[0]=Rest;
+    chunk_size[1]=1;
+    post_chunk_id=H5Screate_simple(2, chunk_size, NULL);
+    
+    printf("[main] writing the remaining %i sampled parametrisations to file.\n",Rest);
+    block[0]=Rest;
     block[1]=D;
+    printf("[main] offset: %lli×%lli; block: %lli×%lli; stride: %lli×%lli; count: %lli×%lli.\n",offset[0],offset[1],block[0],block[1],stride[0],stride[1],count[0],count[1]);
     status = H5Sselect_hyperslab(para_dataspace_id, H5S_SELECT_SET, offset, stride, count, block);
     H5Dwrite(parameter_set_id, H5T_NATIVE_DOUBLE, para_chunk_id, para_dataspace_id, H5P_DEFAULT, log_para_chunk->data);
     block[1]=1;
-    status = H5Sselect_hyperslab(post_dataspace_id, H5S_SELECT_SET, offset, stride, count, block);
+    printf("[main] writing their %i log-posterior values to file.\n",Rest);
+    printf("[main] offset: %lli×%lli; block: %lli×%lli; stride: %lli×%lli; count: %lli×%lli.\n",offset[0],offset[1],block[0],block[1],stride[0],stride[1],count[0],count[1]);
+    status &= H5Sselect_hyperslab(post_dataspace_id, H5S_SELECT_SET, offset, stride, count, block);
     H5Dwrite(posterior_set_id, H5T_NATIVE_DOUBLE, post_chunk_id, post_dataspace_id, H5P_DEFAULT, log_post_chunk->data);
+    assert(status>=0);
   }
+
   // annotate written sample with all necessary information
+  printf("[main] writing some annotation about the sampled points as hdf5 attributes.\n");
   status&=H5LTset_attribute_double(file_id, "LogParameters", "seed", &seed, 1);
   status&=H5LTset_attribute_int(file_id, "LogParameters", "MPI_RANK", &rank, 1);
   status&=H5LTset_attribute_ulong(file_id, "LogParameters", "SampleSize", &Samples, 1);
@@ -533,7 +611,6 @@ int main (int argc, char* argv[]) {
   
   status&=H5LTset_attribute_string(file_id, "LogParameters", "ModelLibrary", lib_base);
   status&=H5LTset_attribute_string(file_id, "LogParameters", "DataFrom", cfilename);
-  
   ct=clock()-ct;
   printf("# computation time spend sampling: %f s\n",((double) ct)/((double) CLOCKS_PER_SEC));
   

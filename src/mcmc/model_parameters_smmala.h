@@ -6,7 +6,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "../ode/ode_model.h"
-
+// prior types
+#include "ptype.h"
 // normalisation methods
 #define DATA_IS_ABSOLUTE 0
 #define DATA_NORMALISED_BY_REFERENCE 1
@@ -15,17 +16,6 @@
 #define DATA_NORMALISED_INDIVIDUALLY 4
 // for individual normalisation:
 #define NEEDS_NORMALISATION(E) (((E)->NormaliseByExperiment>=0) || ((E)->NormaliseByTimePoint)>=0 || ((E)->NormaliseByOutput)!=NULL)
-
-// prior types
-#define PRIOR_IS_UNKNOWN 0
-#define PRIOR_IS_GAUSSIAN 1
-#define PRIOR_IS_MULTIVARIATE 2
-#define PRIOR_IS_GENERALISED 4
-#define PRIOR_IS_KERNEL_DENSITY_ESTIMATE 8
-#define PRIOR_IS_DVINE_COPULA 16
-#define PRIOR_SIGMA_GIVEN 32
-#define PRIOR_PRECISION_GIVEN 64
-#define PTYPE(OPT,PROPERTY) (((OPT) & (PROPERTY)) > 0)
 
 #define get_number_of_state_variables(omp) (omp->problem_size->N)
 #define get_number_of_MCMC_variables(omp) (omp->problem_size->D)
@@ -91,6 +81,7 @@ typedef struct {
   gsl_vector *t;
   view_t *view;
   normalisation_t *normalise;
+  int lflag;
   gsl_matrix *data_block;  // either a pointer to a submatrix or self-allocated storage
   gsl_matrix *sd_data_block;  // either a pointer to a submatrix or self-allocated storage
   gsl_vector **data;        // data at time[j] is accessed as experiment[i]->data[j]
