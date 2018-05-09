@@ -81,6 +81,7 @@ typedef struct {
   gsl_vector *t;
   view_t *view;
   normalisation_t *normalise;
+  int lflag;
   gsl_matrix *data_block;  // either a pointer to a submatrix or self-allocated storage
   gsl_matrix *sd_data_block;  // either a pointer to a submatrix or self-allocated storage
   gsl_vector **data;        // data at time[j] is accessed as experiment[i]->data[j]

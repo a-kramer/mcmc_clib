@@ -58,12 +58,13 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   assert(status>=0);
   printf("[load_data_block] gsl_matrix(%li,%li) loaded.\n",data_block->size1,data_block->size2);
   fflush(stdout);
-  int index, major, minor;
+  int index, major, minor, lflag;
   printf("[load_data_block] checking experiment's index: ");
   status&=H5LTget_attribute_int(g_id,name,"index",&index); printf(" %i ",index); assert(status>=0);
   status&=H5LTget_attribute_int(g_id,name,"major",&major); printf("%i.",major); assert(status>=0);
   status&=H5LTget_attribute_int(g_id,name,"minor",&minor); printf("%i",minor); assert(status>=0);
   printf("\n");
+  status&=H5LTget_attribute_int(g_id,name,"LikelihoodFlag",&lflag); printf(" %i ",lflag);
   assert(status>=0);
   hsize_t T,U,D; // measurement time, lenght of input vector, number of unknown parameters
   status&=H5LTget_attribute_ndims(g_id,name,"time",&rank);
@@ -87,6 +88,8 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   input=gsl_vector_alloc((size_t) U);
   H5LTget_attribute_double(g_id,name,"input",input->data);
 
+
+  
   // normalisation properties
   int NormaliseByExperiment;
   int NormaliseByTimePoint;
@@ -120,6 +123,7 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   }
   
   if (index < mp->size->C){
+    mp->E[index]->lflag=lflag;
     mp->E[index]->data_block=data_block;
     mp->E[index]->input_u=input;
     mp->E[index]->t=time;
@@ -135,6 +139,40 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   free(size);
   return status>=0?0:-1;
 }
+
+int load_prior(hid_t g_id, void *op_data){
+  ode_model_parameters *mp=op_data;
+  hsize_t D;
+  herr_t status=0;
+  int gsl_err=GSL_SUCCESS;
+  status=H5LTget_dataset_info(g_id,"mu",&D,NULL,NULL);
+  printf("[read_data] MCMC sampling will be performed on the first %lli parameters.\n",D);
+  mp->size->D=(int) D;
+  mp->prior->mu=gsl_vector_alloc((size_t) D);
+  status&=H5LTread_dataset_double(g_id, "mu", mp->prior->mu->data);
+  
+  if (H5LTfind_dataset(g_id,"Sigma")){
+    mp->prior->Sigma_LU=gsl_matrix_alloc(D,D);
+    status&=H5LTread_dataset_double(g_id, "Sigma", mp->prior->Sigma_LU->data);
+    mp->prior->type=(PRIOR_IS_GAUSSIAN | PRIOR_IS_MULTIVARIATE | PRIOR_SIGMA_GIVEN);
+    mp->prior->p=gsl_permutation_alloc((size_t) D);
+    gsl_err&=gsl_linalg_LU_decomp(mp->prior->Sigma_LU, mp->prior->p, &(mp->prior->signum));
+  } else if (H5LTfind_dataset(g_id,"sigma")){
+    mp->prior->sigma=gsl_vector_alloc(D);
+    status&=H5LTread_dataset_double(g_id, "sigma", mp->prior->sigma->data);
+    mp->prior->type=(PRIOR_IS_GAUSSIAN);
+  } else if (H5LTfind_dataset(g_id,"Precision")){
+    mp->prior->inv_cov=gsl_matrix_alloc(D,D);
+    status&=H5LTread_dataset_double(g_id, "Precision", mp->prior->inv_cov->data);
+    mp->prior->type=(PRIOR_IS_GAUSSIAN | PRIOR_IS_MULTIVARIATE | PRIOR_PRECISION_GIVEN);
+  } else {
+    fprintf(stderr,"[read_data] not enough prior information given. (Specify either Sigma, sigma, or inverse_covariance)\n");
+    exit(-1);
+  }
+  //  assert(gsl_err==GSL_SUCCESS);
+  return gsl_err;
+}
+
 
 /* this function loads the experimental data from an hdf5 file the
  * second argument is called model_parameters because it stores
@@ -153,6 +191,7 @@ int read_data(const char *file, void *model_parameters){
   //printf("[read_data] HDF5 standard deviation group id=%li.\n",stdv_group_id); fflush(stdout);
   assert(file_id>0 && data_group_id>0 && stdv_group_id>0);
   hsize_t idx,nE;
+  int gsl_err;
   status&=H5Gget_num_objs(data_group_id, &nE); //number of experiments
   mp->size->C=(int) nE;
   mp->size->T=0;
@@ -174,38 +213,13 @@ int read_data(const char *file, void *model_parameters){
   H5Gclose(data_group_id);
   H5Gclose(stdv_group_id);
   hid_t prior_group_id=H5Gopen2(file_id,"/prior",H5P_DEFAULT);
-  hsize_t D;
-  status&=H5LTget_dataset_info(prior_group_id,"mu",&D,NULL,NULL);
-  printf("[read_data] MCMC sampling will be performed on the first %lli parameters.\n",D);  
-  mp->prior->mu=gsl_vector_alloc(D);
-  status&=H5LTread_dataset_double(prior_group_id, "mu", mp->prior->mu->data);
-  int gsl_err=GSL_SUCCESS;
-  if (H5LTfind_dataset(prior_group_id,"Sigma")==1){
-    mp->prior->Sigma_LU=gsl_matrix_alloc(D,D);
-    status&=H5LTread_dataset_double(prior_group_id, "Sigma", mp->prior->Sigma_LU->data);
-    mp->prior->type=(PRIOR_IS_GAUSSIAN | PRIOR_IS_MULTIVARIATE | PRIOR_SIGMA_GIVEN);
-    mp->prior->p=gsl_permutation_alloc((size_t) D);
-    gsl_err&=gsl_linalg_LU_decomp(mp->prior->Sigma_LU, mp->prior->p, &(mp->prior->signum));
-    assert(gsl_err == GSL_SUCCESS);
-  } else if (H5LTfind_dataset(prior_group_id,"sigma")==1){
-    mp->prior->sigma=gsl_vector_alloc(D);
-    status&=H5LTread_dataset_double(prior_group_id, "sigma", mp->prior->sigma->data);
-    mp->prior->type=(PRIOR_IS_GAUSSIAN);
-  } else if (H5LTfind_dataset(prior_group_id,"inverse_covariance")==1){
-    mp->prior->inv_cov=gsl_matrix_alloc(D,D);
-    status&=H5LTread_dataset_double(prior_group_id, "inverse_covariance", mp->prior->inv_cov->data);
-    mp->prior->type=(PRIOR_IS_GAUSSIAN | PRIOR_IS_MULTIVARIATE | PRIOR_PRECISION_GIVEN);
-  } else {
-    fprintf(stderr,"[read_data] not enough prior information given. (Specify either Sigma, sigma, or inverse_covariance)\n");
-    exit(-1);
-  }
+  gsl_err = load_prior(prior_group_id,model_parameters);
   assert(gsl_err==GSL_SUCCESS);
   H5Gclose(prior_group_id);
   H5Fclose(file_id);
   // determine sizes:
   mp->size->U=(int) (mp->E[0]->input_u->size);
   printf("[read_data] Simulations require %i known input parameters.\n",mp->size->U);
-  mp->size->D=(int) D;
   mp->normalisation_type=DATA_NORMALISED_INDIVIDUALLY;
   
   ode_model_parameters_alloc(mp);

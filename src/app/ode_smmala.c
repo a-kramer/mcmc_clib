@@ -239,9 +239,8 @@ int main (int argc, char* argv[]) {
   lib_base=basename(lib_name);
   dot=strchr(lib_base,'.');
   dot[0]='\0';
-  
-  sprintf(resume_filename,"%s_resume_%04i.double",lib_base,rank);
-  sprintf(rank_sample_file,"rank_%04i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options.output_file));
+  sprintf(resume_filename,"%s_resume_%02i.double",lib_base,rank);
+  sprintf(rank_sample_file,"mcmc_rank_%02i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options.output_file));
   cnf_options.output_file=rank_sample_file;
   
   printf("#\tlib_name: %s\nrank_sammple_file: %s\n#\tresume_filename: %s\n",lib_name,rank_sample_file,resume_filename);
@@ -309,36 +308,50 @@ int main (int argc, char* argv[]) {
     gsl_vector_set_all(&(y_view.vector),1.0);
   }
   int C=omp.size->C;
-  if (rank==0){
-    for (c=0;c<C;c++){
-      printf("[main] Experiment %i:\n",c);
-      gsl_printf("data",omp.E[c]->data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);
-      gsl_printf("standard deviation",omp.E[c]->sd_data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);    }
-    for (c=0;c<C;c++) gsl_printf("u",omp.E[c]->input_u,GSL_IS_DOUBLE | GSL_IS_VECTOR);
-    for (c=0;c<C;c++) gsl_printf("t",omp.E[c]->t,GSL_IS_DOUBLE | GSL_IS_VECTOR);    
-  }
+  /* if (rank==0){ */
+  /*   for (c=0;c<C;c++){ */
+  /*     printf("[main] Experiment %i:\n",c); */
+  /*     gsl_printf("data",omp.E[c]->data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX); */
+  /*     gsl_printf("standard deviation",omp.E[c]->sd_data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);    } */
+  /*   for (c=0;c<C;c++) gsl_printf("u",omp.E[c]->input_u,GSL_IS_DOUBLE | GSL_IS_VECTOR); */
+  /*   for (c=0;c<C;c++) gsl_printf("t",omp.E[c]->t,GSL_IS_DOUBLE | GSL_IS_VECTOR);     */
+  /* } */
   // unspecified initial conditions
   if (omp.ref_E->init_y==NULL){
     omp.ref_E->init_y=gsl_vector_alloc(N);
     gsl_vector_memcpy(omp.ref_E->init_y,&(y_view.vector));
   }
-  
-  for (i=0;i<omp.size->C;i++){
+
+  int NNE=0; // number of normalising experiments
+  int LE=0;  
+  for (i=0;i<C;i++){
     if (omp.E[i]->init_y==NULL){
       omp.E[i]->init_y=gsl_vector_alloc(N);
       gsl_vector_memcpy(omp.E[i]->init_y,&(y_view.vector));
     }
-  }  
-  printf("# [main] init ivp: t0=%g\n",omp.t0); fflush(stdout);
-  ode_solver_init(solver, omp.t0, y, N, p, P);
-  printf("# [main] solver initialised.\n"); fflush(stdout);
-  ode_solver_setErrTol(solver, solver_param[1], &solver_param[0], 1);
-  if (ode_model_has_sens(odeModel)) {
-    ode_solver_init_sens(solver, omp.ref_E->yS0->data, P, N);
-    printf("# [main] sensitivity analysis initiated.\n");
+    NNE+=(omp.E[i]->lflag==0);
   }
   
-  printf("# [main] allocating memory for the SMMALA model.\n");
+  LE=C-NNE;
+  if (rank==0){
+    printf("# [main] There are %i experiments",C);
+    if (NNE>0){
+      printf(", %i of which ",NNE);
+      if (NNE==1) printf("is");
+      else printf("are");
+      printf(" used only for the normalisation of the %i experiments that explicitly contribute to the LogLikelihood(NormalisedData[1:%i]|θ).\n",LE,LE); 	
+    }  else printf(".\n");
+    
+    printf("# [main] init ivp: t0=%g\n",omp.t0); fflush(stdout);
+    ode_solver_init(solver, omp.t0, y, N, p, P);
+    printf("# [main] solver initialised.\n"); fflush(stdout);
+    ode_solver_setErrTol(solver, solver_param[1], &solver_param[0], 1);
+    if (ode_model_has_sens(odeModel)) {
+      ode_solver_init_sens(solver, omp.ref_E->yS0->data, P, N);
+      printf("# [main] sensitivity analysis initiated.\n");
+    }
+  }
+  //printf("# [main] allocating memory for the SMMALA model.\n");
   fflush(stdout);
   smmala_model* model = smmala_model_alloc(LogPosterior, NULL, &omp);
   
@@ -346,7 +359,7 @@ int main (int argc, char* argv[]) {
   D=omp.size->D;
   double init_x[D];
   /* allocate a new RMHMC MCMC kernel */
-  printf("# [main] allocating memory for a new SMMALA MCMC kernel.\n");
+  //printf("# [main] allocating memory for a new SMMALA MCMC kernel.\n");
   double beta=BETA(rank,R);
   mcmc_kernel* kernel = smmala_kernel_alloc(beta,D,
 					    cnf_options.initial_stepsize,
@@ -354,44 +367,48 @@ int main (int argc, char* argv[]) {
 					    seed,
 					    cnf_options.target_acceptance);
   /* initialise MCMC */
-  // if (rank==0) gsl_printf("prior mean",omp.prior_mu,GSL_IS_DOUBLE | GSL_IS_VECTOR);  
+  // if (rank==0) gsl_printf("prior mean",omp.prior_mu,GSL_IS_DOUBLE | GSL_IS_VECTOR);
   if (sampling_action==SMPL_RESUME){
     rFile=fopen(resume_filename,"r");
     if (rFile==NULL) {
-      printf("Could not open resume file. Starting from: ");
+      fprintf(stderr,"[rank %i] Could not open resume file. Starting from: ",rank);
       for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior->mu,i);
     } else {
       resume_count=fread(init_x, sizeof(double), D, rFile);
       fclose(rFile);
       if (resume_count!=D) {
-	fprintf(stderr,"Reading from resume file returned a wrong number of values.");
+	fprintf(stderr,"[rank %i] Reading from resume file returned a wrong number of values.",rank);
 	exit(-1);
       }
     }
-  } else if (start_from_prior==1){
-    printf("# [main] setting initial mcmc vector to prior mean.\n");
+  } else if (start_from_prior==1){     
+    if (rank==0) printf("# [main] setting initial mcmc vector to prior mean.\n");
     for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior->mu,i);
   } else {
-    printf("# [main] setting mcmc initial value to log(default parameters)\n");
+    if (rank==0) printf("# [main] setting mcmc initial value to log(default parameters)\n");
     for (i=0;i<D;i++) init_x[i]=gsl_sf_log(p[i]);
   }
-  display_prior_information(omp.prior);
-  printf("# [main] initializing MCMC.\n");
-  printf("# [main] init_x:");
-  for (i=0;i<D;i++) printf(" %g ",init_x[i]);
-  printf("\n");
-  mcmc_init(kernel, init_x);
-  printf("# [main] init complete .\n");
-  gsl_printf("mu",omp.prior->mu,GSL_IS_DOUBLE|GSL_IS_VECTOR);  
-  printf("# [main] test evaluation of Posterior function done:\n");
-  printf("# \tθ=θ₀; LogPosterior(θ|D)=%+g;\n# where θ₀:",kernel->fx[0]); 
-  for (i=0;i<D;i++) printf(" %+g ",kernel->x[i]); printf("\n");
-  printf("# [main] LogLikelihood(D|θ)=%+g\tLogPrior(θ)=%+g.\n",kernel->fx[1],kernel->fx[2]);
+  //display_prior_information(omp.prior);
+  if (rank==0){
+    printf("# [main] initializing MCMC.\n");
+    printf("# [main] init_x:");
+    for (i=0;i<D;i++) printf(" %g ",init_x[i]);
+    printf("\n");
+  }
+  mcmc_init(kernel, init_x);  
+  printf("# [main] rank %i init complete .\n",rank);
+  //gsl_printf("mu",omp.prior->mu,GSL_IS_DOUBLE|GSL_IS_VECTOR);
+  if (rank==0){
+    printf("# [main] test evaluation of Posterior function done:\n");
+    printf("# \tθ=θ₀; LogPosterior(θ|D)=%+g;\n# where θ₀:",kernel->fx[0]); 
+    for (i=0;i<D;i++) printf(" %+g ",kernel->x[i]); printf("\n");
+    printf("# [main] LogLikelihood(D|θ):");
+    printf("%+g\tLogPrior(θ)=%+g.\n",kernel->fx[1],kernel->fx[2]);    
+  }
   ode_solver_print_stats(solver, stdout);
   fflush(stdout);
   fflush(stderr);
-  //MPI_Abort(MPI_COMM_WORLD,0);
-
+  
   void *buffer=(void *) smmala_comm_buffer_alloc(D);
   size_t acc_c = 0;
   double acc_rate;
@@ -464,7 +481,7 @@ int main (int argc, char* argv[]) {
     //mcmc_print_sample(kernel, stdout);
     if ( ((it + 1) % CHUNK) == 0 ) {
       acc_rate = ((double) acc_c) / ((double) CHUNK);
-      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %4li) acc. rate: %3.2g; %2i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
+      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %4li) acc. rate: %3.2f; % 2i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       mcmc_adapt(kernel, acc_rate);
       acc_c = 0;
@@ -507,7 +524,7 @@ int main (int argc, char* argv[]) {
     /* print sample log and statistics every 100 samples */
     if ( ((it + 1) % CHUNK) == 0 ) {
       acc_rate = ((double) acc_c) / ((double) CHUNK);
-      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %5li) acc. rate: %3.2g; %3i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
+      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %5li) acc. rate: %3.2f; %3i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       acc_c = 0;
 
@@ -523,16 +540,33 @@ int main (int argc, char* argv[]) {
     }
   }
   // write remaining data to the output hdf5 file
-  if (Samples%CHUNK > 0){
-    block[0]=Samples%CHUNK;
+  int Rest=Samples % CHUNK;
+  printf("[main] last iteration done %i points remain to write.\n",Rest);
+  if (Rest > 0){
+    chunk_size[0]=Rest;
+    chunk_size[1]=D;
+    para_chunk_id=H5Screate_simple(2, chunk_size, NULL);    
+    
+    chunk_size[0]=Rest;
+    chunk_size[1]=1;
+    post_chunk_id=H5Screate_simple(2, chunk_size, NULL);
+    
+    printf("[main] writing the remaining %i sampled parametrisations to file.\n",Rest);
+    block[0]=Rest;
     block[1]=D;
+    printf("[main] offset: %lli×%lli; block: %lli×%lli; stride: %lli×%lli; count: %lli×%lli.\n",offset[0],offset[1],block[0],block[1],stride[0],stride[1],count[0],count[1]);
     status = H5Sselect_hyperslab(para_dataspace_id, H5S_SELECT_SET, offset, stride, count, block);
     H5Dwrite(parameter_set_id, H5T_NATIVE_DOUBLE, para_chunk_id, para_dataspace_id, H5P_DEFAULT, log_para_chunk->data);
     block[1]=1;
-    status = H5Sselect_hyperslab(post_dataspace_id, H5S_SELECT_SET, offset, stride, count, block);
+    printf("[main] writing their %i log-posterior values to file.\n",Rest);
+    printf("[main] offset: %lli×%lli; block: %lli×%lli; stride: %lli×%lli; count: %lli×%lli.\n",offset[0],offset[1],block[0],block[1],stride[0],stride[1],count[0],count[1]);
+    status &= H5Sselect_hyperslab(post_dataspace_id, H5S_SELECT_SET, offset, stride, count, block);
     H5Dwrite(posterior_set_id, H5T_NATIVE_DOUBLE, post_chunk_id, post_dataspace_id, H5P_DEFAULT, log_post_chunk->data);
+    assert(status>=0);
   }
+
   // annotate written sample with all necessary information
+  printf("[main] writing some annotation about the sampled points as hdf5 attributes.\n");
   status&=H5LTset_attribute_double(file_id, "LogParameters", "seed", &seed, 1);
   status&=H5LTset_attribute_int(file_id, "LogParameters", "MPI_RANK", &rank, 1);
   status&=H5LTset_attribute_ulong(file_id, "LogParameters", "SampleSize", &Samples, 1);

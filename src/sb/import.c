@@ -27,16 +27,17 @@
 #include "../mcmc/model_parameters_smmala.h"
 #include "../mcmc/ptype.h"
 
-#define get_table_length(Table) (Table->column[0]->len)
+#define get_table_length(Table) ((Table!=NULL && Table->column!=NULL) ? Table->column[0]->len:0)
 
 #define DEFAULT_STR_LENGTH 128
+// Experiment Types
 #define UNKNOWN_TYPE 0
 #define DOSE_RESPONSE 1
 #define TIME_SERIES 2
-
+// in an array, these are the indices for data and standrad deviation
 #define DATA 0
 #define STDV 1
-
+// Normalisation is stored in a pointer array, using this order:
 #define NORM_STRIDE 3
 #define NORM_EXPERIMENT 0
 #define NORM_OUTPUT 1
@@ -47,7 +48,7 @@ sbtab_t* parse_sb_tab(char *);
 gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT);
 gsl_vector* get_time_vector(sbtab_t *DataTable);
 gsl_matrix* get_input_matrix(sbtab_t *DataTable, GPtrArray *input_ID, gsl_vector *default_input);
-herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, GArray **N);
+herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, GArray **N, int lflag);
 herr_t write_prior_to_hdf5(hid_t file_id, gsl_vector *mu, void *S, int type);
 int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_hash);
 gchar* dup_match(regmatch_t *match, char *source);
@@ -469,7 +470,8 @@ int  get_experiment_index_mapping(int nE, int *ExperimentType, sbtab_t **DataTab
 }
 
 int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_hash){
-  sbtab_t *E_table, *Input;  
+  sbtab_t *E_table, *Input;
+  GPtrArray *LikelihoodFlag;  
   gchar *experiment_id, *input_id, *experiment_name;
   gsl_vector *input;
   gsl_matrix **Y_dY; // to make one return pointer possible: Y_dY[0] is data, Y_dY[1] is standard deviation
@@ -478,7 +480,9 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   GPtrArray *ID, *E_type, *input_ID, *E_Name; 
   int status=EXIT_SUCCESS;
   int i,j; // loop counters
-
+  regex_t TrueRE, FalseRE;
+  regcomp(&TrueRE,"true|1",REG_EXTENDED|REG_ICASE|REG_NOSUB);
+  regcomp(&FalseRE,"false|0",REG_EXTENDED|REG_ICASE|REG_NOSUB);
   // get table pointers
   Input=find_input_table(sbtab_hash);
   L1_OUT=find_output_table(sbtab_hash);
@@ -496,7 +500,8 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   if (ID!=E_table->column[0]) printf("[process_data_tables] warning: !ID is not first column, contrary to SBtab specification.\n");
   E_Name=sbtab_get_column(E_table,"!Name");
   E_type=sbtab_get_column(E_table,"!Type");
-
+  LikelihoodFlag=sbtab_get_column(E_table,"!Likelihood");
+  
   gsl_vector *time, *default_time;
   default_time=get_default_time(E_table);
   int *ExperimentType;  
@@ -520,7 +525,8 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   gsl_vector_view input_row;
   gsl_vector_view time_view;
   int N,M;
-  
+  char *flag;
+  int lflag[nE];
   DataTable=malloc(sizeof(sbtab_t*)*nE);
   for (j=0;j<nE;j++) { // j is the major experiment index
     if (ID!=NULL) experiment_id=(gchar*) g_ptr_array_index(ID,j);
@@ -533,8 +539,20 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
     }
     printf("[process_data_tables] processing %s\n",experiment_id);
     DataTable[j]=get_data_table(sbtab_hash, experiment_id, experiment_name);
+    if (LikelihoodFlag){
+      flag=g_ptr_array_index(LikelihoodFlag,j);
+      lflag[j]=(regexec(&FalseRE,flag,0,NULL,0)!=0);
+      if (!lflag[j]){
+	printf("[process_data_tables] Experiment[%i] %s «%s» will be used for normalisation purposes only; it will not explicitly appear in the likelihood.\n",j,experiment_id,experiment_name);}
+    } else {
+      lflag[j]=1; // default case; !Likelihood field can deactivate evaluation
+    }
   }
-
+  regfree(&FalseRE);
+  regfree(&TrueRE);
+  printf("[process_data_tables] Likelihood contribution flag for all(%i) experiments:",nE);
+  for (j=0;j<nE;j++) printf(" %i ",lflag[j]);
+  printf(".\n");
   // These two arrays map the overall index k of "simulation units" to major and minor
   GArray *MajorExpIdx;
   GArray *MinorExpIdx;
@@ -564,7 +582,7 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
 			   Y_dY[DATA],
 			   Y_dY[STDV],
 			   time,
-			   E_default_input[j],j,0,Normalisation);
+			   E_default_input[j],j,0,Normalisation,lflag[j]);
 	break;
       case DOSE_RESPONSE:
 	Y_dY=get_data_matrix(DataTable[j],L1_OUT);
@@ -584,7 +602,7 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
 			     &(data_sub.matrix),
 			     &(sd_data_sub.matrix),
 			     &(time_view.vector),
-			     &(input_row.vector),j,i,Normalisation);	  
+			     &(input_row.vector),j,i,Normalisation,lflag[j]);	  
 	}
 	break;
       }	
@@ -601,7 +619,6 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
     
   status &= H5Gclose(data_group_id);
   status &= H5Gclose(sd_group_id);
-
   return status;
 }
 
@@ -752,7 +769,7 @@ herr_t write_prior_to_hdf5(hid_t file_id, gsl_vector *mu, void *S, int type){
   return status;
 }
 
-herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, GArray **N){
+herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, GArray **N, int lflag){
   herr_t status;
   hid_t data_group_id, sd_group_id, dataspace_id, dataset_id, sd_data_id;  
   hsize_t size[2];
@@ -777,6 +794,7 @@ herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vect
   dataset_id = H5Dcreate2(data_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   assert(dataset_id>0);
   status &= H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Y->data);
+  status &= H5LTset_attribute_int(data_group_id,H5_data_name,"LikelihoodFlag",&lflag, 1);
   status &= H5LTset_attribute_int(data_group_id,H5_data_name,"index",&index, 1);
   status &= H5LTset_attribute_int(data_group_id,H5_data_name,"major",&major, 1); // major experiment index, as presented in SBtab file
   status &= H5LTset_attribute_int(data_group_id,H5_data_name,"minor",&minor, 1); // minor experiment index, within a dose response experiment
