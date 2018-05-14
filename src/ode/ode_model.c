@@ -27,7 +27,7 @@ static char* get_vf_name(const char* filename){
   int n;
   char *dot;
   /* stop once a '_c' or '.' is found. Take that as the model name */
-  printf("[get_vf_name] lib_name: %s\n",lib_name);
+  //printf("[get_vf_name] lib_name: %s\n",lib_name);
   dot=strchr(lib_name,'.');
   n=strlen(lib_name);
   n-=strlen(dot);
@@ -35,13 +35,13 @@ static char* get_vf_name(const char* filename){
   char* ret = (char*) calloc( new_size , sizeof(char) );
   strncat(ret, lib_name, n);
   strcat(ret, _post);
-  printf("[get_vf_name] vf_name: %s\n",ret);
+  //printf("[get_vf_name] vf_name: %s\n",ret);
   return ret;
 }
 
 ode_model* ode_model_loadFromFile(const char *filename){
 
-  printf("loading library from: %s\n",filename);
+  //printf("loading library from: %s\n",filename);
   void* odeLibrary = dlopen(filename, RTLD_LAZY | RTLD_LOCAL);				/* resource acc */
   
   if (odeLibrary == NULL){
@@ -55,7 +55,7 @@ ode_model* ode_model_loadFromFile(const char *filename){
   
   /* get lib name */
   char* model_name = get_vf_name(filename);
-  printf("\tdlsym([],%s);\n",model_name);
+  //printf("\tdlsym([],%s);\n",model_name);
   ode_model* odeModel = (ode_model*)dlsym(odeLibrary, model_name);
   free(model_name);
   
@@ -145,28 +145,22 @@ void ode_model_free(ode_model* model){
 }
 
 
-ode_solver*	ode_solver_alloc(ode_model* model){
-  
-  ode_solver* solver = (ode_solver*) malloc( sizeof(ode_solver) );				/* alloc */
-  if (solver == 0){
-    /* TODO: write a proper error handler */
+ode_solver* ode_solver_alloc(ode_model* model){ 
+  ode_solver* solver = (ode_solver*) malloc(sizeof(ode_solver)); 
+  if (solver == NULL){
     fprintf(stderr,"malloc failed to allocate memory for ode_solver\n");
-    return 0;
+    return NULL;
   }
   
-  solver->cvode_mem = CVodeCreate(CV_BDF,CV_NEWTON);								/* alloc */
-  if( solver->cvode_mem == 0){
-    /* TODO: write a proper error handler */
+  solver->cvode_mem = CVodeCreate(CV_BDF,CV_NEWTON);
+  if( solver->cvode_mem == NULL){
     fprintf(stderr,"CVodeCreate failed to allocate memory in ode_solver for cvode_mem.\n");
-    
     free(solver);
-    return 0;
-  }
-  
+    return NULL;
+  }  
   int P = ode_model_getP(model);
-  solver->params = (double*) malloc( sizeof(double) * P );						/* alloc */
-  if( solver->params == 0 ){
-    /* TODO: write a proper error handler */
+  solver->params = (double*) malloc( sizeof(double) * P );
+  if( solver->params == NULL ){
     fprintf(stderr,"malloc failed to allocate memory in ode_solver for params.\n");
     CVodeFree(solver->cvode_mem);
     free(solver);
@@ -176,11 +170,11 @@ ode_solver*	ode_solver_alloc(ode_model* model){
   
   int N = ode_model_getN(model);
   solver->odeModel = model;
-  solver->y = N_VNewEmpty_Serial(N);												/* alloc */
+  solver->y = N_VNewEmpty_Serial(N);
   int F = ode_model_getF(model);
   solver->fy = N_VNewEmpty_Serial(F);
   NV_DATA_S(solver->y) = solver->odeModel->v;
-  solver->yS = 0;
+  solver->yS = NULL;
   /* allocate some storage for jacobian retrieval */
   solver->jac=NewDenseMat(N,N);
   solver->jacp=NewDenseMat(N,P);
@@ -212,8 +206,8 @@ void ode_solver_init(ode_solver* solver, const double t0,  double* y0, int lenY,
   
   if (p != 0){
     if (lenP != solver->odeModel->P) {
-      fprintf(stderr,"ode_solver_init: lenP must be equal %d, the number of parameters in the ode model.\n",solver->odeModel->P);
-      return ;
+      fprintf(stderr,"[ode_solver_init] lenP must be equal %d, the number of parameters in the ode model.\n",solver->odeModel->P);
+      return;
     }
     
     for(i = 0; i < solver->odeModel->P; i++)
@@ -223,8 +217,8 @@ void ode_solver_init(ode_solver* solver, const double t0,  double* y0, int lenY,
   /* Get initial conditions */
   if(y0 != 0){
     if( lenY != solver->odeModel->N ){
-      fprintf(stderr,"ode_solver_init: lenY must be equal %d, the number of variables in the ode model.\n",solver->odeModel->N);
-      return ;
+      fprintf(stderr,"[ode_solver_init] lenY must be equal %d, the number of variables in the ode model.\n",solver->odeModel->N);
+      return;
     }
     NV_DATA_S(solver->y) = y0;
   }
@@ -237,6 +231,7 @@ void ode_solver_init(ode_solver* solver, const double t0,  double* y0, int lenY,
   flag &= CVodeSetMaxNumSteps(solver->cvode_mem, ODE_SOLVER_MX_STEPS);
   if (flag!=CV_SUCCESS) {
     fprintf(stderr,"[CV] ode_solver_init failed, flag=%i\n",flag);
+    exit(flag);
   }
 }
 
@@ -246,7 +241,7 @@ void ode_solver_reinit(ode_solver* solver, const double t0,  double* y0, int len
   /* Get initial conditions */
   if(y0 != 0){
     if( lenY != solver->odeModel->N ){
-      fprintf(stderr,"ode_solver_init: lenY must be equal %d, the number of variables in the ode model.\n",solver->odeModel->N);
+      fprintf(stderr,"[ode_solver_init] lenY must be equal %d, the number of variables in the ode model.\n",solver->odeModel->N);
       return ;
     }
     NV_DATA_S(solver->y) = y0;
@@ -262,7 +257,7 @@ void ode_solver_reinit(ode_solver* solver, const double t0,  double* y0, int len
   /* Get parameters */
   if (p != 0){
     if (lenP != solver->odeModel->P) {
-      fprintf(stderr,"ode_solver_init: lenP must be equal %d, the number of parameters in the ode model.\n",solver->odeModel->P);
+      fprintf(stderr,"[ode_solver_init] lenP must be equal %d, the number of parameters in the ode model.\n",solver->odeModel->P);
       return ;
     }
     int P = solver->odeModel->P;
@@ -544,7 +539,7 @@ void ode_solver_print_stats(const ode_solver* solver, FILE* outF){
   fprintf(outF,"\n# Jacobian Statistics\n");
   fprintf(outF,"# JacEvals  = %5ld    RhsEvals  = %5ld\n", nje, nfeLS);
   if (flag!=CV_SUCCESS) {
-    fprintf(stderr,"[CV] ode_solver_init failed, flag=%i\n",flag);
+    fprintf(stderr,"[CV] print stats failed, CVode flag=%i\n",flag);
   }
 }
 

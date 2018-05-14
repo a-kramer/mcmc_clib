@@ -182,7 +182,8 @@ static smmala_params* smmala_params_alloc(const double beta, const int N, double
     return NULL;
   }
   /* There are three components to most values: an overall posterior value, a likelihood contribution to this value and a prior contribution
-   * posterior[0] = f(beta)*likelihood[1] + prior[2]
+   * posterior(x) = beta*likelihood(x) + prior(x)
+   * fx[0] = beta*fx[1] + fx[2]
    * nc=3
    */
   int i,nc=3;
@@ -233,7 +234,7 @@ static smmala_params* smmala_params_alloc(const double beta, const int N, double
   //fflush(stdout);
   //fflush(stderr);
   if (overall_error!=EXIT_SUCCESS) {
-	fprintf(stderr," smmala_params_alloc: malloc failed \n");
+	fprintf(stderr,"[smmala_params_alloc] malloc failed \n");
 	if (params->dfx) gsl_vector_free(params->x);	
 	if (params->dfx){
 	  for (i=0;i<nc;i++) if (params->dfx[i]!=NULL) gsl_vector_free(params->dfx[i]);
@@ -291,7 +292,7 @@ static int smmala_kernel_init(mcmc_kernel* kernel, const double *x){
 	
   smmala_params* state = (smmala_params*) kernel->kernel_params;
   /* copy x to the kernel x state */
-  for ( i=0; i < n; i++) kernel->x[i] = x[i];
+  for (i=0; i<n; i++) kernel->x[i] = x[i];
 
   smmala_model* model = kernel->model_function;
   gsl_vector_const_view x_init = gsl_vector_const_view_array(x,n);
@@ -440,7 +441,7 @@ static void smmala_kernel_print_stats(mcmc_kernel* kernel, FILE* outStream){
 }
 
 smmala_model* smmala_model_alloc(fptrPosterior_smmala Lx, fptrPrior_rnd Prx,  void* model_params){
-  smmala_model* model = (smmala_model*) malloc( sizeof (smmala_model) );
+  smmala_model* model = (smmala_model*) malloc(sizeof(smmala_model));
   if (model == NULL){
     fprintf(stderr,"malloc failed to allocate memory for smmala_model\n");
     exit(-1);

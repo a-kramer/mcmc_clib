@@ -261,7 +261,7 @@ int main (int argc, char* argv[]) {
   sprintf(rank_sample_file,"mcmc_rank_%02i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options.output_file));
   cnf_options.output_file=rank_sample_file;
   
-  printf("#\tlib_name: %s\nrank_sammple_file: %s\n#\tresume_filename: %s\n",lib_name,rank_sample_file,resume_filename);
+  //printf("#\tlib_name: %s\nrank_sammple_file: %s\n#\tresume_filename: %s\n",lib_name,rank_sample_file,resume_filename);
   
   ode_solver* solver = ode_solver_alloc(odeModel); /* alloc */
   if (solver == NULL) {
@@ -364,20 +364,23 @@ int main (int argc, char* argv[]) {
       else printf("are");
       printf(" used only for the normalisation of the %i experiments that explicitly contribute to the LogLikelihood(NormalisedData[1:%i]|θ).\n",LE,LE); 	
     }  else printf(".\n");
-    
-    printf("# [main] init ivp: t0=%g\n",omp.t0); fflush(stdout);
-    ode_solver_init(solver, omp.t0, y, N, p, P);
-    printf("# [main] solver initialised.\n"); fflush(stdout);
-    ode_solver_setErrTol(solver, solver_param[1], &solver_param[0], 1);
-    if (ode_model_has_sens(odeModel)) {
-      ode_solver_init_sens(solver, omp.ref_E->yS0->data, P, N);
-      printf("# [main] sensitivity analysis initiated.\n");
-    }
+  }    
+  printf("# [main] init ivp: t0=%g\n",omp.t0); fflush(stdout);
+  ode_solver_init(solver, omp.t0, y, N, p, P);
+  printf("# [main] solver initialised.\n"); fflush(stdout);
+  ode_solver_setErrTol(solver, solver_param[1], &solver_param[0], 1);
+  if (ode_model_has_sens(odeModel)) {
+    ode_solver_init_sens(solver, omp.ref_E->yS0->data, P, N);
+    printf("# [main] sensitivity analysis initiated.\n");
   }
+  
   //printf("# [main] allocating memory for the SMMALA model.\n");
   fflush(stdout);
   smmala_model* model = smmala_model_alloc(LogPosterior, NULL, &omp);
-  
+  if (!model){
+    fprintf(stderr,"smmala_model could not be allocated.");
+    MPI_Abort(MPI_COMM_WORLD,-1);
+  }
   /* initial parameter values */
   D=omp.size->D;
   double init_x[D];

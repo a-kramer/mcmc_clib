@@ -50,25 +50,25 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   status&=H5LTget_dataset_info(g_id,name,size,NULL,NULL);
   assert(status>=0); // I think that hdf5 functions return negative error codes
   gsl_matrix *data_block;
-  printf("[load_data_block] loading data of size %lli×%lli.\n",size[0],size[1]);
+  //printf("[load_data_block] loading data of size %lli×%lli.\n",size[0],size[1]);
   fflush(stdout);
   data_block=gsl_matrix_alloc((size_t) size[0],(size_t) size[1]);
   assert(data_block!=NULL && data_block->data !=NULL);  
   status&=H5LTread_dataset_double(g_id, name, data_block->data);
   assert(status>=0);
-  printf("[load_data_block] gsl_matrix(%li,%li) loaded.\n",data_block->size1,data_block->size2);
+  //printf("[load_data_block] gsl_matrix(%li,%li) loaded.\n",data_block->size1,data_block->size2);
   fflush(stdout);
   int index, major, minor, lflag;
-  printf("[load_data_block] checking experiment's index: ");
-  status&=H5LTget_attribute_int(g_id,name,"index",&index); printf(" %i ",index); assert(status>=0);
-  status&=H5LTget_attribute_int(g_id,name,"major",&major); printf("%i.",major); assert(status>=0);
-  status&=H5LTget_attribute_int(g_id,name,"minor",&minor); printf("%i",minor); assert(status>=0);
-  printf("\n");
-  status&=H5LTget_attribute_int(g_id,name,"LikelihoodFlag",&lflag); printf(" %i ",lflag);
+  //printf("[load_data_block] checking experiment's index: ");
+  status&=H5LTget_attribute_int(g_id,name,"index",&index); //printf(" %i ",index); assert(status>=0);
+  status&=H5LTget_attribute_int(g_id,name,"major",&major); //printf("%i.",major); assert(status>=0);
+  status&=H5LTget_attribute_int(g_id,name,"minor",&minor); //printf("%i",minor); assert(status>=0);
+  status&=H5LTget_attribute_int(g_id,name,"LikelihoodFlag",&lflag); //printf(" %i ",lflag);
+  //printf("\n");
   assert(status>=0);
   hsize_t T,U,D; // measurement time, lenght of input vector, number of unknown parameters
   status&=H5LTget_attribute_ndims(g_id,name,"time",&rank);
-  printf("[load_data_block] checking experiment's measurement times(%i).\n",rank);
+  //printf("[load_data_block] checking experiment's measurement times(%i).\n",rank);
   fflush(stdout);
   assert(status>=0);
   H5T_class_t type_class;
@@ -78,13 +78,13 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   if (rank==1){    
     status&=H5LTget_attribute_info(g_id,name,"time",&T,&type_class,&type_size);
     assert(status>=0);    
-    printf("[load_data_block] loading simulation unit %i; Experiment %i.%i with %lli measurements\n",index,major,minor,T);    
+    //printf("[load_data_block] loading simulation unit %i; Experiment %i.%i with %lli measurements\n",index,major,minor,T);    
     fflush(stdout);
     time=gsl_vector_alloc((size_t) T);
     H5LTget_attribute_double(g_id,name,"time",time->data);
   }
   H5LTget_attribute_info(g_id,name,"input",&U,&type_class,&type_size);
-  printf("[load_data_block] input size: %i.\n",(int) U);
+  //printf("[load_data_block] input size: %i.\n",(int) U);
   input=gsl_vector_alloc((size_t) U);
   H5LTget_attribute_double(g_id,name,"input",input->data);
 
@@ -146,7 +146,7 @@ int load_prior(hid_t g_id, void *op_data){
   herr_t status=0;
   int gsl_err=GSL_SUCCESS;
   status=H5LTget_dataset_info(g_id,"mu",&D,NULL,NULL);
-  printf("[read_data] MCMC sampling will be performed on the first %lli parameters.\n",D);
+  //printf("[read_data] MCMC sampling will be performed on the first %lli parameters.\n",D);
   mp->size->D=(int) D;
   mp->prior->mu=gsl_vector_alloc((size_t) D);
   status&=H5LTread_dataset_double(g_id, "mu", mp->prior->mu->data);
@@ -196,16 +196,16 @@ int read_data(const char *file, void *model_parameters){
   mp->size->C=(int) nE;
   mp->size->T=0;
   init_E(mp);
-  printf("[read_data] experiments initialised.\n"); fflush(stdout);
+  //printf("[read_data] experiments initialised.\n"); fflush(stdout);
   idx=0;
   status=H5Literate(data_group_id, H5_INDEX_NAME, H5_ITER_INC, &idx, load_data_block, mp);
   if (status<0) {
     fprintf(stderr,"[read_data] iteration over data group was not successful.\n");
     fflush(stderr);
-  }else{
-    printf("[read_data] Read %i data blocks (simulation units).\n",mp->size->C);
-    printf("[read_data] largest time series has %i measurements.\n",mp->size->T);
-  }
+  }//else{
+    //printf("[read_data] Read %i data blocks (simulation units).\n",mp->size->C);
+    //printf("[read_data] largest time series has %i measurements.\n",mp->size->T);
+  //}
   fflush(stdout);
   idx=0;
   status=H5Literate(stdv_group_id, H5_INDEX_NAME, H5_ITER_INC, &idx, load_stdv_block, mp);
@@ -219,12 +219,12 @@ int read_data(const char *file, void *model_parameters){
   H5Fclose(file_id);
   // determine sizes:
   mp->size->U=(int) (mp->E[0]->input_u->size);
-  printf("[read_data] Simulations require %i known input parameters.\n",mp->size->U);
+  //printf("[read_data] Simulations require %i known input parameters.\n",mp->size->U);
   mp->normalisation_type=DATA_NORMALISED_INDIVIDUALLY;
   
   ode_model_parameters_alloc(mp);
   ode_model_parameters_link(mp);
   // normalise data with error propagation: todo;
-  printf("[read_data] data import done.\n");
+  //printf("[read_data] data import done.\n");
   return (int) status;
 }

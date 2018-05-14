@@ -31,7 +31,7 @@ int init_E(ode_model_parameters *omp){
   omp->S_approx=malloc(sizeof(sensitivity_approximation));
   
   omp->prior=malloc(sizeof(prior_t));
-  printf("# %i+1 experiment structures allocated.\n",C);
+  //printf("# %i+1 experiment structures allocated.\n",C);
   return GSL_SUCCESS;
 }
 
@@ -89,7 +89,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
   int P=omp->size->P; // number of total parameters D+U (a consistency check
 	       // between ode_model and mcmc configuration file)
   
-  printf("[model_parameters_alloc] allocating model parameters with: N=%i,\tP=%i,\tT=%i.\n",N,P,T);
+  //printf("[model_parameters_alloc] allocating model parameters with: N=%i,\tP=%i,\tT=%i.\n",N,P,T);
   /* initialise gsl_vectors and matrices these will hold the
    * differential equation data for each experimental condition c and
    * time point t_j, like this: y[c*T+j]=gsl_vector(N)
@@ -105,7 +105,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
   omp->S_approx->eJt=gsl_matrix_alloc(N,N);
   omp->S_approx->Jt=gsl_matrix_alloc(N,N);
   
-  printf("[model_parameters_alloc] y, fy,yS, fyS, oS, yS0, nfy and nfyS.\n");
+  //printf("[model_parameters_alloc] y, fy,yS, fyS, oS, yS0, nfy and nfyS.\n");
   for (i=0;i<C;i++){
     T=omp->E[i]->t->size;
     omp->E[i]->y=(gsl_vector **) malloc(sizeof(gsl_vector*)*T);
@@ -160,7 +160,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
   for (i=0;i< omp->prior->n;i++){
     omp->prior->tmp[i]=gsl_vector_alloc(D);
   }
-  printf("[model_parameters_alloc] done.\n");
+  //printf("[model_parameters_alloc] done.\n");
   return EXIT_SUCCESS;
 }
 
