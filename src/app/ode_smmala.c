@@ -155,7 +155,25 @@ void print_chunk_graph(gsl_matrix *X, gsl_vector *lP){
   printf("%+4.4g\n",max);  
 }
 
-
+char* flatten(char **a, size_t n, char *sep){
+  int i;
+  size_t la=0; // overall length
+  size_t nsep=(sep!=NULL?strlen(sep):0);
+  size_t l[n];
+  for (i=0;i<n;i++){
+    l[i]=strlen(a[i]);
+    la+=l[i];
+  }
+  char *s;
+  s=malloc(sizeof(char)*(la+nsep*n+1));
+  char *to=s;
+  for (i=0;i<n;i++){
+    to=mempcpy(to,a[i],l[i]);
+    if (nsep>0) to=mempcpy(to,sep,nsep);
+  }
+  to[0]='\0';
+  return s;
+}
 
 int main (int argc, char* argv[]) {
   int D = 0; // number of MCMC sampling variables, i.e. model parameters
@@ -258,6 +276,11 @@ int main (int argc, char* argv[]) {
   }
   /* init solver */
   realtype solver_param[3] = {ODE_SOLVER_ABS_ERR, ODE_SOLVER_REL_ERR, 0};
+
+  char **x_name, **p_name, **f_name;
+  x_name=ode_model_get_var_names(odeModel);
+  p_name=ode_model_get_param_names(odeModel);
+  f_name=ode_model_get_func_names(odeModel);
   
   /* define local variables for parameters and inital conditions */
   int N = ode_model_getN(odeModel);
@@ -420,9 +443,23 @@ int main (int argc, char* argv[]) {
   hsize_t chunk_size[2];
   hid_t file_id = H5Fcreate(cnf_options.output_file, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
   assert(file_id>0);
+
+  char *x_names=flatten(x_name, (size_t) N, "; ");
+  char *p_names=flatten(p_name, (size_t) P, "; ");
+  char *f_names=flatten(f_name, (size_t) F, "; ");
+
+  herr_t NameWriteError=0;
+  NameWriteError&=H5LTmake_dataset_string(file_id,"StateVariableNames",x_names);
+  NameWriteError&=H5LTmake_dataset_string(file_id,"ParameterNames",p_names);
+  NameWriteError&=H5LTmake_dataset_string(file_id,"OutputFunctionNames",f_names);
+  if (NameWriteError==0) printf("# [main] all names have been written to file «%s».\n",cnf_options.output_file);
+  free(x_names);
+  free(p_names);
+  free(f_names);
+  
   hid_t para_property_id = H5Pcreate(H5P_DATASET_CREATE);
   hid_t post_property_id = H5Pcreate(H5P_DATASET_CREATE);
-
+  
   /* here we set a «chunk size», which will coincide with the hyperslabs we select to write output*/
   // parameter sample chunk size:
   chunk_size[0]=CHUNK;
@@ -487,11 +524,8 @@ int main (int argc, char* argv[]) {
       acc_c = 0;
       swaps=0;
     }
-  }
-  
+  }  
   fprintf(stdout, "\n# Burn-in complete, sampling from the posterior.\n");
-  
-  
   /* full Posterior loop */
   clock_t ct=clock();
   gsl_matrix *log_para_chunk;
@@ -503,7 +537,6 @@ int main (int argc, char* argv[]) {
   swaps=0;
   acc_c = 0;
   for (it = 0; it < Samples; it++) {
-    /* draw a sample using RMHMC */
     mcmc_sample(kernel, &acc);
     acc_c += acc;
     master=(it%2==rank%2);
@@ -575,7 +608,6 @@ int main (int argc, char* argv[]) {
   
   status&=H5LTset_attribute_string(file_id, "LogParameters", "ModelLibrary", lib_base);
   status&=H5LTset_attribute_string(file_id, "LogParameters", "DataFrom", cfilename);
-  
   ct=clock()-ct;
   printf("# computation time spend sampling: %f s\n",((double) ct)/((double) CLOCKS_PER_SEC));
   

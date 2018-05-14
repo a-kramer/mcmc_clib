@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include "../ode/ode_model.h"
 // prior types
-#include "PriorType.h"
+#include "ptype.h"
 // normalisation methods
 #define DATA_IS_ABSOLUTE 0
 #define DATA_NORMALISED_BY_REFERENCE 1
