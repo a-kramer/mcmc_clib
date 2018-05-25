@@ -48,7 +48,7 @@ sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names){
   if (table!=NULL){
     printf("[sbtab_find] found table «%s».\n",Name[i]);
   } else {
-    printf("[sbtab_find] not found.\n",Name[i]);
+    printf("[sbtab_find] not found (%s).\n",Name[i]);
   }
   g_strfreev(Name);  
   return table;

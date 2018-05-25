@@ -624,9 +624,9 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
 
 herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash){
   int i,n;
-  printf("[process_prior] Looking up «Parameters» Table.\n");
+  printf("[process_prior] Looking up «Parameter» Table.\n");
   sbtab_t *Parameters;
-  Parameters=g_hash_table_lookup(sbtab_hash,"Parameters");
+  Parameters=g_hash_table_lookup(sbtab_hash,"Parameter");
   assert(Parameters!=NULL);
   GPtrArray *P_ID=sbtab_get_column(Parameters,"!ID");
   if (P_ID==NULL) P_ID=sbtab_get_column(Parameters,"!Name");
@@ -1051,7 +1051,7 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
   r_status&=regcomp(&RE_TableType,"TableType[[:blank:]]*=[[:blank:]]*'([^']+)'",REG_EXTENDED);
   r_status&=regcomp(&SBkeys,"![^!][[:alpha:]]",REG_EXTENDED);
   r_status&=regcomp(&SBkey,"(![[:alpha:]][[:alnum:]]*|>([[:alpha:]][[:word:]]*:)*([[:alpha:]][[:word:]])*)",REG_EXTENDED);
-  r_status&=regcomp(&SBlink,">([[:alpha:]][[:alpha:][:digit:]]*:)*([[:alpha:]][[[:alpha:][:digit:]]]*)",REG_EXTENDED);
+  r_status&=regcomp(&SBlink,">([[:alpha:]][[:alpha:][:digit:]]*:)*([[:alpha:]][[:alpha:][:digit:]]*)",REG_EXTENDED);
   
   if (r_status==0){
     printf("[parse_sb_tab] regular expressions created (EC=%i).\n",r_status);
