@@ -43,9 +43,11 @@
 #define NORM_OUTPUT 1
 #define NORM_TIME 2
 
+#define NEEDS_NORMALISATION(N,i) ((N[NORM_EXPERIMENT] && g_array_index(N[NORM_EXPERIMENT],int,i))>=0 || (N[NORM_TIME] && g_array_index(N[NORM_TIME],int,i)>=0) || (N[NORM_TIME] && N[NORM_OUTPUT]->len>0))
+
 
 sbtab_t* parse_sb_tab(char *);
-gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT);
+gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT, int IsNormalisingExperiment);
 gsl_vector* get_time_vector(sbtab_t *DataTable);
 gsl_matrix* get_input_matrix(sbtab_t *DataTable, GPtrArray *input_ID, gsl_vector *default_input);
 herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, GArray **N, int lflag);
@@ -257,12 +259,12 @@ GArray** get_normalisation(sbtab_t *ExperimentTable, int *ExperimentType, sbtab_
   char errbuf[DEFAULT_STR_LENGTH];
   status=regcomp(&ID_TimePoint,"([[:alpha:]][[:alnum:]_]*)\\[?([^]]+)?\\]?", REG_EXTENDED);
   if (status!=0){
-    regerror(status, &ID_TimePoint,errbuf,DEFAULT_STR_LENGTH);
+    regerror(status,&ID_TimePoint,errbuf,DEFAULT_STR_LENGTH);
     perror(errbuf);
   }
   status=regcomp(&ID,"([[:alpha:]][[:alnum:]_]*)", REG_EXTENDED);
   if (status!=0){
-    regerror(status, &ID_TimePoint,errbuf,DEFAULT_STR_LENGTH);
+    regerror(status,&ID,errbuf,DEFAULT_STR_LENGTH);
     perror(errbuf);
   }
   guint *major, *minor;
@@ -576,7 +578,7 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
 	exit(-1);
 	break;
       case TIME_SERIES:
-	Y_dY=get_data_matrix(DataTable[j],L1_OUT);
+	Y_dY=get_data_matrix(DataTable[j],L1_OUT,lflag[j]);
 	time=get_time_vector(DataTable[j]);
 	write_data_to_hdf5(file_id,
 			   Y_dY[DATA],
@@ -585,7 +587,7 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
 			   E_default_input[j],j,0,Normalisation,lflag[j]);
 	break;
       case DOSE_RESPONSE:
-	Y_dY=get_data_matrix(DataTable[j],L1_OUT);
+	Y_dY=get_data_matrix(DataTable[j],L1_OUT,lflag[j]);
 	input_block=get_input_matrix(DataTable[j],input_ID,E_default_input[j]);
 	if (default_time!=NULL) time_view=gsl_vector_subvector(default_time,j,1);
 	time=get_time_vector(DataTable[j]);
@@ -895,7 +897,7 @@ int copy_match(char *sptr, regmatch_t *match, char *source, ssize_t N){
   }  
 }
 
-gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT){
+gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT, int lflag){
   int i,i_r, i_c;
   GPtrArray *c,*dc;
   double val,dval=INFINITY;
@@ -916,7 +918,11 @@ gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT){
   }
   printf("[get_data_matrix] setting data matrix to default values (1 ± ∞).\n"); fflush(stdout);
   gsl_matrix_set_all(Y[DATA],1.0);
-  gsl_matrix_set_all(Y[STDV],INFINITY);
+  if (lflag){
+    gsl_matrix_set_all(Y[STDV],INFINITY);
+  }else{ // so, lflag is FALSE, that means that it's a normalisation experiment; we avoid devision by infinity just to be sure:
+    gsl_matrix_set_all(Y[STDV],1024);
+  }
 
 
   // find the name of each outputs error quantifier:  
