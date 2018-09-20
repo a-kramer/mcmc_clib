@@ -23,7 +23,7 @@
 static char* get_vf_name(const char* filename){
   char* _post = "_odeModel";
   char* lib_name = basename(filename);
-  size_t len = strlen(lib_name);
+  //size_t len = strlen(lib_name);
   int n;
   char *dot;
   /* stop once a '_c' or '.' is found. Take that as the model name */
@@ -468,7 +468,7 @@ void ode_solver_get_jacp(ode_solver* solver, const double t,  double* y,  double
 
 void ode_solver_get_jac(ode_solver* solver, const double t,  double* y,  double* fy, double *jac){
   int N = ode_model_getN(solver->odeModel);
-  int P = ode_model_getP(solver->odeModel);
+  //int P = ode_model_getP(solver->odeModel);
 
   NV_DATA_S(solver->y) = y;
   NV_DATA_S(solver->fy) = fy;

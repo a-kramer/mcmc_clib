@@ -20,8 +20,8 @@ extern "C" {
 #include <sundials/sundials_types.h>
 #include <sundials/sundials_math.h>
 
-#define	ODE_SOLVER_REL_ERR		RCONST(1.0e-7)
-#define	ODE_SOLVER_ABS_ERR		RCONST(1.0e-7)
+#define	ODE_SOLVER_REL_ERR		RCONST(1.0e-6)
+#define	ODE_SOLVER_ABS_ERR		RCONST(1.0e-6)
 #define	ODE_SOLVER_MX_STEPS		5000
 	
 typedef int (*rhs_f)(realtype, N_Vector, N_Vector, void *);

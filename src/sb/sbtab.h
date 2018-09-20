@@ -1,8 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <glib.h>
-//#include "flex_array.h"
-//#include "sb_key.h"
 
 /* This struct stores a complete sbtab table.
  * Table{Name,Type,Title} are strings (*gchar)

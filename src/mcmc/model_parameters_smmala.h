@@ -63,7 +63,7 @@ typedef struct {
   gsl_vector **fy; // normalising fy; simulation result
   gsl_matrix **fyS; // normalising fyS; simulation result
   gsl_vector **data; // normalising data vector  (from a lab)
-  gsl_vector **stdv; // and its standard deviation;
+  gsl_vector **stdv; // and its standard deviation;  
 } normalisation_t;
 
 /* Data can be stored in one of two places:
@@ -81,9 +81,9 @@ typedef struct {
   gsl_vector *t;
   view_t *view;
   normalisation_t *normalise;
-  int lflag;
-  gsl_matrix *data_block;  // either a pointer to a submatrix or self-allocated storage
-  gsl_matrix *sd_data_block;  // either a pointer to a submatrix or self-allocated storage
+  int lflag;                // TRUE if this data should influence LogLikelihood explicitely; FALSE if it is used in some implicit way (e.g. normalisation) 
+  gsl_matrix *data_block;   // either a pointer to a submatrix or self-allocated storage
+  gsl_matrix *sd_data_block;// either a pointer to a submatrix or self-allocated storage
   gsl_vector **data;        // data at time[j] is accessed as experiment[i]->data[j]
   gsl_vector **sd_data;
   gsl_vector **y; // y[t](i) vector of size T;
@@ -110,7 +110,7 @@ typedef struct {
     gsl_matrix *Sigma_LU; // LU factors of the Sigma matrix
     gsl_matrix *inv_cov; // Same matrix already given in inverted form
     gsl_vector *sigma; // If Sigma is diagonal, this is the diagonal vector.
-    gsl_vector *beta;
+    gsl_vector *beta;  // this is a parameter of generalised Gaussians
   };
   gsl_permutation *p; // used whenever LU decomposition is used
   int signum;         // also belongs to LU decomposition
@@ -123,17 +123,12 @@ typedef struct {
   gsl_vector *p; // memory for the ODE's parameters (they are
 		 // exponential) and input parameters, appended: p=[exp(x),u];
   experiment **E; // an experiment (data, initial conditions, inputs, simulation results)
-  experiment *ref_E;
   int normalisation_type;
-  gsl_matrix_int *norm_f; // (1|C) × F matrix that stores normalisation information [old]
-  gsl_matrix_int *norm_t; // (1|C) × F matrix that stores normalisation information [old]
   gsl_matrix *Data; // this is a block of size C*T*F, contains all data, if data is read as one huge array; otherwise this is NULL and data is stored in the experiment structure directly.
   gsl_matrix *sdData; // standard deviation of the datapoints above, NULL if Data is NULL;
   gsl_vector *tmpF; // temporay storage of size F
   gsl_matrix *tmpDF; // temporary storage of size D×F
   prior_t *prior;
-  gsl_matrix *FI_l; // likelihood contribution to fisher information matrix
-  gsl_matrix *FI_p; // prior contribution to fisher information matrix
   sensitivity_approximation *S_approx; 
   ode_solver *solver; // contains: cvode_mem; *odeModel; N_Vector y; N_Vector *yS; params;
 } ode_model_parameters;

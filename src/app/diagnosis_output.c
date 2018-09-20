@@ -5,6 +5,10 @@
 #include <mpi.h>
 #include "../mcmc/model_parameters_smmala.h"
 #include "diagnosis_output.h"
+#include "../mcmc/ptype.h"
+// type is an integer of bitwise flags
+// it can contain multiple simultaneously activated flags
+// so, type can be true for property1 and ALSO property2 among other things
 
 typedef union {
   double d;
@@ -27,55 +31,76 @@ int gsl_fprintf(FILE *a,const char *name, void *gsl_thing, int type){
   gsl_vec x;
   int i,j,r,c;
   val v;
-
+  //assert(name);
   fprintf(a,"[%s]",name);
-  if (gsl_thing!=NULL){
-    if (type & GSL_IS_MATRIX){
-      if (type & GSL_IS_DOUBLE){
+  if (gsl_thing){
+    if (PTYPE(type,GSL_IS_MATRIX)){
+      if (PTYPE(type,GSL_IS_DOUBLE)){
 	A.d=(gsl_matrix*) gsl_thing;
 	r=(int) A.d->size1;
 	c=(int) A.d->size2;
-      } else if (type & GSL_IS_INT){
+      } else if (PTYPE(type,GSL_IS_INT)){
 	A.i=(gsl_matrix_int*) gsl_thing;
 	r=(int) A.i->size1;
 	c=(int) A.i->size2;
+      } else {
+	fprintf(stderr,"[gsl_fprintf] GSL matrix has unknown element type: «%x»",type);
+	return GSL_EINVAL;
       }
       fprintf(a," %i × %i elements\n",r,c);
-      for (i=0;i<r;i++){
-	for (j=0;j<c;j++) {
-	  if (type & GSL_IS_DOUBLE){
+      if (PTYPE(type,GSL_IS_DOUBLE)){
+	for (i=0;i<r;i++){
+	  for (j=0;j<c;j++) {	    
 	    v.d=gsl_matrix_get(A.d,i,j);
 	    fprintf(a,"%+g\t",v.d);
-	  }else if (type & GSL_IS_INT){
+	  }
+	  fprintf(a,"\n");
+	}
+      } else if (PTYPE(type,GSL_IS_INT)){
+	for (i=0;i<r;i++){
+	  for (j=0;j<c;j++) {	    
 	    v.i=gsl_matrix_int_get(A.i,i,j);
 	    fprintf(a,"%i\t",v.i);
 	  }
+	  fprintf(a,"\n");
 	}
-	fprintf(a,"\n");
-      }    
-    }else if (type & GSL_IS_VECTOR){
-      if (type & GSL_IS_DOUBLE)	{
+      } else {
+	fprintf(stderr,"[gsl_fprintf] GSL matrix has unknown element type: «%x»",type);
+	return GSL_EINVAL;
+      }
+    } else if (PTYPE(type,GSL_IS_VECTOR)){
+      if (PTYPE(type,GSL_IS_DOUBLE))	{
 	x.d=(gsl_vector*) gsl_thing;
 	c=(int) x.d->size;
-      } else if (type & GSL_IS_INT) {
+      } else if (PTYPE(type,GSL_IS_INT)) {
 	x.i=(gsl_vector_int*) gsl_thing;
 	c=(int) x.i->size;
       }
       fprintf(a," %i elements\n",c);
-      for (j=0;j<c;j++){
-	if (type & GSL_IS_DOUBLE){
+      if (PTYPE(type,GSL_IS_DOUBLE)){
+	for (j=0;j<c;j++){
 	  v.d=gsl_vector_get(x.d,j);
 	  fprintf(a,"%+g\t",v.d);
-	}else if (type & GSL_IS_INT){
+	}
+	fprintf(a,"\n");
+      }else if (PTYPE(type,GSL_IS_INT)){
+	for (j=0;j<c;j++){
 	  v.i=gsl_vector_int_get(x.i,j);
 	  fprintf(a,"%i\t",v.i);
 	}
+	fprintf(a,"\n");
+      } else {
+	fprintf(stderr,"[gsl_fprintf] GSL vector has unknown element type: «%x»",type);
+	return GSL_EINVAL;
       }
-      fprintf(a,"\n");
+    } else {
+      fprintf(stderr,"[gsl_fprintf] unknown GSL entity type: «%x»",type);
+      return GSL_EINVAL;
     }
     fprintf(a,"[/%s]\n",name);
   } else {
-    fprintf(a,"not set\n");
+    fprintf(a,"[gsl_fprintf] GSL pointer is not set\n");
+    return GSL_EINVAL;
   }
   return GSL_SUCCESS;
 }
@@ -85,7 +110,7 @@ int gsl_printf(const char *name, void *gsl_thing, int type){
 }
 
 int printf_omp(void *mp){
-  int i,j,k,c,T,D,C;
+  int j,c,T,C;
   gsl_vector *t;
   char name[512];
   ode_model_parameters *omp=mp;
@@ -95,22 +120,8 @@ int printf_omp(void *mp){
   sprintf(name,"ode_model_state_of_rank_%i.txt",r);
   f=fopen(name,"w");
   C=omp->size->C;
-  D=omp->size->D;
   fprintf(f,"[printf_omp]\n"); fflush(stdout);
   gsl_fprintf(f,"p",omp->p,GSL_IS_DOUBLE | GSL_IS_VECTOR); fflush(stdout);
-  fprintf(f,"Reference Experiment\n");
-  gsl_fprintf(f,"ref y init",omp->ref_E->init_y,GSL_IS_DOUBLE | GSL_IS_VECTOR); fflush(stdout);
-  t=omp->ref_E->t;
-  if (t!=NULL){
-    T=t->size;
-    for (j=0; j<T; j++){
-      fprintf(f,"t[%i]\n",j);
-      sprintf(name,"ref fy(t[%i])",j);
-      gsl_fprintf(f,name,omp->ref_E->fy[j],GSL_IS_DOUBLE | GSL_IS_VECTOR);
-      sprintf(name,"ref fyS(t[%i])",j);
-      gsl_fprintf(f,name,omp->ref_E->fyS[j],GSL_IS_DOUBLE | GSL_IS_MATRIX);
-    }
-  }
   for (c=0;c<C;c++){
     fprintf(f,"Experiment %i\n",c);
     gsl_fprintf(f,"y_init",omp->E[c]->init_y,GSL_IS_DOUBLE | GSL_IS_VECTOR);

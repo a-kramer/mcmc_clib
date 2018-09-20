@@ -1,41 +1,49 @@
-CC=mpicc
+MPICC=mpicc
+CC=gcc
 CPP=c++
 
 CPPFLAGS = -O2
-CFLAGS = -O2 -std=gnu11 -D_GNU_SOURCE
-LDFLAGS = `pkg-config --libs gsl cvodes`			\
--L/pdc/vol/i-compilers/17.0.1/mkl/lib/intel64 -lmkl_intel_lp64	\
--lmkl_sequential -lmkl_core -lpthread				\
--Wl,--rpath,/pdc/vol/i-compilers/17.0.1/mkl/lib/intel64		
+CFLAGS = -O2 -march=haswell -std=gnu11 -D_GNU_SOURCE -Wall
 
-IFLAGS = `pkg-config --cflags gsl cvodes`	\
--I/pdc/vol/i-compilers/17.0.1/mkl/include	
+LDFLAGS_MKL=-L/pdc/vol/i-compilers/17.0.1/mkl/lib/intel64 -lmkl_intel_lp64 \
+	 		 -lmkl_sequential -lmkl_core -lpthread \
+	 		 -Wl,--rpath,/pdc/vol/i-compilers/17.0.1/mkl/lib/intel64
+CFLAGS_MKL=-I/pdc/vol/i-compilers/17.0.1/mkl/include
 
+LDFLAGS = `pkg-config --libs gsl glib-2.0`
+IFLAGS = `pkg-config --cflags gsl glib-2.0`
+
+FLAGS = `pkg-config --libs --cflags gsl glib-2.0 cvodes` $(CFLAGS_MKL) $(LDFLAGS_MKL)  -lhdf5 -lhdf5_hl
 
 MALA_SRC=./src/mcmc/smmala.c ./src/mcmc/mcmc_kernel.c			\
 ./src/ode/ode_model.c ./src/app/read_cnf.c ./src/mcmc/mv_norm.c		\
 ./src/mcmc/model_parameters_smmala.c ./src/app/normalisation_sd.c	\
-./src/app/dynamic_array.c ./src/mcmc/smmala_posterior.c ./src/app/diagnosis_output.c
+./src/app/dynamic_array.c ./src/mcmc/smmala_posterior.c ./src/app/diagnosis_output.c \
+./src/app/read_data_hdf5.c
 
-ODE_SOURCE = ./src/app/odeSolver_main.c ./src/ode/ode_model.c
+SB_SRC=./src/sb/sbtab.c
+
 VFGEN_SOURCE = `ls ./src/vfgen/*.cpp`
 
 BIN=./bin
 .PHONY: all
 
-all: bin/ode_smmala ODE*cvs.c ODE*.so
+all: bin/ode_smmala #bin/sbtab_import
 
 
 bin/ode_smmala: ./src/app/ode_smmala.c $(MALA_SRC)
-	$(CC) $(LDFLAGS) $(CFLAGS) $(IFLAGS) $(MALA_SRC) -o $(BIN)/ode_smmala -lsundials_cvodes -lsundials_nvecserial -ldl src/app/ode_smmala.c
+	$(MPICC) $(MALA_SRC) -o $(BIN)/ode_smmala -ldl $(CFLAGS) src/app/ode_smmala.c $(FLAGS)
 
-vfgen: 
-	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread
+# vfgen: 
+# 	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread
 
-%_cvs.c: %.xml
-	./vfgen cvodes:sens=yes,func=yes $<
+# %_cvs.c: %.xml
+# 	./vfgen cvodes:sens=yes,func=yes $<
 
-%.so: %_cvs.c
-	$(CC) -shared -fPIC $(CFLAGS) -o $@  $<
+# %.so: %_cvs.c
+# 	$(CC) -shared -fPIC $(CFLAGS) -lm -o $@  $<
+
+# bin/sbtab_import: ./src/sb/import.c $(SB_SRC)
+# 	$(CC) $(CFLAGS) $(SB_SRC) -o $(BIN)/sbtab_import ./src/sb/import.c -lm $(FLAGS)
 
 
