@@ -55,7 +55,7 @@
 #define SMPL_FRESH 0
 #define SMPL_RESUME_TUNE 2
 
-#define BUFSZ 1024
+#define BUFSZ 2048
 //#define BETA(rank,R) gsl_pow_4((double)(rank)/(double) ((R)-1))
 //#define BETA(rank,R) (1.0/((double)(rank+1)))
 #define BETA(rank,R) gsl_sf_exp(-gamma*((double) rank))
@@ -265,10 +265,10 @@ int main (int argc, char* argv[]) {
   
   ode_solver* solver = ode_solver_alloc(odeModel); /* alloc */
   if (solver == NULL) {
-    fprintf(stderr, "# [main] Solver %s could not be created.\n",lib_name);
+    fprintf(stderr, "# [main] Solver %s could not be created.\n",lib_base);
     ode_model_free(odeModel);
     exit(1);
-  } else printf("# [main] Solver for %s created.\n",lib_name);
+  } else printf("# [main] Solver for %s created.\n",lib_base);
   
   if (sensitivity_approximation){
     ode_solver_disable_sens(solver);
@@ -331,14 +331,15 @@ int main (int argc, char* argv[]) {
     gsl_vector_set_all(&(y_view.vector),1.0);
   }
   int C=omp.size->C;
-  /* if (rank==0){ */
-  /*   for (c=0;c<C;c++){ */
-  /*     printf("[main] Experiment %i:\n",c); */
-  /*     gsl_printf("data",omp.E[c]->data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX); */
-  /*     gsl_printf("standard deviation",omp.E[c]->sd_data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);    } */
-  /*   for (c=0;c<C;c++) gsl_printf("u",omp.E[c]->input_u,GSL_IS_DOUBLE | GSL_IS_VECTOR); */
-  /*   for (c=0;c<C;c++) gsl_printf("t",omp.E[c]->t,GSL_IS_DOUBLE | GSL_IS_VECTOR);     */
-  /* } */
+  if (rank==0){
+    for (c=0;c<C;c++){
+      printf("[main] Experiment %i:\n",c);
+      gsl_printf("data",omp.E[c]->data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);
+      gsl_printf("standard deviation",omp.E[c]->sd_data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);    
+      gsl_printf("u",omp.E[c]->input_u,GSL_IS_DOUBLE | GSL_IS_VECTOR);
+      gsl_printf("t",omp.E[c]->t,GSL_IS_DOUBLE | GSL_IS_VECTOR);
+    }
+  }
   // unspecified initial conditions
   if (omp.ref_E->init_y==NULL){
     omp.ref_E->init_y=gsl_vector_alloc(N);
@@ -521,7 +522,7 @@ int main (int argc, char* argv[]) {
     //mcmc_print_sample(kernel, stdout);
     if ( ((it + 1) % CHUNK) == 0 ) {
       acc_rate = ((double) acc_c) / ((double) CHUNK);
-      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %4li) acc. rate: %3.2f; % 2i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
+      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %4li) acc. rate: %3.2f; %3i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       mcmc_adapt(kernel, acc_rate);
       acc_c = 0;
