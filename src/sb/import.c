@@ -515,11 +515,7 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   // each experiment can override the default input:
   gsl_vector **E_default_input;
   E_default_input=get_experiment_specific_inputs(E_table, Input, default_input);
-  /*
-   * and this is the actual input the is decided by first setting it
-   * to the default, the overriding by the experiment's default and
-   * then checking the experiment's data table.
-   */
+
   int nU=default_input->size;
   input=gsl_vector_alloc(nU);
   gsl_matrix *input_block;
@@ -588,6 +584,7 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
 	break;
       case DOSE_RESPONSE:
 	Y_dY=get_data_matrix(DataTable[j],L1_OUT,lflag[j]);
+	input_ID=sbtab_get_column(Input,"!ID");
 	input_block=get_input_matrix(DataTable[j],input_ID,E_default_input[j]);
 	if (default_time!=NULL) time_view=gsl_vector_subvector(default_time,j,1);
 	time=get_time_vector(DataTable[j]);
@@ -1006,6 +1003,7 @@ gsl_matrix* get_input_matrix(sbtab_t *DataTable, GPtrArray *input_ID, gsl_vector
     u_row=gsl_matrix_row(U,i);
     gsl_vector_memcpy(&(u_row.vector),default_input);
   }
+  assert(input_ID!=NULL);
   printf("[get_input_matrix] getting dose values in a Dose Response experiment %s.\n",DataTable->TableName); fflush(stdout);
   for (j=0;j<nU;j++){
     s=g_ptr_array_index(input_ID,j);
