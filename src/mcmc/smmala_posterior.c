@@ -354,13 +354,17 @@ int get_normalising_vector(experiment *E, experiment *ref_E, gsl_vector *nfy[], 
       for (f=0;f<F;f++){
 	// output function:
 	k=gsl_vector_int_get(E->NormaliseByOutput,f);
-	if (k<0 || k>=F) k=f;
-	val=gsl_vector_get(v,k);
-	gsl_vector_set(nfy[t],f,val);
-	// its sensitivity:
-        fyS_column=gsl_matrix_column(nfyS[t],f);
-	M_column=gsl_matrix_column(M,k);
-        gsl_vector_memcpy(&(fyS_column.vector),&(M_column.vector));
+	if (k<0 || k>=F) {
+	  gsl_vector_set(nfy[t],f,1.0);
+	  fyS_column=gsl_matrix_column(nfyS[t],f);
+	  gsl_vector_set_zero(&(fyS_column.vector));
+	} else {
+	  val=gsl_vector_get(v,k);
+	  gsl_vector_set(nfy[t],f,val);
+	  fyS_column=gsl_matrix_column(nfyS[t],f);
+	  M_column=gsl_matrix_column(M,k);
+	  gsl_vector_memcpy(&(fyS_column.vector),&(M_column.vector));
+	}
       }
     }
   }
