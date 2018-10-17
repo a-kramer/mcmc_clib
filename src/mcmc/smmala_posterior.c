@@ -445,12 +445,23 @@ int normalise(ode_model_parameters *mp){
 	  oS_k_row=gsl_matrix_row(oS,k);
 	  oS_k=&(oS_k_row.vector);
 	  gsl_vector_div(oS_k,rfy[j]);
-	  gsl_vector_scale(oS_k,gsl_vector_get(mp->p,k));
+	  gsl_vector_scale(oS_k,gsl_vector_get(mp->p,k)); // because we are in log-space
 	}
       }	     
-    } //else {
-      //printf("[normalise] no normalisation needed, data is absolute.\n");
-    //}
+    } else {
+      for (j=0;j<nt;j++){
+	fy=mp->E[c]->fy[j];
+	fyS=mp->E[c]->fyS[j];
+	oS=mp->E[c]->oS[j];
+	fyS_D_sub=gsl_matrix_submatrix(fyS,0,0,D,F);
+	gsl_matrix_memcpy(oS,&(fyS_D_sub.matrix));
+	for (k=0;k<D;k++){
+	  oS_k_row=gsl_matrix_row(oS,k);
+	  oS_k=&(oS_k_row.vector);	  
+	  gsl_vector_scale(oS_k,gsl_vector_get(mp->p,k)); // because we are in log-space
+	}
+      }  
+    }
   }
   return GSL_SUCCESS;
 }

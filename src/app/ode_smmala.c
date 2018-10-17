@@ -562,7 +562,7 @@ int main (int argc, char* argv[]) {
     /* print sample log and statistics every 100 samples */
     if ( ((it + 1) % CHUNK) == 0 ) {
       acc_rate = ((double) acc_c) / ((double) CHUNK);
-      fprintf(stdout, "# [rank %i/%i; β=%5f; %3i%% done] (it %5li) acc. rate: %3.2f; %3i %% swap success\t",rank,R,beta,it/Samples,it,acc_rate,swaps);
+      fprintf(stdout, "# [rank %i/%i; β=%5f; %3li%% done] (it %5li) acc. rate: %3.2f; %3i %% swap success\t",rank,R,beta,it/Samples,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       acc_c = 0;
 
