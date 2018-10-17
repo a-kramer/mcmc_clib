@@ -331,15 +331,16 @@ int main (int argc, char* argv[]) {
     gsl_vector_set_all(&(y_view.vector),1.0);
   }
   int C=omp.size->C;
-  if (rank==0){
-    for (c=0;c<C;c++){
-      printf("[main] Experiment %i:\n",c);
-      gsl_printf("data",omp.E[c]->data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);
-      gsl_printf("standard deviation",omp.E[c]->sd_data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);    
-      gsl_printf("u",omp.E[c]->input_u,GSL_IS_DOUBLE | GSL_IS_VECTOR);
-      gsl_printf("t",omp.E[c]->t,GSL_IS_DOUBLE | GSL_IS_VECTOR);
-    }
-  }
+  
+  /* if (rank==0){ */
+  /*   for (c=0;c<C;c++){ */
+  /*     printf("[main] Experiment %i:\n",c); */
+  /*     gsl_printf("data",omp.E[c]->data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX); */
+  /*     gsl_printf("standard deviation",omp.E[c]->sd_data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);     */
+  /*     gsl_printf("u",omp.E[c]->input_u,GSL_IS_DOUBLE | GSL_IS_VECTOR); */
+  /*     gsl_printf("t",omp.E[c]->t,GSL_IS_DOUBLE | GSL_IS_VECTOR); */
+  /*   } */
+  /* } */
   // unspecified initial conditions
   if (omp.ref_E->init_y==NULL){
     omp.ref_E->init_y=gsl_vector_alloc(N);
@@ -522,7 +523,7 @@ int main (int argc, char* argv[]) {
     //mcmc_print_sample(kernel, stdout);
     if ( ((it + 1) % CHUNK) == 0 ) {
       acc_rate = ((double) acc_c) / ((double) CHUNK);
-      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %4li) acc. rate: %3.2f; %3i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
+      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %4li) acc. rate: %3.2f; %3i %% swap success\t",rank,R,beta,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       mcmc_adapt(kernel, acc_rate);
       acc_c = 0;
@@ -549,7 +550,7 @@ int main (int argc, char* argv[]) {
     } else {
       DEST=(R+rank-1)%R; // this process has to accept swap decisions from DEST
     }
-    //their_beta=BETA(DEST,R); // the orther proc's 
+    //their_beta=BETA(DEST,R); // the other proc's 
     mcmc_exchange_information(kernel,DEST,buffer);
     swaps+=mcmc_swap_chains(kernel,master,rank,DEST,buffer);
 		
@@ -561,7 +562,7 @@ int main (int argc, char* argv[]) {
     /* print sample log and statistics every 100 samples */
     if ( ((it + 1) % CHUNK) == 0 ) {
       acc_rate = ((double) acc_c) / ((double) CHUNK);
-      fprintf(stdout, "# [rank %i/%i; β=%5f] (it %5li) acc. rate: %3.2f; %3i %% swaps\t",rank,R,beta,it,acc_rate,swaps);
+      fprintf(stdout, "# [rank %i/%i; β=%5f; %3i%% done] (it %5li) acc. rate: %3.2f; %3i %% swap success\t",rank,R,beta,it/Samples,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       acc_c = 0;
 
