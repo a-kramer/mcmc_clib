@@ -48,7 +48,7 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   hsize_t *size;
   size=malloc(sizeof(hsize_t)*rank);
   status&=H5LTget_dataset_info(g_id,name,size,NULL,NULL);
-  assert(status>=0); // I think that hdf5 functions return negative error codes
+  assert(status>=0); // I think that hdf5 functions return negative error codes, but it's undocumented
   gsl_matrix *data_block;
   //printf("[load_data_block] loading data of size %lli×%lli.\n",size[0],size[1]);
   fflush(stdout);
@@ -220,8 +220,15 @@ int read_data(const char *file, void *model_parameters){
   // determine sizes:
   mp->size->U=(int) (mp->E[0]->input_u->size);
   //printf("[read_data] Simulations require %i known input parameters.\n",mp->size->U);
-  mp->normalisation_type=DATA_NORMALISED_INDIVIDUALLY;
-  
+  int i,any_normalisation=0;
+  for (i=0;i<mp->size->C;i++){
+    any_normalisation&=NEEDS_NORMALISATION(mp->E[i]);
+  }
+  if (any_normalisation){
+    mp->normalisation_type=DATA_NORMALISED_INDIVIDUALLY;
+  }else{
+    mp->normalisation_type=DATA_IS_ABSOLUTE;
+  }
   ode_model_parameters_alloc(mp);
   ode_model_parameters_link(mp);
   // normalise data with error propagation: todo;

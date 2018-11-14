@@ -411,7 +411,7 @@ int normalise(ode_model_parameters *mp){
     assert(nt<=T);
     if (NEEDS_NORMALISATION(mp->E[c])){
       i=mp->E[c]->NormaliseByExperiment;
-      ref_E=(i>0)?(mp->E[i]):NULL;
+      ref_E=(i>=0)?(mp->E[i]):NULL;
       rt=mp->E[c]->NormaliseByTimePoint;
       //printf("[normalise] normalisation is needed: %i, %i and (",i,rt);
       //if (mp->E[c]->NormaliseByOutput!=NULL) gsl_vector_fprintf(stdout,mp->E[c]->NormaliseByOutput," %g ");
@@ -630,6 +630,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 	  gsl_vector_div(mp->E[c]->fy[j],mp->E[c]->sd_data[j]); // (fy-data)/sd_data²
 	  //gsl_dgemv(TransA,alpha,A,x,beta,y)
 	  status=gsl_blas_dgemv(CblasNoTrans,-1.0,mp->E[c]->oS[j],mp->E[c]->fy[j],1.0,grad_l);
+	  // grad_l += - (fy-data)/sd_data² * dfy/dtheta
 	  if (status!=GSL_SUCCESS){
 	    gsl_printf("oS",mp->E[c]->oS[j],1);
 	    gsl_printf("(fy-data)/sd_data²",mp->E[c]->fy[j],0);
@@ -714,7 +715,7 @@ int LogPrior(const prior_t *prior, const gsl_vector *x, double *prior_value, gsl
   // get the ode model's prior type
   int opt=prior->type;
   gsl_matrix_set_zero(fi);
-  gsl_vector_set_zero(dprior);
+  gsl_vector_set_zero(dprior); // prior gradient
   gsl_vector_view fi_diag;
   
   if (PTYPE(opt,PRIOR_IS_GAUSSIAN)){
@@ -760,7 +761,7 @@ int LogPrior(const prior_t *prior, const gsl_vector *x, double *prior_value, gsl
 }
 
 /* Calculates the unormalised log-posterior fx, the gradient dfx, the
- * Fisher information FI.
+ * Fisher information FI for Markov chain position x.
  */
 int LogPosterior(const double beta, const gsl_vector *x,  void* model_params, double *fx, gsl_vector **dfx, gsl_matrix **FI){
   ode_model_parameters* omp =  (ode_model_parameters*) model_params;

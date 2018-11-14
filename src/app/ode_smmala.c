@@ -342,6 +342,7 @@ int main (int argc, char* argv[]) {
   /*   } */
   /* } */
   // unspecified initial conditions
+  
   if (omp.ref_E->init_y==NULL){
     omp.ref_E->init_y=gsl_vector_alloc(N);
     gsl_vector_memcpy(omp.ref_E->init_y,&(y_view.vector));
