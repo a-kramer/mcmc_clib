@@ -518,8 +518,10 @@ int main (int argc, char* argv[]) {
       } else {
 	DEST=(R+rank-1)%R; // this process has to accept swap decisions from DEST
       }
-      mcmc_exchange_information(kernel,DEST,buffer);
-      swaps+=mcmc_swap_chains(kernel,master,rank,DEST,buffer);
+      if (R>1){
+	mcmc_exchange_information(kernel,DEST,buffer);
+	swaps+=mcmc_swap_chains(kernel,master,rank,DEST,buffer);
+      }
     }
     //mcmc_print_sample(kernel, stdout);
     if ( ((it + 1) % CHUNK) == 0 ) {
@@ -551,10 +553,11 @@ int main (int argc, char* argv[]) {
     } else {
       DEST=(R+rank-1)%R; // this process has to accept swap decisions from DEST
     }
-    //their_beta=BETA(DEST,R); // the other proc's 
-    mcmc_exchange_information(kernel,DEST,buffer);
-    swaps+=mcmc_swap_chains(kernel,master,rank,DEST,buffer);
-		
+    //their_beta=BETA(DEST,R); // the other proc's
+    if (R>1){
+      mcmc_exchange_information(kernel,DEST,buffer);
+      swaps+=mcmc_swap_chains(kernel,master,rank,DEST,buffer);
+    }
     /* save sampled point for writing */
     current=gsl_matrix_row(log_para_chunk,it%CHUNK);
     x_state=gsl_vector_view_array(kernel->x,D);
