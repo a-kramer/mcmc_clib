@@ -169,7 +169,6 @@ int smmala_swap_chains(mcmc_kernel* kernel, const int master, const int rank, co
     gsl_matrix_scale(state->Hfx[0],beta*beta);
     gsl_matrix_add(state->Hfx[0],state->Hfx[2]);
     if (gsl_linalg_cholesky_decomp(state->Hfx[0])!=GSL_SUCCESS) perror("Hfx is not positive definite.");
-    //gsl_printf("Hfx0",state->Hfx[0],GSL_IS_MATRIX|GSL_IS_DOUBLE);
   }
   return swap_accepted;
 }

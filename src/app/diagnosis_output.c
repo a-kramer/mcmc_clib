@@ -98,19 +98,6 @@ int printf_omp(void *mp){
   D=omp->size->D;
   fprintf(f,"[printf_omp]\n"); fflush(stdout);
   gsl_fprintf(f,"p",omp->p,GSL_IS_DOUBLE | GSL_IS_VECTOR); fflush(stdout);
-  fprintf(f,"Reference Experiment\n");
-  gsl_fprintf(f,"ref y init",omp->ref_E->init_y,GSL_IS_DOUBLE | GSL_IS_VECTOR); fflush(stdout);
-  t=omp->ref_E->t;
-  if (t!=NULL){
-    T=t->size;
-    for (j=0; j<T; j++){
-      fprintf(f,"t[%i]\n",j);
-      sprintf(name,"ref fy(t[%i])",j);
-      gsl_fprintf(f,name,omp->ref_E->fy[j],GSL_IS_DOUBLE | GSL_IS_VECTOR);
-      sprintf(name,"ref fyS(t[%i])",j);
-      gsl_fprintf(f,name,omp->ref_E->fyS[j],GSL_IS_DOUBLE | GSL_IS_MATRIX);
-    }
-  }
   for (c=0;c<C;c++){
     fprintf(f,"Experiment %i\n",c);
     gsl_fprintf(f,"y_init",omp->E[c]->init_y,GSL_IS_DOUBLE | GSL_IS_VECTOR);

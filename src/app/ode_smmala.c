@@ -40,7 +40,7 @@
 #include <gsl/gsl_statistics_double.h>
 #include <gsl/gsl_rng.h>
 #include <mpi.h>
-#include "read_cnf.h"
+#include "flatten.h"
 #include "read_data_hdf5.h"
 #include "../mcmc/smmala.h"
 #include "../ode/ode_model.h"
@@ -48,6 +48,37 @@
 #include "diagnosis_output.h"
 #include "hdf5.h"
 #include "hdf5_hl.h"
+
+#include "../mcmc/model_parameters_smmala.h"
+// define target block types
+#define INTEGER_BLOCK 1
+#define DOUBLE_BLOCK 2
+
+// data field ids, should be consecutive atm., because they are sometimes looped over.
+#define i_time 0
+#define i_reference_input 1
+#define i_reference_data 2
+#define i_sd_reference_data 3
+#define i_input 4
+#define i_data 5
+#define i_sd_data 6
+#define i_prior_mu 7
+#define i_prior_icov 8
+#define i_initial_conditions 9
+#define i_ref_initial_conditions 10
+#define i_norm_f 11
+#define i_norm_t 12
+#define NumberOfFields 13
+
+typedef struct {
+  char *library_file;
+  char *output_file;
+  double target_acceptance;
+  double initial_stepsize;
+  long sample_size;
+  double t0;
+} main_options;  // these are user supplied options to the program
+
 
 #define CHUNK 100
 // sampling actions 
@@ -76,8 +107,6 @@ int print_help(){
   printf("Usage:\n");
   printf("-a $ACCEPTANCE_RATE\n");
   printf("\t\t\tTarget acceptance value (all markov chains will be tuned for this acceptance).\n\n");
-  printf("-c ./data.cfg\n");
-  printf("\t\t\tdata.cfg contains the data points and the conditions of measurement. This and hdf5 data are mutually exclusive. See tha manual on how to write the .cfg file\n\n");
   printf("-d, --hdf5 ./data.h5\n");
   printf("\t\t\tdata.h5 contains the data points and the conditions of measurement in hdf5 format. This and .cfg files are mutually exclusive. A suitable h5 file is produced by the hdf5_import program.\n\n");
   printf("-g $G\n");
@@ -155,25 +184,6 @@ void print_chunk_graph(gsl_matrix *X, gsl_vector *lP){
   printf("%+4.4g\n",max);  
 }
 
-char* flatten(char **a, size_t n, char *sep){
-  int i;
-  size_t la=0; // overall length
-  size_t nsep=(sep!=NULL?strlen(sep):0);
-  size_t l[n];
-  for (i=0;i<n;i++){
-    l[i]=strlen(a[i]);
-    la+=l[i];
-  }
-  char *s;
-  s=malloc(sizeof(char)*(la+nsep*n+1));
-  char *to=s;
-  for (i=0;i<n;i++){
-    to=mempcpy(to,a[i],l[i]);
-    if (nsep>0) to=mempcpy(to,sep,nsep);
-  }
-  to[0]='\0';
-  return s;
-}
 
 int main (int argc, char* argv[]) {
   int D = 0; // number of MCMC sampling variables, i.e. model parameters
@@ -194,7 +204,7 @@ int main (int argc, char* argv[]) {
   //int output_is_binary=0;
   double seed = 1;
   double gamma=0.25;
-  double t0=0;
+  double t0=NAN;
   int sampling_action=SMPL_FRESH;
   size_t resume_count;
   gsl_error_handler_t *gsl_error_handler;
@@ -215,16 +225,13 @@ int main (int argc, char* argv[]) {
   MPI_Comm_rank(MPI_COMM_WORLD,&rank);
   char *h5file=NULL;
   for (i=0;i<argc;i++){
-    if (strcmp(argv[i],"-c")==0){
-      cfilename=argv[i+1];
-      h5file=NULL;
-    } else if (strcmp(argv[i],"-p")==0 || strcmp(argv[i],"--prior-start")==0) {
+    if (strcmp(argv[i],"-p")==0 || strcmp(argv[i],"--prior-start")==0) {
       start_from_prior=1;
     } else if (strcmp(argv[i],"-d")==0 || strcmp(argv[i],"--hdf5")==0) {
       h5file=argv[i+1];
-      cfilename=NULL;
     } else if (strcmp(argv[i],"-t")==0 || strcmp(argv[i],"--init-at-t")==0) {
       t0=strtod(argv[i+1],NULL);
+      printf("[main] t0=%f",t0);
     } else if (strcmp(argv[i],"-w")==0 || strcmp(argv[i],"--warm-up")==0) warm_up=strtol(argv[i+1],NULL,10);
     else if (strcmp(argv[i],"--resume")==0 || strcmp(argv[i],"-r")==0) sampling_action=SMPL_RESUME;
     else if (strcmp(argv[i],"--sens-approx")==0) sensitivity_approximation=1;
@@ -297,22 +304,12 @@ int main (int argc, char* argv[]) {
   double p[P];
   gsl_vector_view p_view=gsl_vector_view_array(p,P);
   ode_model_get_default_params(odeModel, p, P);
-  //  if(rank==0)  gsl_printf("default parameters",&(p_view.vector),GSL_IS_DOUBLE | GSL_IS_VECTOR);
+  if(rank==0)  gsl_printf("default parameters",&(p_view.vector),GSL_IS_DOUBLE | GSL_IS_VECTOR);
   //  double t_old = solver_param[2];
   
   omp.solver=solver;
 
-  if (cfilename!=NULL){
-    cnf=fopen(cfilename,"r");
-    if (cnf!=NULL){
-      printf("# [main] reading configuration file (cnf).\n");
-      parse_config(cnf,&omp,&cnf_options);
-    } else {
-      fprintf(stderr,"# [main] Could not open config file %s.\n",cfilename);
-      exit(1);
-    }
-    fclose(cnf);
-  } else if (h5file!=NULL){
+  if (h5file!=NULL){
     printf("# [main] reading hdf5 file, loading data..."); fflush(stdout);
     read_data(h5file,&omp);
     printf("done.\n"); fflush(stdout);
@@ -324,30 +321,27 @@ int main (int argc, char* argv[]) {
   cnf_options.initial_stepsize=fabs(cnf_options.initial_stepsize);
   cnf_options.target_acceptance=fabs(cnf_options.target_acceptance);
   cnf_options.sample_size=fabs(cnf_options.sample_size);
-  
-  if (omp.normalisation_type==DATA_IS_ABSOLUTE){
-    ode_model_get_initial_conditions(odeModel, y, N);
-  } else {
-    gsl_vector_set_all(&(y_view.vector),1.0);
-  }
+  ode_model_get_initial_conditions(odeModel, y, N);
+  /*
+   * if (omp.normalisation_type==DATA_IS_ABSOLUTE){
+   *  ode_model_get_initial_conditions(odeModel, y, N);  
+   * } else {
+   *  gsl_vector_set_all(&(y_view.vector),1.0);
+   * }
+   */
   int C=omp.size->C;
   
   /* if (rank==0){ */
   /*   for (c=0;c<C;c++){ */
   /*     printf("[main] Experiment %i:\n",c); */
   /*     gsl_printf("data",omp.E[c]->data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX); */
-  /*     gsl_printf("standard deviation",omp.E[c]->sd_data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX);     */
+  /*     gsl_printf("standard deviation",omp.E[c]->sd_data_block,GSL_IS_DOUBLE | GSL_IS_MATRIX); */
   /*     gsl_printf("u",omp.E[c]->input_u,GSL_IS_DOUBLE | GSL_IS_VECTOR); */
   /*     gsl_printf("t",omp.E[c]->t,GSL_IS_DOUBLE | GSL_IS_VECTOR); */
   /*   } */
   /* } */
   // unspecified initial conditions
   
-  if (omp.ref_E->init_y==NULL){
-    omp.ref_E->init_y=gsl_vector_alloc(N);
-    gsl_vector_memcpy(omp.ref_E->init_y,&(y_view.vector));
-  }
-
   int NNE=0; // number of normalising experiments
   int LE=0;  
   for (i=0;i<C;i++){
@@ -355,7 +349,7 @@ int main (int argc, char* argv[]) {
       omp.E[i]->init_y=gsl_vector_alloc(N);
       gsl_vector_memcpy(omp.E[i]->init_y,&(y_view.vector));
     }
-    NNE+=(omp.E[i]->lflag==0);
+    if (omp.E[i]->lflag==0) NNE++;
   }
   
   LE=C-NNE;
@@ -373,7 +367,7 @@ int main (int argc, char* argv[]) {
   printf("# [main] solver initialised.\n"); fflush(stdout);
   ode_solver_setErrTol(solver, solver_param[1], &solver_param[0], 1);
   if (ode_model_has_sens(odeModel)) {
-    ode_solver_init_sens(solver, omp.ref_E->yS0->data, P, N);
+    ode_solver_init_sens(solver, omp.E[0]->yS0->data, P, N);
     printf("# [main] sensitivity analysis initiated.\n");
   }
   
@@ -424,8 +418,9 @@ int main (int argc, char* argv[]) {
     for (i=0;i<D;i++) printf(" %g ",init_x[i]);
     printf("\n");
   }
-  mcmc_init(kernel, init_x);  
+  mcmc_init(kernel, init_x);
   printf("# [main] rank %i init complete .\n",rank);
+   
   //gsl_printf("mu",omp.prior->mu,GSL_IS_DOUBLE|GSL_IS_VECTOR);
   if (rank==0){
     printf("# [main] test evaluation of Posterior function done:\n");
@@ -437,6 +432,7 @@ int main (int argc, char* argv[]) {
   ode_solver_print_stats(solver, stdout);
   fflush(stdout);
   fflush(stderr);
+  MPI_Abort(MPI_COMM_WORLD,0);
   
   void *buffer=(void *) smmala_comm_buffer_alloc(D);
   size_t acc_c = 0;

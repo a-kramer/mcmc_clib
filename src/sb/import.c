@@ -645,15 +645,27 @@ herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash){
   
   gsl_vector *mu=NULL;  
   gchar **ValueName;
-  ValueName=g_strsplit("!DefaultValue !Value !Mean !Median !Mode"," ",-1);  
-  n=(int) g_strv_length(ValueName);
-  i=-1;
-  while (mu==NULL && i<n){
-    mu=sbtab_column_to_gsl_vector(Parameters,ValueName[++i]);
-  }
-  assert(mu!=NULL);  
-  printf("[process_prior] Using column «%s» for prior μ (mu).\n",ValueName[i]);
-  g_strfreev(ValueName);
+  
+  mu=sbtab_column_to_gsl_vector(Parameters,"!DefaultValue:logspace");
+  if (mu==NULL){ // the above name is not a column, so try a couple of other names
+    ValueName=g_strsplit("!DefaultValue !DefaultValue:linspace !Value !Mean !Median !Mode"," ",-1);  
+    n=(int) g_strv_length(ValueName);
+    i=-1;
+    while (mu==NULL && i<n){
+      mu=sbtab_column_to_gsl_vector(Parameters,ValueName[++i]);
+    }
+    assert(mu!=NULL);
+    printf("[process_prior] Using column «%s» for prior μ (mu).\n",ValueName[i]);
+    g_strfreev(ValueName);
+
+    // convert from linspace to logspace as the above names all refer to linspace 
+    double mu_i;    
+    for (i=0;i<mu->size;i++){
+      mu_i=gsl_vector_get(mu,i);
+      mu_i=gsl_sf_log(mu_i);
+      gsl_vector_set(mu,i,mu_i);
+    }
+  } 
   
   void *S; // S is either Precision, Covariance, or sigma;
   int type=PRIOR_IS_UNKNOWN;
