@@ -432,7 +432,7 @@ int main (int argc, char* argv[]) {
   ode_solver_print_stats(solver, stdout);
   fflush(stdout);
   fflush(stderr);
-  MPI_Abort(MPI_COMM_WORLD,0);
+  //MPI_Abort(MPI_COMM_WORLD,0);
   
   void *buffer=(void *) smmala_comm_buffer_alloc(D);
   size_t acc_c = 0;

@@ -84,7 +84,7 @@ int ode_solver_process_sens(ode_solver *solver, double tout,
   } // end if has func sens
   return GSL_SUCCESS;
 }
-
+//ode_solver_step(solver, gsl_vector_get(t,j), y, fy, yS, fyS, a);
 int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy, gsl_matrix *yS, gsl_matrix *fyS, sensitivity_approximation *a){
   /* solves ODE for parameter vector p;
    * returns state vectors y
@@ -101,15 +101,16 @@ int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy,
   }
   // get sensitivities and output function values for the calculated ODE solutions
   if (ode_model_has_funcs(model)) {
-    printf("obtaining functions."); fflush(stdout);
+    //printf("obtaining functions: "); fflush(stdout);
     ode_solver_get_func(solver, tout, y->data, fy->data);
-    printf("..done\n"); fflush(stdout);
+    //gsl_vector_fprintf(stdout,fy,"%f, ");
+    //printf("..done\n"); fflush(stdout);
   }
   else {
     fprintf(stderr,"ode model has no output functions");
     exit(-1);
   }
-  printf("obtaining sensitivities.\n"); fflush(stdout);
+  //printf("obtaining sensitivities.\n"); fflush(stdout);
   ode_solver_process_sens(solver, tout, y, fy, yS, fyS, a);
   return GSL_SUCCESS;
 }
@@ -302,6 +303,7 @@ int assign_oS_fyS(ode_model_parameters *mp){
   gsl_vector *t;
   gsl_matrix_view fyS_sub;
   gsl_vector_view oS_row;
+  //printf("assigning oS←fyS\n");
   for (c=0;c<C;c++){
     t=mp->E[c]->t;
     T=t->size;
@@ -455,8 +457,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
   /* calculate reference model output if necessary:
    */
   input_part=gsl_vector_subvector(mp->p,D,U);
-  //printf("[likelihood] start (normalisation type: %i).\n",mp->normalisation_type);
-  fflush(stdout);
+  //printf("[likelihood] start (normalisation type: %i).\n",mp->normalisation_type); fflush(stdout);
   for (c=0; c<C; c++){// loop over different experimental conditions
     // write inputs into the ode parameter vector
     gsl_vector_memcpy(&(input_part.vector),mp->E[c]->input_u);
@@ -496,7 +497,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
     }
     //printf("post normalisation\n");
     //printf_omp(mp);
-    
+    // save_simulation_results(mp); fflush(stdout);
     //initialise all return values
     // log-likelihood
     l[0]=0;    
@@ -513,6 +514,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 	   */      
 	  gsl_vector_sub(mp->E[c]->fy[j],mp->E[c]->data[j]);
 	  gsl_vector_div(mp->E[c]->fy[j],mp->E[c]->sd_data[j]); // (fy-data)/sd_data
+	  l_t_j=0;
 	  if (gsl_blas_ddot(mp->E[c]->fy[j],mp->E[c]->fy[j], &l_t_j)!=GSL_SUCCESS){
 	    printf("ddot was unsuccessful\n");
 	    exit(-1);
@@ -550,7 +552,6 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
   //printf("[LogLikelihood] done.\n"); fflush(stdout);
   /* debug output
    */
-  save_simulation_results(mp); fflush(stdout);
   return i_flag & status;
 }
 

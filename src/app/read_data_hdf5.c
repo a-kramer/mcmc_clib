@@ -23,16 +23,22 @@ herr_t load_stdv_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   int rank;
   herr_t status=H5LTget_dataset_ndims(g_id, name, &rank);
   hsize_t *size;
-  static int index=0;
+  int index=-1;
   size=malloc(sizeof(size_t)*rank);
   status&=H5LTget_dataset_info(g_id,name,size,NULL,NULL);
   assert(status>=0); // I think that hdf5 functions return negative error codes
   gsl_matrix *stdv_block;
   stdv_block=gsl_matrix_alloc(size[0],size[1]);
   status&=H5LTread_dataset_double(g_id, name, stdv_block->data);
-  if (index < mp->size->C){
+  int nout=0;
+  //printf("[load_stdv_block] the current hdf5 «name» is: %s\n",name);
+  nout=sscanf(name,"sd_data_block_%d",&index);
+  //printf("[load_stdv_block] nout=%d; the retrieved stdv index is: %i\n",nout,index);
+  assert(nout==1);
+  
+  if (index < mp->size->C && index >= 0){
+    assert(mp->E[index]->sd_data_block==NULL);
     mp->E[index]->sd_data_block=stdv_block;
-    index++;
   }else{
     fprintf(stderr,"[load_stdv_block] error: experiment index is larger than number ofexperiments (simulation units).\n");
     exit(-1);
@@ -122,8 +128,9 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
     NormaliseByOutput=NULL;
   }
   
-  if (index < mp->size->C){
+  if (index < mp->size->C && index >= 0){
     mp->E[index]->lflag=lflag;
+    assert(mp->E[index]->data_block==NULL);
     mp->E[index]->data_block=data_block;
     mp->E[index]->input_u=input;
     mp->E[index]->t=time;
