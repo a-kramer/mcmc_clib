@@ -40,17 +40,24 @@ int get_normalising_vector_with_sd(experiment *E, experiment *ref_E){
       gsl_vector_memcpy(E->normalise->stdv[t],ref_E->sd_data[rt]);      
     }
   }else{ // each output is normalised differently
-    // copy elements to fy and fyS
     for (f=0;f<F;f++){
       // output function:
-      k=gsl_vector_int_get(E->NormaliseByOutput,f)%F;
-      for (t=0;t<T;t++){
-	rt=j<0?t:j;      
-	val=gsl_vector_get(ref_E->data[rt],k);
-	dval=gsl_vector_get(ref_E->sd_data[rt],k);
-	gsl_vector_set(E->normalise->data[t],f,val);
-	gsl_vector_set(E->normalise->stdv[t],f,dval);
-      }
+      k=gsl_vector_int_get(E->NormaliseByOutput,f);
+      assert(k<F);
+      // k<0 means that this output is not normalised, so
+      // normalise->data[t](f) should be: 1.0±0.0
+      if (k>0){
+	for (t=0;t<T;t++){
+	  rt=j<0?t:j;      
+	  val=gsl_vector_get(ref_E->data[rt],k);
+	  dval=gsl_vector_get(ref_E->sd_data[rt],k);
+	  gsl_vector_set(E->normalise->data[t],f,val);
+	  gsl_vector_set(E->normalise->stdv[t],f,dval);
+	}
+      } else {
+	gsl_vector_set(E->normalise->data[t],f,1.0);
+	gsl_vector_set(E->normalise->stdv[t],f,0.0);	
+      }      
     }
   }  
   return GSL_SUCCESS;

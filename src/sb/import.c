@@ -842,7 +842,10 @@ herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vect
   // dY
   sprintf(H5_data_name,"sd_data_block_%i",index);
   sd_data_id = H5Dcreate2(sd_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  status &= H5Dwrite(sd_data_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dY->data);    
+  status &= H5Dwrite(sd_data_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dY->data);
+  status &= H5LTset_attribute_int(sd_group_id,H5_data_name,"index",&index, 1);
+  status &= H5LTset_attribute_int(sd_group_id,H5_data_name,"major",&major, 1); // major experiment index, as presented in SBtab file
+  status &= H5LTset_attribute_int(sd_group_id,H5_data_name,"minor",&minor, 1); // minor
   status &= H5Dclose(sd_data_id);    
   status &= H5Gclose(data_group_id);
   status &= H5Gclose(sd_group_id);

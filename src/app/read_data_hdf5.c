@@ -30,12 +30,19 @@ herr_t load_stdv_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   gsl_matrix *stdv_block;
   stdv_block=gsl_matrix_alloc(size[0],size[1]);
   status&=H5LTread_dataset_double(g_id, name, stdv_block->data);
-  int nout=0;
+
+  int major, minor;
+  //printf("[load_data_block] checking experiment's index: ");
+  status&=H5LTget_attribute_int(g_id,name,"index",&index); //printf(" %i ",index); assert(status>=0);
+  status&=H5LTget_attribute_int(g_id,name,"major",&major); //printf("%i.",major); assert(status>=0);
+  status&=H5LTget_attribute_int(g_id,name,"minor",&minor); //printf("%i",minor); assert(status>=0);
+
+  int i,nout=0;
   //printf("[load_stdv_block] the current hdf5 «name» is: %s\n",name);
-  nout=sscanf(name,"sd_data_block_%d",&index);
+  nout=sscanf(name,"sd_data_block_%d",&i);
   //printf("[load_stdv_block] nout=%d; the retrieved stdv index is: %i\n",nout,index);
   assert(nout==1);
-  
+  assert(i==index);
   if (index < mp->size->C && index >= 0){
     assert(mp->E[index]->sd_data_block==NULL);
     mp->E[index]->sd_data_block=stdv_block;
@@ -231,8 +238,10 @@ int read_data(const char *file, void *model_parameters){
   for (i=0;i<mp->size->C;i++){
     any_normalisation&=NEEDS_NORMALISATION(mp->E[i]);
   }
+
   if (any_normalisation){
     mp->normalisation_type=DATA_NORMALISED_INDIVIDUALLY;
+    normalise_with_sd(mp);
   }else{
     mp->normalisation_type=DATA_IS_ABSOLUTE;
   }

@@ -562,7 +562,7 @@ int main (int argc, char* argv[]) {
     /* print sample log and statistics every 100 samples */
     if ( ((it + 1) % CHUNK) == 0 ) {
       acc_rate = ((double) acc_c) / ((double) CHUNK);
-      fprintf(stdout, "# [rank %i/%i; β=%5f; %3li%% done] (it %5li) acc. rate: %3.2f; %3i %% swap success\t",rank,R,beta,it/Samples,it,acc_rate,swaps);
+      fprintf(stdout, "# [rank %i/%i; β=%5f; %3li%% done] (it %5li) acc. rate: %3.2f; %3i %% swap success\t",rank,R,beta,(100*it)/Samples,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       acc_c = 0;
 
@@ -609,13 +609,28 @@ int main (int argc, char* argv[]) {
   status&=H5LTset_attribute_int(file_id, "LogParameters", "MPI_RANK", &rank, 1);
   status&=H5LTset_attribute_ulong(file_id, "LogParameters", "SampleSize", &Samples, 1);
   status&=H5LTset_attribute_ulong(file_id, "LogParameters", "BurnIn", &BurnInSamples, 1);
-  status&=H5LTset_attribute_double(file_id, "LogParameters", "Temperature", &beta, 1);
+  status&=H5LTset_attribute_double(file_id, "LogParameters", "InverseTemperature_Beta", &beta, 1);
   
   status&=H5LTset_attribute_string(file_id, "LogParameters", "ModelLibrary", lib_base);
-  status&=H5LTset_attribute_string(file_id, "LogParameters", "DataFrom", cfilename);
+  status&=H5LTset_attribute_string(file_id, "LogParameters", "DataFrom", h5file);  
   ct=clock()-ct;
-  printf("# computation time spend sampling: %f s\n",((double) ct)/((double) CLOCKS_PER_SEC));
+  double sampling_time=((double) ct)/((double) CLOCKS_PER_SEC);
+  int ts=round(sampling_time);
+  int hms[3];
+  hms[0]=ts/3600;
+  hms[1]=(ts%3600)/60;
+  hms[2]=(ts%60);
+  printf("# computation time spend sampling: %i:%i:%i\n",hms[0],hms[1],hms[2]);
   
+  size[0]=1;
+  status&=H5LTmake_dataset_double (file_id, "SamplingTime_s", 1, size, &sampling_time);
+  size[0]=3;
+  status&=H5LTmake_dataset_int(file_id, "SamplingTime_hms", 1, size, hms);
+  
+  if(status){
+    printf("[rank %i] statistics written to file.\n",rank);
+  }
+    
   rFile=fopen(resume_filename,"w");
   mcmc_write_sample(kernel, rFile);
   fclose(rFile);
