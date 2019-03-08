@@ -10,10 +10,10 @@ IFLAGS = `pkg-config --cflags gsl glib-2.0`
 FLAGS = `pkg-config --libs --cflags gsl glib-2.0 hdf5` -lhdf5_hl
 
 MALA_SRC=./src/mcmc/smmala.c ./src/mcmc/mcmc_kernel.c			\
-./src/ode/ode_model.c ./src/app/read_cnf.c ./src/mcmc/mv_norm.c		\
+./src/ode/ode_model.c ./src/mcmc/mv_norm.c		\
 ./src/mcmc/model_parameters_smmala.c ./src/app/normalisation_sd.c	\
 ./src/app/dynamic_array.c ./src/mcmc/smmala_posterior.c ./src/app/diagnosis_output.c \
-./src/app/read_data_hdf5.c
+./src/app/read_data_hdf5.c ./src/app/flatten.c
 
 SB_SRC=./src/sb/sbtab.c
 
