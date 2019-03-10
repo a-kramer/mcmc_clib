@@ -621,6 +621,91 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   return status;
 }
 
+int make_regular_expression(regex_t *RE, char *pattern){
+  int EC=0;
+  char error_buffer[128];
+  regcomp(RE,pattern,REG_EXTENDED|REG_ICASE);
+  if (EC!=0) {
+    regerror(EC,RE,error_buffer,128);
+    perror(error_buffer);
+  }  
+  return EC;
+}
+
+gsl_vector* get_parameter_scale(GPtrArray *Scale){
+  guint n=0;
+  guint i;
+  gsl_vector_int *scale_type=NULL;
+  regex_t LogType;
+  regex_t Log10Type;
+  regex_t LinType;
+  gchar *Type;
+  regmatch_t match[5];
+  int EC=0;
+  assert(Scale!=NULL);
+  n=Scale->len;
+  // int regexec(const regex_t *restrict preg, const char *restrict string,
+  //             size_t nmatch, regmatch_t pmatch[restrict], int eflags);
+  EC&=make_regular_expression(&LogType,"(natural|base-e)?[[:blank:]]*(log(arithm)?)$|^ln$");
+  EC&=make_regular_expression(&Log10Type,"(decadic|base-10)[[:blank:]]*(log(arithm)?)$|^log10$");
+  EC&=make_regular_expression(&LinType,"linear");
+  assert(EC==0);
+ 
+  scale_type=gsl_vector_int_alloc((size_t) n);
+  gsl_vector_int_set_all(scale_type,1);
+  for (i=0;i<n;i++){
+    Type=g_ptr_array_index(Scale,i);
+    if (regexec(&LogType, Type, 3, &match, 0)){
+      gsl_vector_int_set(scale_type,i,1);
+    } else if (regexec(&Log10Type, Type, 3, &match, 0)){
+      gsl_vector_int_set(scale_type,i,2);
+    } else if (regexec(&LinType, Type, 1, &match, 0)){
+      gsl_vector_int_set(scale_type,i,0);
+    } else {
+      printf("[get_parameter_scale] This «!Scale[%i]» is unknown: «%s»\n",(int) i, Type);
+      exit(-1);
+    }
+  }
+  return scale_type;
+}
+
+int adjust_scale(gsl_vector *mu, gsl_vector *stdv, gsl_vector_int *ScaleType){
+  assert(ScaleType);
+  assert(mu);  
+  int i,n=ScaleType->size;
+  int t_i;
+  double LOG10=gsl_sf_log(10);
+  double mu_i, stdv_i, var_i, median_i;
+  double es2; // exp(sigma^2) of logspace sigma
+  for (i=0;i<n;i++){
+    t_i=gsl_vector_int_get(ScaleType,i);
+    mu_i=gsl_vector_get(mu,i);
+    stdv_i=gsl_vector_get(stdv,i);
+    switch (t_i){
+    case 0:      
+      median_i=mu_i;
+      var_i=gsl_pow_2(stdv_i);
+      // find mu and sigma of logspace
+      mu_i=gsl_sf_log(median_i);
+      es2=0.5+sqrt(0.25+gsl_pow_2(stdv_i/median_i));
+      assert(es2>0);
+      stdv_i=sqrt(gsl_sf_log(es2));
+      // update the values of mu and stdv, now in logspace
+      gsl_vector_set(stdv,i,stdv_i);
+      gsl_vector_set(mu,i,mu_i);
+      break;    
+    case 2:
+      // here we just have to do a very simple shift by a factor of log(10).
+      mu_i*=LOG10;
+      stdv_i*=LOG10;
+      gsl_vector_set(mu,i,mu_i);
+      gsl_vector_set(stdv,i,stdv_i);
+      break;      
+    }
+  }
+  return EXIT_SUCCESS;
+}
+
 herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash){
   int i,n;
   printf("[process_prior] Looking up «Parameter» Table.\n");
@@ -645,10 +730,21 @@ herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash){
   
   gsl_vector *mu=NULL;  
   gchar **ValueName;
+
+  // get the scale (logarithmic or not)
+  GPtrArray *Scale;
+  Scale=sbtab_get_column(Parameters,"!Scale");
+  gsl_vector_int *ScaleType; // 0 linear; 1 natural logarithm; 10 decadic logarithm;
+  if (Scale){
+    ScaleType=get_parameter_scale(Scale);
+  }else{
+    ScaleType=gsl_vector_int_alloc((int) P_ID->len);
+    gsl_vector_int_set_all(ScaleType,1);
+  }
   
-  mu=sbtab_column_to_gsl_vector(Parameters,"!DefaultValue:logspace");
+  mu=sbtab_column_to_gsl_vector(Parameters,"!DefaultValue");
   if (mu==NULL){ // the above name is not a column, so try a couple of other names
-    ValueName=g_strsplit("!DefaultValue !DefaultValue:linspace !Value !Mean !Median !Mode"," ",-1);  
+    ValueName=g_strsplit("!Value !Mean !Median !Mode"," ",-1);  
     n=(int) g_strv_length(ValueName);
     i=-1;
     while (mu==NULL && i<n){
@@ -657,21 +753,25 @@ herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash){
     assert(mu!=NULL);
     printf("[process_prior] Using column «%s» for prior μ (mu).\n",ValueName[i]);
     g_strfreev(ValueName);
+  }
+  int D=mu->size;
 
-    // convert from linspace to logspace as the above names all refer to linspace 
-    double mu_i;    
-    for (i=0;i<mu->size;i++){
-      mu_i=gsl_vector_get(mu,i);
-      mu_i=gsl_sf_log(mu_i);
-      gsl_vector_set(mu,i,mu_i);
-    }
-  } 
+
+  /* else { */
+  /*   // convert from linspace to logspace as the above names all refer to linspace  */
+  /*   double mu_i;     */
+  /*   for (i=0;i<mu->size;i++){ */
+  /*     mu_i=gsl_vector_get(mu,i); */
+  /*     mu_i=gsl_sf_log(mu_i); */
+  /*     gsl_vector_set(mu,i,mu_i); */
+  /*   } */
+  /* } */
   
   void *S; // S is either Precision, Covariance, or sigma;
   int type=PRIOR_IS_UNKNOWN;
-  int D=mu->size;
   gsl_matrix *M=NULL;
   printf("[process_prior] prior has size %i.\n",D);
+
   if (any_cov_given){
     sbtab_t *C;
     type=PRIOR_IS_GAUSSIAN;
@@ -707,14 +807,11 @@ herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash){
     type=PRIOR_IS_GAUSSIAN;
     gsl_vector *stdv;
     stdv=sbtab_column_to_gsl_vector(Parameters,"!Std");
-    //gsl_vector_view diagonal;
-    //diagonal=gsl_matrix_diagonal(Sigma);
-    herr_t status;
-    int type=0;
-    if (stdv!=NULL){      
+    if (stdv){
       printf("[process_prior] using !Std column.\n");
+      adjust_scale(mu,stdv,ScaleType);
       gsl_vector_memcpy(sigma,stdv);
-      gsl_vector_free(stdv);
+      gsl_vector_free(stdv);      
       S=sigma;
     } else {
       ALSO(type,PRIOR_IS_GENERALISED);
@@ -726,17 +823,18 @@ herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash){
 	alpha=gsl_vector_alloc(D);
 	gsl_vector_set_zero(alpha);
 	printf("[process_prior] Creating generalised Gaussian prior from !Min and !Max fields.\n");
-	type=(PRIOR_IS_GENERALISED | PRIOR_IS_GAUSSIAN);
 	// apha is the width of the [min,max] interval 
 	gsl_vector_add(alpha,par_max);
 	gsl_vector_sub(alpha,par_min);
 	gsl_vector_scale(alpha,0.5);
 	S=alpha;
+      }else{
+	printf("[process_prior] neither !Std, nor (!Max,!Min) pairs were specified.\n");
+	exit(-1);
       }
     }     
   }
-  herr_t status;
-  status = write_prior_to_hdf5(file_id, mu, S, type);
+  herr_t status = write_prior_to_hdf5(file_id, mu, S, type);
   return status;
 }
 

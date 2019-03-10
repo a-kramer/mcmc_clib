@@ -87,9 +87,11 @@ typedef struct {
 #define SMPL_RESUME_TUNE 2
 
 #define BUFSZ 2048
-//#define BETA(rank,R) gsl_pow_4((double)(rank)/(double) ((R)-1))
+//#define BETA(rank,R) gsl_pow_4((double)(R-rank)/(double) (R))
 //#define BETA(rank,R) (1.0/((double)(rank+1)))
-#define BETA(rank,R) gsl_sf_exp(-gamma*((double) rank))
+//#define BETA(rank,R) gsl_sf_exp(-gamma*((double) rank))
+
+
 
 /* Auxiliary structure with working storage and aditional parameters for
  * a multivariate normal model with known covariance matrix and zero mean.
@@ -102,6 +104,14 @@ typedef struct {
 	char init;
 } mvNormParams;
  */
+
+double assign_beta(int rank, int R, int gamma){
+  double x=(double)(R-rank)/(double) R;
+  double b=-1;
+  b=gsl_pow_int(x, gamma);
+  assert(b>=0 && b<=1.0);
+  return b;
+}
 
 int print_help(){
   printf("Usage:\n");
@@ -383,7 +393,8 @@ int main (int argc, char* argv[]) {
   double init_x[D];
   /* allocate a new RMHMC MCMC kernel */
   //printf("# [main] allocating memory for a new SMMALA MCMC kernel.\n");
-  double beta=BETA(rank,R);
+  //double beta=BETA(rank,R);
+  double beta=assign_beta(rank,R,round(gamma));
   mcmc_kernel* kernel = smmala_kernel_alloc(beta,D,
 					    cnf_options.initial_stepsize,
 					    model,
