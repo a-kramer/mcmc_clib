@@ -188,7 +188,8 @@ void print_chunk_graph(gsl_matrix *X, gsl_vector *lP){
     printf("\n\n");    
   }
   printf("|");
-  for (j=0;j<width-2;j++) printf("-"); printf("|\n");
+  for (j=0;j<width-2;j++) printf("-");
+  printf("|\n");
   printf("%+4.4g",min);
   for (j=0;j<width-8;j++) printf(" ");
   printf("%+4.4g\n",max);  
@@ -198,28 +199,30 @@ void print_chunk_graph(gsl_matrix *X, gsl_vector *lP){
 int main (int argc, char* argv[]) {
   int D = 0; // number of MCMC sampling variables, i.e. model parameters
   //int C = 0; // number of experimental conditions, i.e different input vectors
-  int c,i=0;
+  int i=0;
   int warm_up=0; // sets the number of burn in points at command line
-  char *cfilename=NULL;
+  //  char *cfilename=NULL;
   char lib_name[BUFSZ];
   ode_model_parameters omp;
-  FILE *cnf;   // configuration file, with file name: cfilename
+  //FILE *cnf;   // configuration file, with file name: cfilename
   char global_sample_filename_stem[BUFSZ]="Sample.h5"; // filename basis
   char rank_sample_file[BUFSZ]; // filename for sample output
   //char *x_sample_file=NULL; // filename for sample output x(t,p)
   //char *y_sample_file=NULL; // filename for sample output y(t,p)
-  FILE *oFile; // will be the file named «sample_file»
-  FILE *rFile; // last sampled value will be written to this file
+  //FILE *oFile; // will be the file named «sample_file»
+  //FILE *rFile; // last sampled value will be written to this file
   char resume_filename[BUFSZ]="resume.double";
   //int output_is_binary=0;
   double seed = 1;
   double gamma=0.25;
   double t0=NAN;
   int sampling_action=SMPL_FRESH;
-  size_t resume_count;
+  //  size_t resume_count;
   gsl_error_handler_t *gsl_error_handler;
   int start_from_prior=0;
   gsl_error_handler = gsl_set_error_handler_off();
+  assert(gsl_error_handler);
+  
   int sensitivity_approximation=0;
   //  strcpy(sample_file,"sample.dat");
   main_options cnf_options;
@@ -274,7 +277,7 @@ int main (int argc, char* argv[]) {
   lib_base=basename(lib_name);
   dot=strchr(lib_base,'.');
   dot[0]='\0';
-  sprintf(resume_filename,"%s_resume_%02i.double",lib_base,rank);
+  sprintf(resume_filename,"%s_resume_%02i.h5",lib_base,rank);
   sprintf(rank_sample_file,"mcmc_rank_%02i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options.output_file));
   cnf_options.output_file=rank_sample_file;
   
@@ -294,10 +297,9 @@ int main (int argc, char* argv[]) {
   /* init solver */
   realtype solver_param[3] = {ODE_SOLVER_ABS_ERR, ODE_SOLVER_REL_ERR, 0};
 
-  char **x_name, **p_name, **f_name;
-  x_name=ode_model_get_var_names(odeModel);
-  p_name=ode_model_get_param_names(odeModel);
-  f_name=ode_model_get_func_names(odeModel);
+  const char **x_name=ode_model_get_var_names(odeModel);
+  const char **p_name=ode_model_get_param_names(odeModel);
+  const char **f_name=ode_model_get_func_names(odeModel);
   
   /* define local variables for parameters and inital conditions */
   int N = ode_model_getN(odeModel);
@@ -402,19 +404,10 @@ int main (int argc, char* argv[]) {
 					    cnf_options.target_acceptance);
   /* initialise MCMC */
   // if (rank==0) gsl_printf("prior mean",omp.prior_mu,GSL_IS_DOUBLE | GSL_IS_VECTOR);
+  int resume_load_status=0;
   if (sampling_action==SMPL_RESUME){
-    rFile=fopen(resume_filename,"r");
-    if (rFile==NULL) {
-      fprintf(stderr,"[rank %i] Could not open resume file. Starting from: ",rank);
-      for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior->mu,i);
-    } else {
-      resume_count=fread(init_x, sizeof(double), D, rFile);
-      fclose(rFile);
-      if (resume_count!=D) {
-	fprintf(stderr,"[rank %i] Reading from resume file returned a wrong number of values.",rank);
-	exit(-1);
-      }
-    }
+    resume_load_status=load_resume_state(resume_filename, rank, R, kernel);
+    assert(resume_load_status==EXIT_SUCCESS);
   } else if (start_from_prior==1){     
     if (rank==0) printf("# [main] setting initial mcmc vector to prior mean.\n");
     for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior->mu,i);
@@ -436,7 +429,8 @@ int main (int argc, char* argv[]) {
   if (rank==0){
     printf("# [main] test evaluation of Posterior function done:\n");
     printf("# \tθ=θ₀; LogPosterior(θ|D)=%+g;\n# where θ₀:",kernel->fx[0]); 
-    for (i=0;i<D;i++) printf(" %+g ",kernel->x[i]); printf("\n");
+    for (i=0;i<D;i++) printf(" %+g ",kernel->x[i]);
+    printf("\n");
     printf("# [main] LogLikelihood(D|θ):");
     printf("%+g\tLogPrior(θ)=%+g.\n",kernel->fx[1],kernel->fx[2]);    
   }
@@ -588,6 +582,7 @@ int main (int argc, char* argv[]) {
       swaps=0;
     }
   }
+  assert(status==0);
   // write remaining data to the output hdf5 file
   int Rest=Samples % CHUNK;
   printf("[main] last iteration done %i points remain to write.\n",Rest);
@@ -641,11 +636,10 @@ int main (int argc, char* argv[]) {
   if(status){
     printf("[rank %i] statistics written to file.\n",rank);
   }
-    
-  rFile=fopen(resume_filename,"w");
-  mcmc_write_sample(kernel, rFile);
-  fclose(rFile);
 
+  int resume_EC=0;
+  resume_EC=write_resume_state(resume_filename, rank, R, kernel);
+  assert(resume_EC==EXIT_SUCCESS);
   H5Dclose(posterior_set_id);
   H5Dclose(parameter_set_id);
   H5Sclose(para_dataspace_id);
@@ -661,6 +655,3 @@ int main (int argc, char* argv[]) {
   MPI_Finalize();
   return EXIT_SUCCESS;
 }
-
-
-

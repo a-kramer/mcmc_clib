@@ -23,7 +23,7 @@ extern "C" {
 				      void* model_params,
 				      double *fx,
 				      gsl_vector **dfx, gsl_matrix **Hfx);
-	
+  
   /*typedef int (*fptrModelGrad)(const double* x, const void* model_params,
     double* dfx, double* Hfx);*/
 	
@@ -39,7 +39,10 @@ extern "C" {
   void smmala_model_free(smmala_model* model);
 
   mcmc_kernel* smmala_kernel_alloc(const double beta, const int N, double step_size, smmala_model* model_function, unsigned long int seed, const double target_acceptance);
-  
+
+  int write_resume_state(const char *file_name, int rank, int R, const mcmc_kernel *kernel);
+  int load_resume_state(const char *file_name, int rank, int R, const mcmc_kernel *kernel);
+
   
 #ifdef __cplusplus
 }

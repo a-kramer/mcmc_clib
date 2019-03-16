@@ -34,9 +34,9 @@ int ode_solver_process_sens(ode_solver *solver, double tout,
     gsl_vector_view eJt_diag;
     //gsl_permutation *permutation;
     gsl_vector_view jacp_row;
-    int signum;
+    //int signum;
     int status;
-    int N=ode_model_getN(model);
+    //int N=ode_model_getN(model);
     int P=ode_model_getP(model);
     int i;
     // get jacobian
@@ -139,7 +139,7 @@ int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy,
  */
 int get_normalising_vector_cpy(experiment *E, experiment *ref_E){
   int t,rt;
-  int f,k,nk;
+  int f,k;
   double fy_k;
   gsl_vector_view fyS_column, ref_column;
   int j=E->NormaliseByTimePoint;
@@ -148,7 +148,7 @@ int get_normalising_vector_cpy(experiment *E, experiment *ref_E){
     // so if ref_E is NULL; it defaults to E;
     ref_E=E;
   }
-  int F=E->fy[t]->size;
+  int F=E->fy[0]->size;
   int T=E->t->size;
   int rT=ref_E->t->size;
 
@@ -198,7 +198,7 @@ int get_normalising_vector_cpy(experiment *E, experiment *ref_E){
  * experiment differently, as specified. (work in progress)
  */
 int normalise(ode_model_parameters *mp){
-  int c,j,k,l;
+  int c,j,k;
   int C=mp->size->C;
   int T=mp->size->T;
   int D=mp->size->D;
@@ -211,14 +211,14 @@ int normalise(ode_model_parameters *mp){
   gsl_vector *v;
   gsl_matrix *M;
   gsl_vector_view M_row;
-  gsl_vector_view fyS_k_row; // 
-  gsl_vector *fyS_k; // the raw fy sensitivity for one parameter k
-  gsl_vector_view rfyS_k_row; // 
-  gsl_vector *rfyS_k; // the raw fy sensitivity for one parameter k
+  /* gsl_vector_view fyS_k_row; //  */
+  /* gsl_vector *fyS_k; // the raw fy sensitivity for one parameter k */
+  /* gsl_vector_view rfyS_k_row; //  */
+  /* gsl_vector *rfyS_k; // the raw fy sensitivity for one parameter k */
   gsl_vector_view oS_k_row; // 
   gsl_vector *oS_k; // the normalised output sensitivity for one parameter k
   int i,nt;
-  int rt;
+  //int rt;
   experiment *ref_E=NULL;
   v=mp->tmpF;
   M=mp->tmpDF;
@@ -231,18 +231,7 @@ int normalise(ode_model_parameters *mp){
     if (NEEDS_NORMALISATION(mp->E[c])){
       i=mp->E[c]->NormaliseByExperiment;
       ref_E=(i<0 || i>C)?NULL:(mp->E[i]);
-      rt=mp->E[c]->NormaliseByTimePoint;
-      //printf("[normalise] normalisation is needed: %i, %i and (",i,rt);
-      //if (mp->E[c]->NormaliseByOutput!=NULL) gsl_vector_fprintf(stdout,mp->E[c]->NormaliseByOutput," %g ");
-      //else printf("NULL");
-      //printf(").\n");
-      //fflush(stdout);
-      
-      /* if (ref_E==NULL && rt<0){ */
-      /* 	fprintf(stderr,"[get_normalising_vector] reference experiment is NULL, but no Normalising TimePoint was specified.\n[get_normalising_vector] Experiment %i, TimePoint=%i.\n",c,rt); */
-	
-      /* }; */
-
+      //rt=mp->E[c]->NormaliseByTimePoint;
       // the result of get_normalising_vector_cpy wil be stored in the
       // experiment's normalisation struct
       get_normalising_vector_cpy(mp->E[c], ref_E);
@@ -294,7 +283,7 @@ int normalise(ode_model_parameters *mp){
 }
 
 int assign_oS_fyS(ode_model_parameters *mp){
-  int i,j,k,c;
+  int j,k,c;
   int C,T;
   int D,F;
   D=mp->size->D;
@@ -326,13 +315,12 @@ int save_simulation_results(ode_model_parameters *omp){
   herr_t EC=0;
   hid_t file_id=H5Fcreate("SimulationResult.h5",H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
   ode_model *model=omp->solver->odeModel;
-  char **y_name, **p_name, **f_name;
-
+  
   assert(file_id>0);
   printf("[save_simulation_results] hdf5 file opened\n");
-  y_name=ode_model_get_var_names(model);
-  p_name=ode_model_get_param_names(model);
-  f_name=ode_model_get_func_names(model);
+  const char **y_name=ode_model_get_var_names(model);
+  const char **p_name=ode_model_get_param_names(model);
+  const char **f_name=ode_model_get_func_names(model);
 
   char *y_names=flatten(y_name, (size_t) omp->size->N, "; ");
   char *p_names=flatten(p_name, (size_t) omp->size->P, "; ");
@@ -558,7 +546,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 int display_prior_information(const void *Prior_str){
   prior_t *prior=(prior_t*) Prior_str;
   int D=prior->mu->size;
-  gsl_vector *prior_diff;
+  //gsl_vector *prior_diff;
   assert(prior!=NULL);
   // get the ode model's prior type
   int opt=prior->type;

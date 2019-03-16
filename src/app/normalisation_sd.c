@@ -18,7 +18,7 @@
 int get_normalising_vector_with_sd(experiment *E, experiment *ref_E){
   //int i=E->NormaliseByExperiment;
   int t,rt;
-  int f,k,nk;
+  int f,k;
   double val, dval;
   int j=E->NormaliseByTimePoint;
   
@@ -46,7 +46,7 @@ int get_normalising_vector_with_sd(experiment *E, experiment *ref_E){
       assert(k<F);
       // k<0 means that this output is not normalised, so
       // normalise->data[t](f) should be: 1.0±0.0
-      if (k>0){
+      if (k>0 && k<F){
 	for (t=0;t<T;t++){
 	  rt=j<0?t:j;      
 	  val=gsl_vector_get(ref_E->data[rt],k);
@@ -55,8 +55,10 @@ int get_normalising_vector_with_sd(experiment *E, experiment *ref_E){
 	  gsl_vector_set(E->normalise->stdv[t],f,dval);
 	}
       } else {
-	gsl_vector_set(E->normalise->data[t],f,1.0);
-	gsl_vector_set(E->normalise->stdv[t],f,0.0);	
+	for (t=0;t<T;t++){
+	  gsl_vector_set(E->normalise->data[t],f,1.0);
+	  gsl_vector_set(E->normalise->stdv[t],f,0.0);
+	}
       }      
     }
   }  
@@ -65,11 +67,11 @@ int get_normalising_vector_with_sd(experiment *E, experiment *ref_E){
 
 int normalise_with_sd(void *model_parameters){
   ode_model_parameters *mp=model_parameters;
-  int c,t,k,l;
+  int c,t;
   int C=mp->size->C;
   int T=mp->size->T;
-  int D=mp->size->D;
-  int F=mp->size->F;
+  // int D=mp->size->D;
+  // int F=mp->size->F;
   assert(T>0);
   gsl_vector **data, **stdv;
   gsl_vector **r_data, **r_stdv;

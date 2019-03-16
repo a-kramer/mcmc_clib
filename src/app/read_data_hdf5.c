@@ -17,6 +17,7 @@
 #include "../ode/ode_model.h"
 #include "../mcmc/model_parameters_smmala.h"
 #include "read_data_hdf5.h"
+#include "normalisation_sd.h"
 
 herr_t load_stdv_block(hid_t g_id, const char *name, const H5L_info_t *info, void *op_data){
   ode_model_parameters *mp=op_data;
@@ -79,7 +80,7 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   status&=H5LTget_attribute_int(g_id,name,"LikelihoodFlag",&lflag); //printf(" %i ",lflag);
   //printf("\n");
   assert(status>=0);
-  hsize_t T,U,D; // measurement time, lenght of input vector, number of unknown parameters
+  hsize_t T,U; // measurement time, lenght of input vector, number of unknown parameters
   status&=H5LTget_attribute_ndims(g_id,name,"time",&rank);
   //printf("[load_data_block] checking experiment's measurement times(%i).\n",rank);
   fflush(stdout);
@@ -88,25 +89,23 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   size_t      type_size;
   gsl_vector *time, *input;
   
-  if (rank==1){    
-    status&=H5LTget_attribute_info(g_id,name,"time",&T,&type_class,&type_size);
-    assert(status>=0);    
-    //printf("[load_data_block] loading simulation unit %i; Experiment %i.%i with %lli measurements\n",index,major,minor,T);    
-    fflush(stdout);
-    time=gsl_vector_alloc((size_t) T);
-    H5LTget_attribute_double(g_id,name,"time",time->data);
-  }
+  //  if (rank==1){    
+  status&=H5LTget_attribute_info(g_id,name,"time",&T,&type_class,&type_size);
+  assert(status>=0);    
+  //printf("[load_data_block] loading simulation unit %i; Experiment %i.%i with %lli measurements\n",index,major,minor,T);    
+  fflush(stdout);
+  time=gsl_vector_alloc((size_t) T);
+  H5LTget_attribute_double(g_id,name,"time",time->data);
+  //}
   H5LTget_attribute_info(g_id,name,"input",&U,&type_class,&type_size);
   //printf("[load_data_block] input size: %i.\n",(int) U);
   input=gsl_vector_alloc((size_t) U);
   H5LTget_attribute_double(g_id,name,"input",input->data);
-
-
   
   // normalisation properties
   int NormaliseByExperiment;
   int NormaliseByTimePoint;
-  gsl_vector_int *NormaliseByOutput;
+  gsl_vector_int *NormaliseByOutput=NULL;
   herr_t attr_err;
   hid_t d_id=H5Dopen2(g_id, name, H5P_DEFAULT);
   if (H5LTfind_attribute(d_id,"NormaliseByExperiment")){

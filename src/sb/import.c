@@ -632,7 +632,7 @@ int make_regular_expression(regex_t *RE, char *pattern){
   return EC;
 }
 
-gsl_vector* get_parameter_scale(GPtrArray *Scale){
+gsl_vector_int* get_parameter_scale(GPtrArray *Scale){
   guint n=0;
   guint i;
   gsl_vector_int *scale_type=NULL;
@@ -652,7 +652,7 @@ gsl_vector* get_parameter_scale(GPtrArray *Scale){
   assert(EC==0);
  
   scale_type=gsl_vector_int_alloc((size_t) n);
-  gsl_vector_int_set_all(scale_type,1);
+  gsl_vector_int_set_all(scale_type,-1);
   for (i=0;i<n;i++){
     Type=g_ptr_array_index(Scale,i);
     if (regexec(&LogType, Type, 3, &match, 0)){
@@ -666,6 +666,7 @@ gsl_vector* get_parameter_scale(GPtrArray *Scale){
       exit(-1);
     }
   }
+  //gsl_vector_int_fprintf(stdout,scale_type,"%i");
   return scale_type;
 }
 

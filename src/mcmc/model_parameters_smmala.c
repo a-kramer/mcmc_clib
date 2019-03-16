@@ -106,13 +106,13 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
    * C: number of different experimental conditions
    * T: number of measured time points
    */
-  int i,j;
+  int i;
   int N=omp->size->N; // number of state variables
   int C=omp->size->C; // number of experimental conditions
   int F=omp->size->F; // number of output functions
   int D=omp->size->D; // number of sampling parameters (to be estimated)
-  int U=omp->size->U; // number of input parameters (known)
-  int T=omp->size->T; // number of measurement time instances
+  //int U=omp->size->U; // number of input parameters (known)
+  //int T=omp->size->T; // number of measurement time instances
   int P=omp->size->P; // number of total parameters D+U (a consistency check
 	       // between ode_model and mcmc configuration file)
   
@@ -155,7 +155,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
 }
 
 int ode_model_parameters_free(ode_model_parameters *omp){
-  int i,j,k;
+  int i,j;
   int C=omp->size->C;
   int T=omp->size->T;
 
