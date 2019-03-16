@@ -79,7 +79,8 @@ int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
     }      
     if(n!=c) {
       fprintf(stderr,"[sbtab_append_row] data contained %i entries while table has %i headers\n\t\t",n,c);
-      for (i=0;i<c;i++) fprintf(stderr,"«%s» ",sbtab->key[i]);       fprintf(stderr,"\n\t\t");
+      for (i=0;i<c;i++) fprintf(stderr,"«%s» ",sbtab->key[i]);
+      fprintf(stderr,"\n\t\t");
       for (i=0;i<n;i++) fprintf(stderr,"«%s» ",s[i]);
       fprintf(stderr,"\t\t\tinput is a [tc]sv file, so delimited by ,; or \\t and inline comments marked by %%\n");
       guint nTK;

@@ -221,7 +221,7 @@ int main (int argc, char* argv[]) {
   gsl_error_handler_t *gsl_error_handler;
   int start_from_prior=0;
   gsl_error_handler = gsl_set_error_handler_off();
-  assert(gsl_error_handler);
+  //assert(gsl_error_handler);
   
   int sensitivity_approximation=0;
   //  strcpy(sample_file,"sample.dat");
