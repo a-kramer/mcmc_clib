@@ -108,19 +108,20 @@ typedef struct {
 double assign_beta(int rank, int R, int gamma){
   double x=(double)(R-rank)/(double) R;
   double b=-1;
+  assert(gamma>=1);
   b=gsl_pow_int(x, gamma);
   assert(b>=0 && b<=1.0);
   return b;
 }
 
-int print_help(){
-  printf("Usage:\n");
+void print_help(){
+  printf("Usage ($SOMETHING are values you choose, written as bash variables):\n");
   printf("-a $ACCEPTANCE_RATE\n");
   printf("\t\t\tTarget acceptance value (all markov chains will be tuned for this acceptance).\n\n");
   printf("-d, --hdf5 ./data.h5\n");
-  printf("\t\t\tdata.h5 contains the data points and the conditions of measurement in hdf5 format. This and .cfg files are mutually exclusive. A suitable h5 file is produced by the hdf5_import program.\n\n");
+  printf("\t\t\tdata.h5 is a file that contains the data points and the conditions of measurement in hdf5 format. A suitable h5 file is produced by the hdf5_import program bundled with ode_smmala.\n\n");
   printf("-g $G\n");
-  printf("\t\t\tThis will define how the inverse MCMC temperatures β are chosen: β = exp(-G*MPI_Rank).\n\n");
+  printf("\t\t\tThis will define how the inverse MCMC temperatures β are chosen: β = (1-rank/R)^G, where R is MPI_Comm_Size.\n\n");
   printf("-i $STEP_SIZE\n");
   printf("\t\t\tThe initial step size of each markov chain, this will usually be tuned to get the desired acceptance rate $A (-a $A).\n\n");
   printf("-l ./ode_model.so\n");
@@ -128,19 +129,16 @@ int print_help(){
   printf("-o ./output_file.h5\n");
   printf("\t\t\tFilename for hdf5 output. This file will contain the log-parameter sample and log-posterior values. The samples will have attributes that reflect the markov chain setup.\n\n");
   printf("-p, --prior-start\n");
-  printf("\t\t\tStart the markov chain at the center of the prior.\n");
+  printf("\t\t\tStart the markov chain at the center of the prior. Otherwise it will be started from the DefaultParameters in the vfgen file.\n");
   printf("-r, --resume\n");
-  printf("\t\t\tResume from last sampled MCMC point. Only the last MCMC position is read from the file named «resume.double». Everything else about the problem can be changed.\n");
+  printf("\t\t\tResume from last sampled MCMC point. Only the last MCMC position is read from the resume file. Everything else about the problem can be changed.\n");
   printf("-s $N\n");
   printf("\t\t\t$N sample size. default N=10.\n\n");
   printf("-t,--init-at-t $T_INITIAL\n");
   printf("\t\t\tSpecifies the initial time «t0» of the model integration [initial value problem for the ordinary differential equation in x; x(t0)=x0]\n\n");
-  //printf("-b\n");
-  //printf("\t\t\tOutput mode: binary.\n\n");
   printf("--seed $SEED\n");
   printf("\t\tSet the gsl pseudo random number generator seed to $SEED. (perhaps --seed $RANDOM)\n\n");
-  MPI_Finalize();
-  return EXIT_SUCCESS;
+  exit(EXIT_SUCCESS);
 }
 
 void print_chunk_graph(gsl_matrix *X, gsl_vector *lP){
@@ -543,7 +541,7 @@ int main (int argc, char* argv[]) {
   log_post_chunk=gsl_vector_alloc(CHUNK);
   gsl_vector_view current;
   gsl_vector_view x_state;
-  swaps=0;
+  swaps = 0;
   acc_c = 0;
   for (it = 0; it < Samples; it++) {
     mcmc_sample(kernel, &acc);
