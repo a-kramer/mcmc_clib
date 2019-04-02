@@ -42,7 +42,7 @@ extern "C" {
 
   int write_resume_state(const char *file_name, int rank, int R, const mcmc_kernel *kernel);
   int load_resume_state(const char *file_name, int rank, int R, const mcmc_kernel *kernel);
-
+  double get_step_size(const mcmc_kernel *kernel);
   
 #ifdef __cplusplus
 }

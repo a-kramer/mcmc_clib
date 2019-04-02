@@ -51,6 +51,11 @@ void* smmala_comm_buffer_alloc(int D){
   return smmala_buffer;
 }
 
+double get_step_size(const mcmc_kernel *kernel){
+  smmala_params *state = kernel->kernel_params;
+  return state->stepsize;
+}
+
 int smmala_exchange_information(mcmc_kernel* kernel, const int DEST, void *buffer){
   MPI_Status status; // MPI_Status contains: MPI_SOURCE, MPI_TAG, MPI_ERROR
   int N=kernel->N; // size of x, dfx; N*N is size of FI;
@@ -426,7 +431,7 @@ static int smmala_kernel_init(mcmc_kernel* kernel, const double *x){
 	fprintf(stderr,"Error: matrix not positive definite in smmala_init.\n");
 	return -1;
   }  
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 static int smmala_kernel_init_rand(mcmc_kernel* kernel){

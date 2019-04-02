@@ -406,6 +406,7 @@ int main (int argc, char* argv[]) {
   if (sampling_action==SMPL_RESUME){
     resume_load_status=load_resume_state(resume_filename, rank, R, kernel);
     assert(resume_load_status==EXIT_SUCCESS);
+    for (i=0;i<D;i++) init_x[i]=kernel->x[i];
   } else if (start_from_prior==1){     
     if (rank==0) printf("# [main] setting initial mcmc vector to prior mean.\n");
     for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp.prior->mu,i);
@@ -502,7 +503,7 @@ int main (int argc, char* argv[]) {
   } else {
     BurnInSamples=warm_up;
   }
-  printf("# Performing Burn-In with step-size (%g) tuning: %lu iterations\n",cnf_options.initial_stepsize,BurnInSamples);
+  printf("# Performing Burn-In with step-size (%g) tuning: %lu iterations\n",get_step_size(kernel),BurnInSamples);
   int master=0;
   int swaps=0;
   
@@ -620,7 +621,7 @@ int main (int argc, char* argv[]) {
   ct=clock()-ct;
   double sampling_time=((double) ct)/((double) CLOCKS_PER_SEC);
   int ts=round(sampling_time);
-  int hms[3];
+  int hms[3]; // hours, minutes, seconds
   hms[0]=ts/3600;
   hms[1]=(ts%3600)/60;
   hms[2]=(ts%60);
@@ -635,9 +636,6 @@ int main (int argc, char* argv[]) {
     printf("[rank %i] statistics written to file.\n",rank);
   }
 
-  int resume_EC=0;
-  resume_EC=write_resume_state(resume_filename, rank, R, kernel);
-  assert(resume_EC==EXIT_SUCCESS);
   H5Dclose(posterior_set_id);
   H5Dclose(parameter_set_id);
   H5Sclose(para_dataspace_id);
@@ -645,6 +643,11 @@ int main (int argc, char* argv[]) {
   H5Pclose(para_property_id);
   H5Pclose(post_property_id);
   H5Fclose(file_id);
+
+
+  int resume_EC=0;
+  resume_EC=write_resume_state(resume_filename, rank, R, kernel);
+  assert(resume_EC==EXIT_SUCCESS);
 
   /* clear memory */
   smmala_model_free(model);
