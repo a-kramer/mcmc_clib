@@ -111,7 +111,9 @@ extern "C" {
    *  outStream:  an output stream to write.
    */
   void mcmc_print_sample(mcmc_kernel* kernel, FILE* s);
-  int mcmc_write_sample(mcmc_kernel *kernel, FILE *s);	
+  int mcmc_write_sample(mcmc_kernel *kernel, FILE *s);
+  typedef double (*fptrGetBeta)(mcmc_kernel* kernel);
+  double mcmc_get_beta(mcmc_kernel *kernel);
   /* ==================================================================== */
 
   /* Implementation details */
@@ -134,7 +136,7 @@ extern "C" {
     fptrMCMCFree Free;			/* de-allocation function for mcmc kernel. Frees all memory used by the mcmc kernel */ 
     fptrMCMCAdapt Adapt;		/* adaptation function for mcmc kernel. Addapts any tuning kernel parameters */
     fptrMCMCPrint PrintStats;	/* loging function for mcmc kernel. Prints to an output stream kernel statistics and loging information */
-    
+    fptrGetBeta GetBeta;
   };
   
   /* Draw a radom sample from the prior.
@@ -149,6 +151,9 @@ extern "C" {
   /* convinience macros for sampling and adaptation */
 #define MCMC_SAMPLE( K, a ) ((K)->Sample) ((K), (a))
 #define MCMC_ADAPT( K, a ) ((K)->Adapt) ((K), (a))
+#define MCMC_DIM(K) (K->N)
+#define MCMC_STATE(K) (K->x)
+#define MCMC_POSTERIOR(K) (K->fx)
   
 #ifdef __cplusplus
 }

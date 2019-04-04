@@ -80,3 +80,7 @@ void mcmc_free(mcmc_kernel* kernel){
 void mcmc_print_stats(mcmc_kernel* kernel, FILE* s){
 	kernel->PrintStats(kernel, s);
 }
+
+double mcmc_get_beta(mcmc_kernel *kernel){
+  return kernel->GetBeta(kernel);
+}

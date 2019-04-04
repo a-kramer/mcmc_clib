@@ -17,12 +17,20 @@
 // for individual normalisation:
 #define NEEDS_NORMALISATION(E) (((E)->NormaliseByExperiment>=0) || ((E)->NormaliseByTimePoint)>=0 || ((E)->NormaliseByOutput)!=NULL)
 
-#define get_number_of_state_variables(omp) (omp->problem_size->N)
-#define get_number_of_MCMC_variables(omp) (omp->problem_size->D)
-#define get_number_of_model_parameters(omp) (omp->problem_size->P)
-#define get_number_of_model_outputs(omp) (omp->problem_size->F)
-#define get_number_of_model_inputs(omp) (omp->problem_size->U)
-#define get_number_of_experimental_conditions(omp) (omp->problem_size->C)
+#define get_number_of_state_variables(omp) (omp->size->N)
+#define get_number_of_MCMC_variables(omp) (omp->size->D)
+#define get_number_of_model_parameters(omp) (omp->size->P)
+#define get_number_of_model_outputs(omp) (omp->size->F)
+#define get_number_of_model_inputs(omp) (omp->size->U)
+#define get_number_of_experimental_conditions(omp) (omp->size->C)
+
+#define set_number_of_state_variables(omp,N) (omp->size->N=N)
+#define set_number_of_MCMC_variables(omp,D) (omp->size->D=D)
+#define set_number_of_model_parameters(omp,P) (omp->size->P=P)
+#define set_number_of_model_outputs(omp,F) (omp->size->F=F)
+#define set_number_of_model_inputs(omp,U) (omp->size->U=U)
+#define set_number_of_experimental_conditions(omp,C) (omp->size->C=C)
+
 
 typedef struct {
   int D; // number of sampling variables; unknown ODE-Model parameters

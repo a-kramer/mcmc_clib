@@ -581,6 +581,11 @@ void smmala_model_free(smmala_model* model){
   free(model);
 }
 
+double smmala_kernel_get_beta(mcmc_kernel *kernel){
+  smmala_params *state=kernel->kernel_params;
+  return state->beta;
+}
+
 mcmc_kernel* smmala_kernel_alloc(const double beta, const int N, double step_size, smmala_model* model_function, const unsigned long int seed, const double target_acceptance){
   smmala_params* state = smmala_params_alloc(beta, N, step_size, target_acceptance);
   if( state == NULL ){
@@ -631,5 +636,6 @@ mcmc_kernel* smmala_kernel_alloc(const double beta, const int N, double step_siz
   kernel->InitR = &smmala_kernel_init_rand;
   kernel->Free = &smmala_kernel_free;
   kernel->PrintStats = &smmala_kernel_print_stats;
+  kernel->GetBeta = &smmala_kernel_get_beta;
   return kernel;
 }
