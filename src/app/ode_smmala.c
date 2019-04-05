@@ -635,7 +635,7 @@ int main (int argc, char* argv[]) {
   solver=malloc(sizeof(ode_solver*)*C);
   for (c=0;c<C;c++){
     solver[c]=ode_solver_alloc(odeModel);
-    if (solver[c]) c_sucess++;
+    if (solver[c]) c_success++;
   }
   if (c_success==C) {
     printf("# [main] Solver[0:%i] for «%s» created.\n",C,lib_base);
@@ -719,9 +719,9 @@ int main (int argc, char* argv[]) {
     ode_solver_setErrTol(solver[c], solver_param[1], &solver_param[0], 1);
     if (ode_model_has_sens(odeModel)) {
       ode_solver_init_sens(solver[c], omp->E[0]->yS0->data, P, N);
-      printf("# [main] sensitivity analysis initiated.\n");
     }
   }
+  printf("# [main] sensitivity analysis initiated.\n");
   /* An smmala_model is a struct that contains the posterior
    * probablity density function and a pointer to its parameters and
    * pre-allocated work-memory.
@@ -772,12 +772,11 @@ int main (int argc, char* argv[]) {
     printf("\n");
   }
   mcmc_init(kernel, init_x);
-  printf("# [main] rank %i init complete .\n",rank);
-
   /* display the results of that test evaluation
    *
    */
   if (rank==0){
+    printf("# [main] rank %i init complete .\n",rank);
     display_test_evaluation_results(kernel);
     ode_solver_print_stats(solver[0], stdout);
     fflush(stdout);
@@ -806,8 +805,9 @@ int main (int argc, char* argv[]) {
   } else {
     BurnInSampleSize=warm_up;
   }
-  printf("# Performing Burn-In with step-size (%g) tuning: %lu iterations\n",get_step_size(kernel),BurnInSampleSize);
-
+  if (rank==0){
+    printf("# Performing Burn-In with step-size (%g) tuning: %lu iterations\n",get_step_size(kernel),BurnInSampleSize);
+  }
   int mcmc_error;
   mcmc_error=burn_in_foreach(rank,R, BurnInSampleSize, omp, kernel, buffer);
   assert(mcmc_error==EXIT_SUCCESS);

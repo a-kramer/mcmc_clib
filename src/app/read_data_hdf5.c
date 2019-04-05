@@ -249,9 +249,6 @@ int read_data(const char *file, void *model_parameters){
   }else{
     mp->normalisation_type=DATA_IS_ABSOLUTE;
   }
-  ode_model_parameters_alloc(mp);
-  ode_model_parameters_link(mp);
-  fflush(stdout);
   // normalise data with error propagation: todo;
   //printf("[read_data] data import done.\n");
   return (int) status;
