@@ -36,14 +36,19 @@ herr_t load_stdv_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   //printf("[load_data_block] checking experiment's index: ");
   status&=H5LTget_attribute_int(g_id,name,"index",&index); //printf(" %i ",index); assert(status>=0);
   status&=H5LTget_attribute_int(g_id,name,"major",&major); //printf("%i.",major); assert(status>=0);
-  status&=H5LTget_attribute_int(g_id,name,"minor",&minor); //printf("%i",minor); assert(status>=0);
-
-  int i,nout=0;
+  status&=H5LTget_attribute_int(g_id,name,"minor",&minor); //printf("%i",minor);
+  assert(status>=0);
+  assert(index>=0);
+  
+  /* This is a debugging comparison by name using scanf. Not necessary.
+   */
+  //int i,nout=0;
   //printf("[load_stdv_block] the current hdf5 «name» is: %s\n",name);
-  nout=sscanf(name,"sd_data_block_%d",&i);
+  //nout=sscanf(name,"sd_data_block_%d",&i);
   //printf("[load_stdv_block] nout=%d; the retrieved stdv index is: %i\n",nout,index);
-  assert(nout==1);
-  assert(i==index);
+  //assert(nout==1);
+  //assert(i==index);
+  
   if (index < mp->size->C && index >= 0){
     assert(mp->E[index]->sd_data_block==NULL);
     mp->E[index]->sd_data_block=stdv_block;
@@ -246,6 +251,7 @@ int read_data(const char *file, void *model_parameters){
   }
   ode_model_parameters_alloc(mp);
   ode_model_parameters_link(mp);
+  fflush(stdout);
   // normalise data with error propagation: todo;
   //printf("[read_data] data import done.\n");
   return (int) status;

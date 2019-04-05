@@ -138,7 +138,7 @@ typedef struct {
   gsl_matrix *tmpDF; // temporary storage of size D×F
   prior_t *prior;
   sensitivity_approximation *S_approx; 
-  ode_solver *solver; // contains: cvode_mem; *odeModel; N_Vector y; N_Vector *yS; params;
+  ode_solver **solver; // contains: cvode_mem; *odeModel; N_Vector y; N_Vector *yS; params; per experiment
 } ode_model_parameters;
 
 int ode_model_parameters_alloc(ode_model_parameters *omp);

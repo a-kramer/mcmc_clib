@@ -16,6 +16,7 @@
 #include "model_parameters_smmala.h"
 #include "hdf5.h"
 #include "hdf5_hl.h"
+#include "omp.h"
 
 int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *dl, gsl_matrix *FI);
 
@@ -314,7 +315,7 @@ int save_simulation_results(ode_model_parameters *omp){
   int C=omp->size->C;
   herr_t EC=0;
   hid_t file_id=H5Fcreate("SimulationResult.h5",H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-  ode_model *model=omp->solver->odeModel;
+  ode_model *model=omp->solver[0]->odeModel;
   
   assert(file_id>0);
   printf("[save_simulation_results] hdf5 file opened\n");
@@ -357,7 +358,8 @@ int save_simulation_results(ode_model_parameters *omp){
   assert(EC==0);
 
   for (c=0;c<C;c++){
-    T=omp->E[c]->t->size;
+    model=omp->solver[c]->odeModel;
+    T=omp->E[c]->t->size;    
     t_size[0]=T;
     data_size[0]=T;
     data_size[1]=F;
@@ -430,30 +432,30 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
   gsl_vector_view input_part;
   int i_flag=GSL_SUCCESS; // ODE (i)ntegration error flag
   ode_model *model;
-  ode_solver *solver;
+  ode_solver **solver;
   sensitivity_approximation *a;
   a=mp->S_approx;
   solver=mp->solver;
-  model=solver->odeModel;
   C=mp->size->C;
   P=mp->size->P;
   U=mp->size->U;
   N=mp->size->N;
   D=mp->size->D;
-  //int F=mp->size->F;
-  //  printf("[L] D=%i\tF=%i\tU=%i\tC=%i\tP=%i\n",D,F,U,C,P);
-  /* calculate reference model output if necessary:
-   */
   input_part=gsl_vector_subvector(mp->p,D,U);
-  //printf("[likelihood] start (normalisation type: %i).\n",mp->normalisation_type); fflush(stdout);
+  /* The ODE model integration below takes by far the most time to
+   * calculate.  This is the only bit of the code that needs to be
+   * parallel apart from parallel tempering done by mpi.
+   */
+#pragma omp parallel for private(model,y,fy,yS,fyS,t,T) reduction(&&:i_flag)
   for (c=0; c<C; c++){// loop over different experimental conditions
+    model=solver[c]->odeModel;
     // write inputs into the ode parameter vector
     gsl_vector_memcpy(&(input_part.vector),mp->E[c]->input_u);
-    ode_solver_reinit(solver, mp->t0, mp->E[c]->init_y->data, N,
+    ode_solver_reinit(solver[c], mp->t0, mp->E[c]->init_y->data, N,
 		      mp->p->data,
 		      mp->p->size);
     if (ode_model_has_sens(model)){
-      ode_solver_reinit_sens(solver, mp->E[c]->yS0->data, P, N);
+      ode_solver_reinit_sens(solver[c], mp->E[c]->yS0->data, P, N);
     }
     t=mp->E[c]->t;
     T=t->size;
@@ -462,7 +464,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
       fy=mp->E[c]->fy[j]; //printf("fy: %i, %zi\n",mp->size->F,fy->size);
       yS=mp->E[c]->yS[j]; //printf("yS: %i, %zi\n",mp->size->N*P,yS->size1*yS->size2);
       fyS=mp->E[c]->fyS[j]; //printf("fyS: %i, %zi\n",mp->size->F*P,fyS->size1*fyS->size2);
-      i_flag&=ode_solver_step(solver, gsl_vector_get(t,j), y, fy, yS, fyS, a);
+      i_flag=ode_solver_step(solver[c], gsl_vector_get(t,j), y, fy, yS, fyS, a);
     }
   }
   

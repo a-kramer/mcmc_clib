@@ -540,6 +540,8 @@ int main (int argc, char* argv[]) {
   int warm_up=0; // sets the number of burn in points at command line
   char lib_name[BUFSZ];
   ode_model_parameters omp[1];
+  omp->size=(problem_size*) malloc(sizeof(problem_size));
+
   char global_sample_filename_stem[BUFSZ]="Sample.h5"; // filename basis
   char rank_sample_file[BUFSZ]; // filename for sample output
   char resume_filename[BUFSZ]="resume.double";
@@ -592,8 +594,20 @@ int main (int argc, char* argv[]) {
   }
   
   seed=seed*137+13*rank;
+
+  /* load Data from hdf5 file
+   */
+  if (h5file!=NULL){
+    printf("# [main] reading hdf5 file, loading data..."); fflush(stdout);
+    read_data(h5file,omp);
+    printf("done.\n"); fflush(stdout);
+  } else {
+    printf("# [main] no data provided (-c or -d option), exiting.\n");
+    MPI_Abort(MPI_COMM_WORLD,-1);
+  }
+
   
-  /* load model 
+  /* load model from shared library
    */
   ode_model *odeModel = ode_model_loadFromFile(lib_name);  /* alloc */
   if (odeModel == NULL) {
@@ -613,21 +627,30 @@ int main (int argc, char* argv[]) {
   sprintf(rank_sample_file,"mcmc_rank_%02i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options.output_file));
   cnf_options.output_file=rank_sample_file;
   
-  /* allocate a solver
+  /* allocate a solver for each experiment for possible parallelization
    */
-  ode_solver* solver = ode_solver_alloc(odeModel); /* alloc */
-  if (solver == NULL) {
-    fprintf(stderr, "# [main] Solver «%s» could not be created.\n",lib_base);
+  ode_solver **solver;
+  int c,C=omp->size->C;
+  int c_success=0;
+  solver=malloc(sizeof(ode_solver*)*C);
+  for (c=0;c<C;c++){
+    solver[c]=ode_solver_alloc(odeModel);
+    if (solver[c]) c_sucess++;
+  }
+  if (c_success==C) {
+    printf("# [main] Solver[0:%i] for «%s» created.\n",C,lib_base);
+  } else {
+    fprintf(stderr, "# [main] Solvers for «%s» could not be created.\n",lib_base);
     ode_model_free(odeModel);
-    exit(1);
-  } else printf("# [main] Solver for «%s» created.\n",lib_base);
+    MPI_Abort(MPI_COMM_WORLD,-1);
+  }
 
   /* sensitivity analysis is not feasible for large models. So, it can
    *  be turned off.
    */
   if (sensitivity_approximation){
     printf("# [main] experimental: Sensitivity approximation activated.\n");
-    ode_solver_disable_sens(solver);
+    for (c=0;c<C;c++) ode_solver_disable_sens(solver[c]);
     /* also: make sensitivity function unavailable; that way
      * ode_model_has_sens(model) will return «FALSE»;
      */
@@ -647,11 +670,13 @@ int main (int argc, char* argv[]) {
   int P = ode_model_getP(odeModel);
   int F = ode_model_getF(odeModel);
   
-  omp->size=(problem_size*) malloc(sizeof(problem_size));
   omp->size->N=N;
   omp->size->P=P;
   omp->size->F=F;
   omp->t0=t0;
+  ode_model_parameters_alloc(omp);
+  ode_model_parameters_link(omp);
+  fflush(stdout);
 
   /* get default parameters from the model file
    */
@@ -660,17 +685,6 @@ int main (int argc, char* argv[]) {
   ode_model_get_default_params(odeModel, p, P);
   if(rank==0)  gsl_printf("default parameters",&(p_view.vector),GSL_IS_DOUBLE | GSL_IS_VECTOR);
   omp->solver=solver;
-
-  /* load Data from hdf5 file
-   */
-  if (h5file!=NULL){
-    printf("# [main] reading hdf5 file, loading data..."); fflush(stdout);
-    read_data(h5file,omp);
-    printf("done.\n"); fflush(stdout);
-  } else {
-    printf("# [main] no data provided (-c or -d option), exiting.\n");
-    MPI_Abort(MPI_COMM_WORLD,-1);
-  }
 
   /* All MCMC meta-parameters (like stepsize) here are positive (to
    * make sense). Some command line arguments can override parameters
@@ -699,17 +713,15 @@ int main (int argc, char* argv[]) {
    * addition error tolerances are set and sensitivity initialized.
    */
   printf("# [main] init ivp: t0=%g\n",omp->t0);
-  ode_solver_init(solver, omp->t0, y, N, p, P);
-  printf("# [main] solver initialised.\n");
-
-  ode_solver_setErrTol(solver, solver_param[1], &solver_param[0], 1);
-  if (ode_model_has_sens(odeModel)) {
-    ode_solver_init_sens(solver, omp->E[0]->yS0->data, P, N);
-    printf("# [main] sensitivity analysis initiated.\n");
+  for (c=0;c<C;c++){
+    ode_solver_init(solver[c], omp->t0, y, N, p, P);
+    //printf("# [main] solver initialised.\n");    
+    ode_solver_setErrTol(solver[c], solver_param[1], &solver_param[0], 1);
+    if (ode_model_has_sens(odeModel)) {
+      ode_solver_init_sens(solver[c], omp->E[0]->yS0->data, P, N);
+      printf("# [main] sensitivity analysis initiated.\n");
+    }
   }
-  fflush(stdout);
-
-
   /* An smmala_model is a struct that contains the posterior
    * probablity density function and a pointer to its parameters and
    * pre-allocated work-memory.
@@ -767,7 +779,7 @@ int main (int argc, char* argv[]) {
    */
   if (rank==0){
     display_test_evaluation_results(kernel);
-    ode_solver_print_stats(solver, stdout);
+    ode_solver_print_stats(solver[0], stdout);
     fflush(stdout);
     fflush(stderr);  
   }
