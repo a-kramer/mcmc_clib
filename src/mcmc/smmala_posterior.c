@@ -434,7 +434,6 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
   ode_model *model;
   ode_solver **solver;
   sensitivity_approximation *a;
-  a=mp->S_approx;
   solver=mp->solver;
   C=mp->size->C;
   P=mp->size->P;
@@ -446,9 +445,10 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
    * calculate.  This is the only bit of the code that needs to be
    * parallel apart from parallel tempering done by mpi.
    */
-#pragma omp parallel for private(model,y,fy,yS,fyS,t,T) reduction(&&:i_flag)
+#pragma omp parallel for private(model,y,fy,yS,fyS,t,T) reduction(&:i_flag)
   for (c=0; c<C; c++){// loop over different experimental conditions
     model=solver[c]->odeModel;
+    a=mp->S_approx[c];
     // write inputs into the ode parameter vector
     gsl_vector_memcpy(&(input_part.vector),mp->E[c]->input_u);
     ode_solver_reinit(solver[c], mp->t0, mp->E[c]->init_y->data, N,
@@ -464,7 +464,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
       fy=mp->E[c]->fy[j]; //printf("fy: %i, %zi\n",mp->size->F,fy->size);
       yS=mp->E[c]->yS[j]; //printf("yS: %i, %zi\n",mp->size->N*P,yS->size1*yS->size2);
       fyS=mp->E[c]->fyS[j]; //printf("fyS: %i, %zi\n",mp->size->F*P,fyS->size1*fyS->size2);
-      i_flag=ode_solver_step(solver[c], gsl_vector_get(t,j), y, fy, yS, fyS, a);
+      i_flag&=ode_solver_step(solver[c], gsl_vector_get(t,j), y, fy, yS, fyS, a);
     }
   }
   

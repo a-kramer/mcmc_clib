@@ -797,7 +797,7 @@ int main (int argc, char* argv[]) {
    */
   void *buffer=(void *) smmala_comm_buffer_alloc(D);
   
-  /* Burn In Loop set up
+  /* Initialization of burin in length
    */
   size_t BurnInSampleSize;
   if (warm_up==0){
@@ -808,12 +808,17 @@ int main (int argc, char* argv[]) {
   if (rank==0){
     printf("# Performing Burn-In with step-size (%g) tuning: %lu iterations\n",get_step_size(kernel),BurnInSampleSize);
   }
+  /* Burn In: these iterations are not recorded, but are used to find
+   * an acceptable step size for each temperature regime.
+   */
   int mcmc_error;
   mcmc_error=burn_in_foreach(rank,R, BurnInSampleSize, omp, kernel, buffer);
   assert(mcmc_error==EXIT_SUCCESS);
   fprintf(stdout, "\n# Burn-in complete, sampling from the posterior.\n");
 
-  /* the main loop of MCMC sampling
+  /* The main loop of MCMC sampling
+   * these iterations are recorded and saved to an hdf5 file
+   * the file is set up and identified via the h5block variable.
    */  
   mcmc_error=mcmc_foreach(rank, R, SampleSize, omp, kernel, h5block, buffer);
   assert(mcmc_error==EXIT_SUCCESS);

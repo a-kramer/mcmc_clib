@@ -21,7 +21,10 @@ int init_E(ode_model_parameters *omp){
     omp->E[i]->normalise=malloc(sizeof(normalisation_t));
     omp->E[i]->view=malloc(sizeof(view_t));    
   }
-  omp->S_approx=malloc(sizeof(sensitivity_approximation));
+  omp->S_approx=malloc(sizeof(sensitivity_approximation*)*C);
+  for (i=0;i<C;i++){
+    omp->S_approx[i]=malloc(sizeof(sensitivity_approximation));
+  }
   
   omp->prior=malloc(sizeof(prior_t));
   //printf("# %i+1 experiment structures allocated.\n",C);
@@ -123,15 +126,15 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
    */
   omp->tmpF=gsl_vector_alloc(F);
   omp->tmpDF=gsl_matrix_alloc(D,F);
-
-  omp->S_approx->jacobian_y=gsl_matrix_alloc(N,N);
-  omp->S_approx->jacobian_p=gsl_matrix_alloc(P,N);
-  omp->S_approx->tau=gsl_vector_alloc(N);
-  omp->S_approx->x=gsl_vector_alloc(N);
-  omp->S_approx->r=gsl_vector_alloc(N);
-  omp->S_approx->eJt=gsl_matrix_alloc(N,N);
-  omp->S_approx->Jt=gsl_matrix_alloc(N,N);
-  
+  for(i=0;i<C;i++){
+    omp->S_approx[i]->jacobian_y=gsl_matrix_alloc(N,N);
+    omp->S_approx[i]->jacobian_p=gsl_matrix_alloc(P,N);
+    omp->S_approx[i]->tau=gsl_vector_alloc(N);
+    omp->S_approx[i]->x=gsl_vector_alloc(N);
+    omp->S_approx[i]->r=gsl_vector_alloc(N);
+    omp->S_approx[i]->eJt=gsl_matrix_alloc(N,N);
+    omp->S_approx[i]->Jt=gsl_matrix_alloc(N,N);
+  }
   //printf("[model_parameters_alloc] y, fy,yS, fyS, oS, yS0, nfy and nfyS.\n");
   for (i=0;i<C;i++){
     experiment_alloc(omp->E[i],omp->size);
@@ -159,13 +162,16 @@ int ode_model_parameters_free(ode_model_parameters *omp){
   int C=omp->size->C;
   int T=omp->size->T;
 
-  gsl_matrix_free(omp->S_approx->jacobian_y);
-  gsl_matrix_free(omp->S_approx->jacobian_p);
-  gsl_vector_free(omp->S_approx->tau);
-  gsl_vector_free(omp->S_approx->x);
-  gsl_vector_free(omp->S_approx->r);
-  gsl_matrix_free(omp->S_approx->Jt);
-  gsl_matrix_free(omp->S_approx->eJt);
+  for (i=0;i<C;i++){
+    gsl_matrix_free(omp->S_approx[i]->jacobian_y);
+    gsl_matrix_free(omp->S_approx[i]->jacobian_p);
+    gsl_vector_free(omp->S_approx[i]->tau);
+    gsl_vector_free(omp->S_approx[i]->x);
+    gsl_vector_free(omp->S_approx[i]->r);
+    gsl_matrix_free(omp->S_approx[i]->Jt);
+    gsl_matrix_free(omp->S_approx[i]->eJt);  
+    free(omp->S_approx[i]);
+  }
   free(omp->S_approx);
 
   for (i=0;i<C;i++){
