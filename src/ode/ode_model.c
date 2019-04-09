@@ -26,8 +26,6 @@ static char* get_vf_name(const char* filename){
   //size_t len = strlen(lib_name);
   int n;
   char *dot;
-  /* stop once a '_c' or '.' is found. Take that as the model name */
-  //printf("[get_vf_name] lib_name: %s\n",lib_name);
   dot=strchr(lib_name,'.');
   n=strlen(lib_name);
   n-=strlen(dot);
@@ -171,9 +169,9 @@ ode_solver* ode_solver_alloc(ode_model* model){
   int N = ode_model_getN(model);
   solver->odeModel = model;
   solver->y = N_VNewEmpty_Serial(N);
+  NV_DATA_S(solver->y) = model->v;
   int F = ode_model_getF(model);
   solver->fy = N_VNewEmpty_Serial(F);
-  NV_DATA_S(solver->y) = solver->odeModel->v;
   solver->yS = NULL;
   /* allocate some storage for jacobian retrieval */
   solver->jac=NewDenseMat(N,N);
@@ -239,7 +237,7 @@ void ode_solver_reinit(ode_solver* solver, const double t0,  double* y0, int len
   int i,flag;
   
   /* Get initial conditions */
-  if(y0 != 0){
+  if(y0){
     if( lenY != solver->odeModel->N ){
       fprintf(stderr,"[ode_solver_init] lenY must be equal %d, the number of variables in the ode model.\n",solver->odeModel->N);
       return ;
@@ -255,7 +253,7 @@ void ode_solver_reinit(ode_solver* solver, const double t0,  double* y0, int len
   flag = CVodeReInit(solver->cvode_mem, t0, solver->y);
   
   /* Get parameters */
-  if (p != 0){
+  if (p){
     if (lenP != solver->odeModel->P) {
       fprintf(stderr,"[ode_solver_init] lenP must be equal %d, the number of parameters in the ode model.\n",solver->odeModel->P);
       return ;
@@ -291,27 +289,21 @@ void ode_solver_init_sens(ode_solver* solver,  double* yS0, int lenP, int lenY){
   solver->yS = N_VCloneVectorArrayEmpty_Serial(lenP, solver->y);						/* alloc */
   double tmp[N];
   
-  if(yS0 !=0 ){
-    if ( (lenY != N) ) {
+  if(yS0){
+    if (lenY != N) {
       fprintf(stderr,"ode_solver_init_sens: lenY must be equal to %d the number of parameters and variables in the ode model.\n",solver->odeModel->N);
       return ;
-    }
-    
-    for(i = 0; i < lenP; i++)
-      NV_DATA_S(solver->yS[i]) = &yS0[i*lenY];
+    }    
+    for(i=0; i<lenP; i++) NV_DATA_S(solver->yS[i]) = &yS0[i*lenY];
   }
-  else{
-    
-    for (i=0; i < N ; i++)
-      tmp[i] = 0.0;
-    
-    for (i = 0; i < lenP; i++)
-      NV_DATA_S(solver->yS[i]) = tmp;
+  else{    
+    for (i=0; i<N ; i++) tmp[i] = 0.0;    
+    for (i=0; i<lenP; i++) NV_DATA_S(solver->yS[i]) = tmp;
   }
   
   flag = CVodeSensInit1(solver->cvode_mem, lenP, CV_STAGGERED1, solver->odeModel->vf_sens, solver->yS);
-  flag = CVodeSetSensErrCon(solver->cvode_mem, TRUE);	
-  flag = CVodeSensEEtolerances(solver->cvode_mem);
+  flag &= CVodeSetSensErrCon(solver->cvode_mem, TRUE);	
+  flag &= CVodeSensEEtolerances(solver->cvode_mem);
   
   /* set parameters scale for error corection */
   double scale_p[lenP];
@@ -324,10 +316,9 @@ void ode_solver_init_sens(ode_solver* solver,  double* yS0, int lenP, int lenY){
     }
     else {
       scale_p[i] = ODE_SOLVER_REL_ERR;
-    }
-    
+    }    
   }
-  flag = CVodeSetSensParams(solver->cvode_mem, solver->params, scale_p, NULL);
+  flag &= CVodeSetSensParams(solver->cvode_mem, solver->params, scale_p, NULL);
   if (flag!=CV_SUCCESS) {
     fprintf(stderr,"[CV] ode_solver_init failed, flag=%i\n",flag);
   }
@@ -339,40 +330,32 @@ void ode_solver_disable_sens(ode_solver* solver){
 
 /* yS0 in row major order */
 void ode_solver_reinit_sens(ode_solver* solver,  double* yS0, int lenP, int lenY){
-  /* change: lenP may now be shorter than P if you dpn't want to
+  /* change: lenP may now be shorter than P if you don't want to
    * calculate all sensitivities.  This is important for the correct
    * treatment of input parameters, i.e. experimental conditions u
    * (since we don't require sensitivities with repsect to them).
    */
-
   int i,flag;
   int N = solver->odeModel->N;
   //int P = solver->odeModel->P;
   
-  if (solver->odeModel->vf_sens == 0) {
+  if (solver->odeModel->vf_sens == NULL) {
     fprintf(stderr,"ode_solver_init_sens: no sensitivities defined for this model.\n");
     return;
   }
   
   double tmp[N];
-  if(yS0 !=0 ){
-    if ( lenY != N ) {
+  if(yS0){
+    if (lenY != N) {
       fprintf(stderr,"ode_solver_init_sens: lenY must be equal to %d the number of variables in the ode model.\n",solver->odeModel->N);
       return ;
-    }
-    
-    for(i = 0; i < lenP; i++)
-      NV_DATA_S(solver->yS[i]) = &yS0[i*lenY];
+    }    
+    for(i=0; i<lenP; i++) NV_DATA_S(solver->yS[i]) = &yS0[i*lenY];
   }
-  else{
-    
-    for (i=0; i < N ; i++)
-      tmp[i] = 0.0;
-    
-    for (i = 0; i < lenP; i++)
-      NV_DATA_S(solver->yS[i]) = tmp;
-  }
-  
+  else{    
+    for (i=0; i<N; i++) tmp[i] = 0.0;    
+    for (i=0; i<lenP; i++) NV_DATA_S(solver->yS[i]) = tmp;
+  }  
   /* set parameters scale for error corection */
   double scale_p[lenP];
   
@@ -384,12 +367,10 @@ void ode_solver_reinit_sens(ode_solver* solver,  double* yS0, int lenP, int lenY
     }
     else {
       scale_p[i] = ODE_SOLVER_REL_ERR;
-    }
-    
-  }
-  
+    }    
+  }  
   flag = CVodeSensReInit(solver->cvode_mem, CV_STAGGERED1, solver->yS);
-  flag = CVodeSetSensParams(solver->cvode_mem, solver->params, scale_p, NULL);
+  flag &= CVodeSetSensParams(solver->cvode_mem, solver->params, scale_p, NULL);
   if (flag!=CV_SUCCESS){
     fprintf(stderr,"reinit_sens failed.\n");
     exit(-1);
@@ -418,8 +399,8 @@ void ode_solver_get_sens(ode_solver* solver, double t, double* yS){
   P_s = solver->odeModel->P;
   
   /* return the sensitivities to the return parameter yS */
-  if ( solver->odeModel->vf_sens != 0 ){
-    for(i = 0; i < P_s; i++)
+  if (solver->odeModel->vf_sens){
+    for(i=0; i<P_s; i++)
       NV_DATA_S(solver->yS[i]) = &yS[i*N_s];
     
     CVodeGetSens(solver->cvode_mem, &t, solver->yS);
@@ -443,12 +424,14 @@ void ode_solver_get_func_sens(ode_solver* solver, const double t,  double* y,  d
 
   NV_DATA_S(solver->y) = y;
   
-  if ( solver->odeModel->vf_sens != 0 ){
-    for(i = 0; i < P; i++)
+  if (solver->odeModel->vf_sens){
+    for(i=0; i<P; i++)
       NV_DATA_S(solver->yS[i]) = &yS[N*i];
     
-    /* evaluate and return the functions sensitivities to the return parameter fyS */
-    if ( solver->odeModel->vf_func_sens != 0  )
+    /* evaluate and return the functions sensitivities to the return
+     * parameter fyS 
+     */
+    if (solver->odeModel->vf_func_sens)
       solver->odeModel->vf_func_sens(t, solver->y, solver->yS , fyS, (void *) solver->params);
   }
 }
@@ -490,37 +473,24 @@ void ode_solver_print_stats(const ode_solver* solver, FILE* outF){
   
   void* cvode_mem = solver->cvode_mem;
   
-  flag = CVodeGetNumSteps(cvode_mem, &nst);
+  flag = CVodeGetNumSteps(cvode_mem, &nst);  
+  flag &= CVodeGetNumRhsEvals(cvode_mem, &nfe);  
+  flag &= CVodeGetNumLinSolvSetups(cvode_mem, &nsetups);  
+  flag &= CVodeGetNumErrTestFails(cvode_mem, &netf);  
+  flag &= CVodeGetNumNonlinSolvIters(cvode_mem, &nni);  
+  flag &= CVodeGetNumNonlinSolvConvFails(cvode_mem, &ncfn); 
   
-  flag = CVodeGetNumRhsEvals(cvode_mem, &nfe);
-  
-  flag = CVodeGetNumLinSolvSetups(cvode_mem, &nsetups);
-  
-  flag = CVodeGetNumErrTestFails(cvode_mem, &netf);
-  
-  flag = CVodeGetNumNonlinSolvIters(cvode_mem, &nni);
-  
-  flag = CVodeGetNumNonlinSolvConvFails(cvode_mem, &ncfn);
-  
-  
-  if (solver->yS != 0) {
-    flag = CVodeGetSensNumRhsEvals(cvode_mem, &nfSe);
-	
-    flag = CVodeGetNumRhsEvalsSens(cvode_mem, &nfeS);
-    
-    flag = CVodeGetSensNumLinSolvSetups(cvode_mem, &nsetupsS);
-    
-    flag = CVodeGetSensNumErrTestFails(cvode_mem, &netfS);
-    
-    flag = CVodeGetSensNumNonlinSolvIters(cvode_mem, &nniS);
-    
-    flag = CVodeGetSensNumNonlinSolvConvFails(cvode_mem, &ncfnS);
-    
+  if (solver->yS) {
+    flag &= CVodeGetSensNumRhsEvals(cvode_mem, &nfSe);	
+    flag &= CVodeGetNumRhsEvalsSens(cvode_mem, &nfeS);    
+    flag &= CVodeGetSensNumLinSolvSetups(cvode_mem, &nsetupsS);    
+    flag &= CVodeGetSensNumErrTestFails(cvode_mem, &netfS);    
+    flag &= CVodeGetSensNumNonlinSolvIters(cvode_mem, &nniS);    
+    flag &= CVodeGetSensNumNonlinSolvConvFails(cvode_mem, &ncfnS);    
   }
   
-  flag = CVDlsGetNumJacEvals(cvode_mem, &nje);
-  
-  flag = CVDlsGetNumRhsEvals(cvode_mem, &nfeLS);
+  flag &= CVDlsGetNumJacEvals(cvode_mem, &nje);  
+  flag &= CVDlsGetNumRhsEvals(cvode_mem, &nfeLS);
   
   
   fprintf(outF,"\n# Solver Statistics\n\n");
@@ -529,7 +499,7 @@ void ode_solver_print_stats(const ode_solver* solver, FILE* outF){
   fprintf(outF,"# ErrTestFails     = %5ld   LinSolvSetups        = %5ld\n", netf, nsetups);
   fprintf(outF,"# NonlinSolvIters  = %5ld   NonlinSolvConvFails  = %5ld\n", nni, ncfn);
   
-  if(solver->yS != 0) {
+  if(solver->yS) {
     fprintf(outF,"\n# Sensitivities Statistics\n");
     fprintf(outF,"# SensRhsEvals     = %5ld   RhsEvals             = %5ld\n", nfSe, nfeS);
     fprintf(outF,"# ErrTestFails     = %5ld   LinSolvSetups        = %5ld\n", netfS, nsetupsS);
@@ -547,7 +517,7 @@ void ode_solver_print_stats(const ode_solver* solver, FILE* outF){
 void ode_solver_free(ode_solver* solver){
   free(solver->params);
   CVodeFree(&(solver->cvode_mem));
-  if (solver->yS != 0) {
+  if (solver->yS) {
     N_VDestroyVectorArray_Serial(solver->yS, solver->odeModel->P);
   }
   N_VDestroy_Serial(solver->y);

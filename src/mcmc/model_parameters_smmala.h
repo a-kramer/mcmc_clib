@@ -94,6 +94,7 @@ typedef struct {
   gsl_matrix *sd_data_block;// either a pointer to a submatrix or self-allocated storage
   gsl_vector **data;        // data at time[j] is accessed as experiment[i]->data[j]
   gsl_vector **sd_data;
+  gsl_vector *p; // working memory, to store this experiments parameter vector
   gsl_vector **y; // y[t](i) vector of size T;
   gsl_vector **fy; // measurement model output functions
   gsl_vector *init_y;

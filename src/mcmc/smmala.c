@@ -151,8 +151,19 @@ int smmala_swap_chains(mcmc_kernel* kernel, const int master, const int rank, co
   double their_beta;
   MPI_Sendrecv(&beta, 1, MPI_DOUBLE, other_rank, TAG, &their_beta, 1, MPI_DOUBLE, other_rank, TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   TAG++;
-  a=gsl_sf_exp((their_beta - beta)*(state->fx[1] - recv_buf->fx[1]));
-  //printf("[rank %i] swap probability: exp((%+g - %+g)*(%+g - %+g))=%+g\n",rank,their_beta,beta,state->fx[1],recv_buf->fx[1],a);
+  int gsl_status;
+  gsl_sf_result result;
+  double beta_state = (their_beta - beta)*(state->fx[1] - recv_buf->fx[1]);
+  
+  gsl_status=gsl_sf_exp_e(beta_state, &result);
+  if (gsl_status==GSL_SUCCESS && result.err<result.val){
+    a=result.val;
+  } else {
+    //fprintf(stderr,"[smmala_swap_chains] gsl_sf_exp(%f)=%f±%f failed.\n",beta_state,result.val,result.err);
+    //fprintf(stderr,"\t(rank %i) swap probability: exp((%+g - %+g)*(%+g - %+g))=%+g\n",rank,their_beta,beta,state->fx[1],recv_buf->fx[1],a);
+    a=0.0;
+  }
+  
   if (master){
     double r1=gsl_rng_uniform(rng);
     swap_accepted=r1<a?1:0;

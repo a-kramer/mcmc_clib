@@ -73,6 +73,7 @@ int experiment_alloc(experiment *E, problem_size *size){
   int D=size->D;
   int P=size->P;
   int T=E->t->size;
+  E->p=gsl_vector_alloc(P);
   E->y=(gsl_vector **) malloc(sizeof(gsl_vector*)*T);
   E->fy=(gsl_vector **) malloc(sizeof(gsl_vector*)*T);
   E->yS=(gsl_matrix **) malloc(sizeof(gsl_matrix*)*T);

@@ -122,6 +122,8 @@ int h5block_close(hdf5block_t *h5block){
   free(h5block->chunk_size);
   free(h5block->offset);
   free(h5block->stride);
+  free(h5block->count);
+  free(h5block->block);
   free(h5block);
   return EXIT_SUCCESS;
 }
@@ -144,7 +146,11 @@ hdf5block_t* h5block_init(char *output_file, ode_model_parameters *omp, size_t S
   NameWriteError&=H5LTmake_dataset_string(file_id,"StateVariableNames",x_names);
   NameWriteError&=H5LTmake_dataset_string(file_id,"ParameterNames",p_names);
   NameWriteError&=H5LTmake_dataset_string(file_id,"OutputFunctionNames",f_names);
-  if (NameWriteError==0) printf("# [main] all names have been written to file «%s».\n",output_file);
+  if (NameWriteError){
+    fprintf(stderr,"[h5block_init] writing (x,p,f)-names into hdf5 file failed.");
+  }/* else {
+    printf("# [main] all names have been written to file «%s».\n",output_file);
+    }*/
   free(x_names);
   free(p_names);
   free(f_names);
@@ -207,10 +213,9 @@ hdf5block_t* h5block_init(char *output_file, ode_model_parameters *omp, size_t S
   h5block->offset = offset;
   h5block->stride = stride;
   h5block->count = count;
+  h5block->block = block;
   return h5block;
 }
-
-
 
 /* Auxiliary structure with working storage and aditional parameters for
  * a multivariate normal model with known covariance matrix and zero mean.
@@ -502,7 +507,9 @@ void print_experiment_information(int rank, int R, ode_model_parameters *omp, gs
   int LE=0;
   
   for (i=0;i<C;i++){
-    if (omp->E[i]->init_y==NULL){
+    if (omp->E[i]->init_y){
+      fprintf(stderr,"[main] warning: y(t0) already initialised.\n");
+    }else{
       omp->E[i]->init_y=gsl_vector_alloc(N);
       gsl_vector_memcpy(omp->E[i]->init_y,y0);
     }
@@ -549,7 +556,7 @@ int main (int argc, char* argv[]) {
   double gamma= 2;
   double t0=-1;
   int sampling_action=SMPL_FRESH;
-  //gsl_error_handler_t *gsl_error_handler=gsl_set_error_handler_off();
+  
   int start_from_prior=0;
   int sensitivity_approximation=0;
 
@@ -565,6 +572,8 @@ int main (int argc, char* argv[]) {
   MPI_Comm_rank(MPI_COMM_WORLD,&rank);
   char *h5file=NULL;
 
+  gsl_set_error_handler_off();
+  
   /* process command line arguments
    */  
   for (i=0;i<argc;i++){
@@ -574,7 +583,7 @@ int main (int argc, char* argv[]) {
       h5file=argv[i+1];
     } else if (strcmp(argv[i],"-t")==0 || strcmp(argv[i],"--init-at-t")==0) {
       t0=strtod(argv[i+1],NULL);
-      printf("[main] t0=%f",t0);
+      //printf("[main] t0=%f\n",t0);
     } else if (strcmp(argv[i],"-w")==0 || strcmp(argv[i],"--warm-up")==0) warm_up=strtol(argv[i+1],NULL,10);
     else if (strcmp(argv[i],"--resume")==0 || strcmp(argv[i],"-r")==0) sampling_action=SMPL_RESUME;
     else if (strcmp(argv[i],"--sens-approx")==0) sensitivity_approximation=1;
@@ -714,7 +723,7 @@ int main (int argc, char* argv[]) {
    */
   printf("# [main] init ivp: t0=%g\n",omp->t0);
   for (c=0;c<C;c++){
-    ode_solver_init(solver[c], omp->t0, y, N, p, P);
+    ode_solver_init(solver[c], omp->t0, omp->E[c]->init_y->data, N, p, P);
     //printf("# [main] solver initialised.\n");    
     ode_solver_setErrTol(solver[c], solver_param[1], &solver_param[0], 1);
     if (ode_model_has_sens(odeModel)) {
@@ -785,12 +794,6 @@ int main (int argc, char* argv[]) {
   
   size_t SampleSize = cnf_options.sample_size;  
 
-  /* this struct contains all necessary id's and size arrays
-   * for writing sample data to an hdf5 file in chunks
-   */
-  hdf5block_t *h5block = h5block_init(cnf_options.output_file,
-				      omp,SampleSize,
-				      x_name,p_name,f_name);
   
   /* in parallel tempering th echains can swap their positions;
    * this buffers the communication between chains.
@@ -814,8 +817,16 @@ int main (int argc, char* argv[]) {
   int mcmc_error;
   mcmc_error=burn_in_foreach(rank,R, BurnInSampleSize, omp, kernel, buffer);
   assert(mcmc_error==EXIT_SUCCESS);
-  fprintf(stdout, "\n# Burn-in complete, sampling from the posterior.\n");
-
+  if (rank==0){
+    fprintf(stdout, "\n# Burn-in complete, sampling from the posterior.\n");
+  }
+  /* this struct contains all necessary id's and size arrays
+   * for writing sample data to an hdf5 file in chunks
+   */
+  hdf5block_t *h5block = h5block_init(cnf_options.output_file,
+				      omp,SampleSize,
+				      x_name,p_name,f_name);
+  
   /* The main loop of MCMC sampling
    * these iterations are recorded and saved to an hdf5 file
    * the file is set up and identified via the h5block variable.

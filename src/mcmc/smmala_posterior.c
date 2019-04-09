@@ -440,20 +440,22 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
   U=mp->size->U;
   N=mp->size->N;
   D=mp->size->D;
-  input_part=gsl_vector_subvector(mp->p,D,U);
   /* The ODE model integration below takes by far the most time to
    * calculate.  This is the only bit of the code that needs to be
    * parallel apart from parallel tempering done by mpi.
    */
-#pragma omp parallel for private(model,y,fy,yS,fyS,t,T) reduction(&:i_flag)
+#pragma omp parallel for private(model,y,fy,yS,fyS,t,T,input_part) reduction(&:i_flag)
   for (c=0; c<C; c++){// loop over different experimental conditions
-    model=solver[c]->odeModel;
+    model=solver[c]->odeModel;    
     a=mp->S_approx[c];
-    // write inputs into the ode parameter vector
+    gsl_vector_memcpy(mp->E[c]->p,mp->p); // the first P entries are the same for each loop iteration
+    /* each loop iteration gets a different input vector
+     */
+    input_part=gsl_vector_subvector(mp->E[c]->p,D,U);    
     gsl_vector_memcpy(&(input_part.vector),mp->E[c]->input_u);
     ode_solver_reinit(solver[c], mp->t0, mp->E[c]->init_y->data, N,
-		      mp->p->data,
-		      mp->p->size);
+		      mp->E[c]->p->data,
+		      mp->E[c]->p->size);
     if (ode_model_has_sens(model)){
       ode_solver_reinit_sens(solver[c], mp->E[c]->yS0->data, P, N);
     }
@@ -464,7 +466,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
       fy=mp->E[c]->fy[j]; //printf("fy: %i, %zi\n",mp->size->F,fy->size);
       yS=mp->E[c]->yS[j]; //printf("yS: %i, %zi\n",mp->size->N*P,yS->size1*yS->size2);
       fyS=mp->E[c]->fyS[j]; //printf("fyS: %i, %zi\n",mp->size->F*P,fyS->size1*fyS->size2);
-      i_flag&=ode_solver_step(solver[c], gsl_vector_get(t,j), y, fy, yS, fyS, a);
+      i_flag=ode_solver_step(solver[c], gsl_vector_get(t,j), y, fy, yS, fyS, a);
     }
   }
   
@@ -658,10 +660,18 @@ int LogPosterior(const double beta, const gsl_vector *x,  void* model_params, do
   int D=omp->prior->mu->size;
   double x_i;
   double p_i;
-  
+  //gsl_sf_result result;
+  //int gsl_status;
   for (i=0;i<D;i++) {
     x_i=gsl_vector_get(x,i);
+    //gsl_status=gsl_sf_exp_e(x_i, &result);
     p_i=gsl_sf_exp(x_i);
+    /* if (gsl_status==GSL_SUCCESS && result.val>result.err){ */
+    /*   p_i=result.val; */
+    /* }else{ */
+    /*   fprintf(stderr,"[LogPosterior] gsl_sf_exp(x[%i])=%f±%f; failed: x=%g.\n",i,result.val,result.err,x_i); */
+    /*   p_i=0.0; */
+    /* } */
     gsl_vector_set(omp->p,i,p_i);
   }
   status &= LogLikelihood(omp, &fx[i_likelihood], dfx[i_likelihood], FI[i_likelihood]); 

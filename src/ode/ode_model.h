@@ -32,9 +32,9 @@ typedef int (*func)(realtype, N_Vector, realtype *, void *);
 typedef int (*func_sens)(realtype, N_Vector, N_Vector *, double *, void *);
 	
 typedef struct{
-	int		N;				/* number of variables */
+	int		N;				/* number of state variables */
 	int		P;				/* number of parameters */
-	int		F;				/* number of functions */
+	int		F;				/* number of output functions */
 	double*		v;				/* initial conditions */
 	double*		p;				/* default parameters */
 	rhs_f		vf_eval;		/* function pointer for ode RHS */
