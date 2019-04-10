@@ -26,8 +26,8 @@
 #include "sbtab.h"
 #include "../mcmc/model_parameters_smmala.h"
 #include "../mcmc/ptype.h"
-
-#define get_table_length(Table) ((Table!=NULL && Table->column!=NULL) ? Table->column[0]->len:0)
+// "length" means: number of rows, for a table
+#define get_table_length(Table) ((Table && Table->column) ? Table->column[0]->len:0)
 
 #define DEFAULT_STR_LENGTH 128
 // Experiment Types

@@ -61,13 +61,13 @@ int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
   guint *r;
   int status=EXIT_SUCCESS;
   s=g_strsplit_set(data,fs,-1);
-  if (data!=NULL && s!=NULL){
+  if (data && s){
     int n=g_strv_length(s);
     guint c=g_hash_table_size(sbtab->col);
     N=c<n?c:n;
     for (i=0;i<n;i++) g_strstrip(s[i]);
-    assert(sbtab!=NULL);
-    if (sbtab->row!=NULL){
+    assert(sbtab);
+    if (sbtab->row){
       // get number of rows;
       r=malloc(sizeof(guint));
       r[0]=g_hash_table_size(sbtab->row);

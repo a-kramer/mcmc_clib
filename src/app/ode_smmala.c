@@ -607,11 +607,12 @@ int main (int argc, char* argv[]) {
   /* load Data from hdf5 file
    */
   if (h5file!=NULL){
-    printf("# [main] reading hdf5 file, loading data..."); fflush(stdout);
+    printf("# [main] (rank %i) reading hdf5 file, loading data...",rank);
+    fflush(stdout);
     read_data(h5file,omp);
     printf("done.\n"); fflush(stdout);
   } else {
-    printf("# [main] no data provided (-c or -d option), exiting.\n");
+    fprintf(stderr,"# [main] (rank %i) no data provided (-d option), exiting.\n",rank);
     MPI_Abort(MPI_COMM_WORLD,-1);
   }
 
@@ -620,9 +621,9 @@ int main (int argc, char* argv[]) {
    */
   ode_model *odeModel = ode_model_loadFromFile(lib_name);  /* alloc */
   if (odeModel == NULL) {
-    fprintf(stderr, "# [main] Library %s could not be loaded.\n",lib_name);
+    fprintf(stderr, "# [main] (rank %i) Library %s could not be loaded.\n",rank,lib_name);
     exit(1);
-  } else printf( "# [main] Library %s loaded.\n",lib_name);
+  } else printf( "# [main] (rank %i) Library %s loaded.\n",rank, lib_name);
   
   /* construct an output file from rank, library name, and user
    * supplied string.
@@ -658,7 +659,7 @@ int main (int argc, char* argv[]) {
    *  be turned off.
    */
   if (sensitivity_approximation){
-    printf("# [main] experimental: Sensitivity approximation activated.\n");
+    //printf("# [main] experimental: Sensitivity approximation activated.\n");
     for (c=0;c<C;c++) ode_solver_disable_sens(solver[c]);
     /* also: make sensitivity function unavailable; that way
      * ode_model_has_sens(model) will return «FALSE»;
@@ -692,7 +693,7 @@ int main (int argc, char* argv[]) {
   double p[P];
   gsl_vector_view p_view=gsl_vector_view_array(p,P);
   ode_model_get_default_params(odeModel, p, P);
-  if(rank==0)  gsl_printf("default parameters",&(p_view.vector),GSL_IS_DOUBLE | GSL_IS_VECTOR);
+  if (rank==0)  gsl_printf("default parameters",&(p_view.vector),GSL_IS_DOUBLE | GSL_IS_VECTOR);
   omp->solver=solver;
 
   /* All MCMC meta-parameters (like stepsize) here are positive (to
@@ -708,7 +709,6 @@ int main (int argc, char* argv[]) {
   cnf_options.target_acceptance=fabs(cnf_options.target_acceptance);
   cnf_options.sample_size=fabs(cnf_options.sample_size);
 
-
   /* load default initial conditions
    */
   double y[N];
@@ -721,7 +721,7 @@ int main (int argc, char* argv[]) {
    * parameters p and default initial conditions of the state y; In
    * addition error tolerances are set and sensitivity initialized.
    */
-  printf("# [main] init ivp: t0=%g\n",omp->t0);
+  //printf("# [main] (rank %i) init ivp: t0=%g\n",rank,omp->t0);
   for (c=0;c<C;c++){
     ode_solver_init(solver[c], omp->t0, omp->E[c]->init_y->data, N, p, P);
     //printf("# [main] solver initialised.\n");    
@@ -730,16 +730,15 @@ int main (int argc, char* argv[]) {
       ode_solver_init_sens(solver[c], omp->E[0]->yS0->data, P, N);
     }
   }
-  printf("# [main] sensitivity analysis initiated.\n");
   /* An smmala_model is a struct that contains the posterior
    * probablity density function and a pointer to its parameters and
    * pre-allocated work-memory.
    */
   smmala_model* model = smmala_model_alloc(LogPosterior, NULL, omp);
   if (model){
-    printf("[main] smmala_model allocated.\n");
+    printf("[main] (rank %i) smmala_model allocated.\n",rank);
   }else{
-    fprintf(stderr,"smmala_model could not be allocated.\n");
+    fprintf(stderr,"[main] (rank %i) smmala_model could not be allocated.\n",rank);
     MPI_Abort(MPI_COMM_WORLD,-1);
   }
   
@@ -756,7 +755,7 @@ int main (int argc, char* argv[]) {
 					    model,
 					    seed,
 					    cnf_options.target_acceptance);
-  int resume_load_status=0;
+  int resume_load_status;
   if (sampling_action==SMPL_RESUME){
     resume_load_status=load_resume_state(resume_filename, rank, R, kernel);
     assert(resume_load_status==EXIT_SUCCESS);
@@ -772,20 +771,24 @@ int main (int argc, char* argv[]) {
   //display_prior_information(omp->prior);
   
   /* here we initialize the mcmc_kernel; this makes one test
-   * evaluation of the log-posterior density function.
+   * evaluation of the log-posterior density function. 
    */
+  
+  /*
   if (rank==0){
     printf("# [main] initializing MCMC.\n");
     printf("# [main] init_x:");
     for (i=0;i<D;i++) printf(" %g ",init_x[i]);
     printf("\n");
   }
+  */
+  
   mcmc_init(kernel, init_x);
   /* display the results of that test evaluation
    *
    */
   if (rank==0){
-    printf("# [main] rank %i init complete .\n",rank);
+    printf("# [main] init complete .\n",rank);
     display_test_evaluation_results(kernel);
     ode_solver_print_stats(solver[0], stdout);
     fflush(stdout);
@@ -810,6 +813,7 @@ int main (int argc, char* argv[]) {
   }
   if (rank==0){
     printf("# Performing Burn-In with step-size (%g) tuning: %lu iterations\n",get_step_size(kernel),BurnInSampleSize);
+    fflush(stdout);
   }
   /* Burn In: these iterations are not recorded, but are used to find
    * an acceptable step size for each temperature regime.
