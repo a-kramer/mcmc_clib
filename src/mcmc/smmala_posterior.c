@@ -444,7 +444,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
    * calculate.  This is the only bit of the code that needs to be
    * parallel apart from parallel tempering done by mpi.
    */
-#pragma omp parallel for private(model,y,fy,yS,fyS,t,T,input_part) reduction(&:i_flag)
+#pragma omp parallel for private(model,j,a,y,fy,yS,fyS,t,T,input_part) reduction(&:i_flag)
   for (c=0; c<C; c++){// loop over different experimental conditions
     model=solver[c]->odeModel;    
     a=mp->S_approx[c];
