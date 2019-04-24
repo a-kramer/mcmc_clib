@@ -70,6 +70,8 @@
 #define i_norm_t 12
 #define NumberOfFields 13
 
+#define yes 1
+#define no 0
 #define CHUNK 100
 // sampling actions 
 #define SMPL_RESUME 1
@@ -86,9 +88,13 @@
 typedef struct {
   char *library_file;
   char *output_file;
+  char *resume_file;
   double target_acceptance;
   double initial_stepsize;
+  double initial_stepsize_rank_factor; // step_size = pow(rank_factor,rank) * initial_step_size;
   long sample_size;
+  double abs_tol;
+  double rel_tol;
   double t0;
 } main_options;  // these are user supplied options to the program
 
@@ -384,7 +390,7 @@ int burn_in_foreach(int rank, int R, size_t BurnInSampleSize, ode_model_paramete
   return EXIT_SUCCESS;
 }
 
-int mcmc_foreach(int rank, int R, size_t SampleSize, ode_model_parameters *omp, mcmc_kernel *kernel, hdf5block_t *h5block, void *buffer){
+int mcmc_foreach(int rank, int R, size_t SampleSize, ode_model_parameters *omp, mcmc_kernel *kernel, hdf5block_t *h5block, void *buffer, main_options *option){
   clock_t ct=clock();
   gsl_matrix *log_para_chunk;
   gsl_vector *log_post_chunk;
@@ -393,17 +399,26 @@ int mcmc_foreach(int rank, int R, size_t SampleSize, ode_model_parameters *omp, 
   log_post_chunk=gsl_vector_alloc(CHUNK);
   gsl_vector_view current;
   gsl_vector_view x_state;
-  int swaps = 0;
-  int acc=0, acc_c = 0;
+  int swaps = 0; // swap success counter
+  int acc=no;    // acceptance flag
+  int acc_c=0;   // acceptance counter
   double acc_rate=0.0;
   size_t it;
-  int master=0;
+  int master=no;
   int DEST;
   double beta=mcmc_get_beta(kernel);
   herr_t status;
-  
+  int resume_EC;
+  int last_chunk=no, not_written_yet=yes;
   for (it = 0; it < SampleSize; it++) {
     mcmc_sample(kernel, &acc);
+    last_chunk=SampleSize-it<CHUNK;
+    if (acc && last_chunk && not_written_yet){
+      resume_EC=write_resume_state(option->resume_file, rank, R, kernel);
+      if (resume_EC==EXIT_SUCCESS){
+	not_written_yet=no;
+      }
+    }
     acc_c += acc;
     master=(it%2==rank%2);
     if (master){
@@ -542,7 +557,20 @@ void display_test_evaluation_results(mcmc_kernel *kernel){
   printf("%+g\tLogPrior(θ)=%+g.\n",log_p[1],log_p[2]);
 }
 
-int main (int argc, char* argv[]) {
+main_options get_default_options(char *global_sample_filename_stem, char *lib_name){
+  main_options option;
+  option.initial_stepsize_rank_factor=1.0;
+  option.output_file=global_sample_filename_stem;
+  option.library_file=lib_name;
+  option.target_acceptance=-0.25;
+  option.initial_stepsize =-0.1;
+  option.sample_size=-100;
+  option.abs_tol=ODE_SOLVER_ABS_ERR;
+  option.rel_tol=ODE_SOLVER_REL_ERR;
+  return option;
+}
+
+int main(int argc, char* argv[]) {
   int i=0;
   int warm_up=0; // sets the number of burn in points at command line
   char lib_name[BUFSZ];
@@ -551,21 +579,17 @@ int main (int argc, char* argv[]) {
 
   char global_sample_filename_stem[BUFSZ]="Sample.h5"; // filename basis
   char rank_sample_file[BUFSZ]; // filename for sample output
-  char resume_filename[BUFSZ]="resume.double";
+  char resume_filename[BUFSZ]="resume.h5";
   double seed = 1;
   double gamma= 2;
   double t0=-1;
   int sampling_action=SMPL_FRESH;
   
-  int start_from_prior=0;
-  int sensitivity_approximation=0;
+  int start_from_prior=no;
+  int sensitivity_approximation=no;
 
-  main_options cnf_options;
-  cnf_options.output_file=global_sample_filename_stem;
-  cnf_options.library_file=lib_name;
-  cnf_options.target_acceptance=-0.25;
-  cnf_options.initial_stepsize =-0.1; // not used here in smmala
-  cnf_options.sample_size=-10;
+  main_options cnf_options=get_default_options(global_sample_filename_stem, lib_name);
+  
   MPI_Init(&argc,&argv);
   int rank,R;
   MPI_Comm_size(MPI_COMM_WORLD,&R);
@@ -592,9 +616,12 @@ int main (int argc, char* argv[]) {
     else if (strcmp(argv[i],"-s")==0) cnf_options.sample_size=strtol(argv[i+1],NULL,0);
     else if (strcmp(argv[i],"-o")==0) strncpy(cnf_options.output_file,argv[i+1],BUFSZ);
     else if (strcmp(argv[i],"-a")==0) cnf_options.target_acceptance=strtod(argv[i+1],NULL);
-    else if (strcmp(argv[i],"-i")==0) cnf_options.initial_stepsize=strtod(argv[i+1],NULL);
+    else if (strcmp(argv[i],"-i")==0 || strcmp(argv[i],"--initial-step-size")==0) cnf_options.initial_stepsize=strtod(argv[i+1],NULL);
+    else if (strcmp(argv[i],"-m")==0 || strcmp(argv[i],"--initial-step-size-rank-multiplier")==0) cnf_options.initial_stepsize_rank_factor=strtod(argv[i+1],NULL);
+
     else if (strcmp(argv[i],"-g")==0) gamma=strtod(argv[i+1],NULL);
-    
+    else if (strcmp(argv[i],"--abs-tol")==0) cnf_options.abs_tol=strtod(argv[i+1],NULL);
+    else if (strcmp(argv[i],"--rel-tol")==0) cnf_options.rel_tol=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"--seed")==0) seed=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"-h")==0 || strcmp(argv[i],"--help")==0) {
       print_help();
@@ -606,11 +633,11 @@ int main (int argc, char* argv[]) {
 
   /* load Data from hdf5 file
    */
-  if (h5file!=NULL){
-    printf("# [main] (rank %i) reading hdf5 file, loading data...",rank);
+  if (h5file){
+    printf("# [main] (rank %i) reading hdf5 file, loading data.\n",rank);
     fflush(stdout);
     read_data(h5file,omp);
-    printf("done.\n"); fflush(stdout);
+    fflush(stdout);
   } else {
     fprintf(stderr,"# [main] (rank %i) no data provided (-d option), exiting.\n",rank);
     MPI_Abort(MPI_COMM_WORLD,-1);
@@ -620,7 +647,7 @@ int main (int argc, char* argv[]) {
   /* load model from shared library
    */
   ode_model *odeModel = ode_model_loadFromFile(lib_name);  /* alloc */
-  if (odeModel == NULL) {
+  if (!odeModel) {
     fprintf(stderr, "# [main] (rank %i) Library %s could not be loaded.\n",rank,lib_name);
     exit(1);
   } else printf( "# [main] (rank %i) Library %s loaded.\n",rank, lib_name);
@@ -636,6 +663,7 @@ int main (int argc, char* argv[]) {
   sprintf(resume_filename,"%s_resume_%02i.h5",lib_base,rank);
   sprintf(rank_sample_file,"mcmc_rank_%02i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options.output_file));
   cnf_options.output_file=rank_sample_file;
+  cnf_options.resume_file=resume_filename;
   
   /* allocate a solver for each experiment for possible parallelization
    */
@@ -669,7 +697,7 @@ int main (int argc, char* argv[]) {
   
   /* init solver 
    */
-  realtype solver_param[3] = {ODE_SOLVER_ABS_ERR, ODE_SOLVER_REL_ERR, 0};
+  realtype solver_param[3] = {cnf_options.abs_tol, cnf_options.rel_tol, 0};
 
   const char **x_name=ode_model_get_var_names(odeModel);
   const char **p_name=ode_model_get_param_names(odeModel);
@@ -742,7 +770,7 @@ int main (int argc, char* argv[]) {
     MPI_Abort(MPI_COMM_WORLD,-1);
   }
   
-  /* initial parameter values after allocating an mcmc_kernel of the
+  /* initial parameter values; after allocating an mcmc_kernel of the
    * right dimensions we set the initial Markov chain state from
    * either the model's default parametrization p, the prior's μ, or the
    * state of a previously completed mcmc run (resume).
@@ -750,11 +778,12 @@ int main (int argc, char* argv[]) {
   int D=omp->size->D;
   double init_x[D];
   double beta=assign_beta(rank,R,round(gamma));
-  mcmc_kernel* kernel = smmala_kernel_alloc(beta,D,
-					    cnf_options.initial_stepsize,
-					    model,
-					    seed,
-					    cnf_options.target_acceptance);
+  double tgac=cnf_options.target_acceptance;
+  double m=cnf_options.initial_stepsize_rank_factor;
+  double step=cnf_options.initial_stepsize;
+  if (m>1.0 && rank>0) step*=gsl_pow_int(m,rank);
+  mcmc_kernel* kernel = smmala_kernel_alloc(beta,D,step,model,seed,tgac);
+  
   int resume_load_status;
   if (sampling_action==SMPL_RESUME){
     resume_load_status=load_resume_state(resume_filename, rank, R, kernel);
@@ -767,7 +796,7 @@ int main (int argc, char* argv[]) {
     if (rank==0) printf("# [main] setting mcmc initial value to log(default parameters)\n");
     for (i=0;i<D;i++) init_x[i]=gsl_sf_log(p[i]);
   }
-  
+  fflush(stdout);
   //display_prior_information(omp->prior);
   
   /* here we initialize the mcmc_kernel; this makes one test
@@ -788,7 +817,7 @@ int main (int argc, char* argv[]) {
    *
    */
   if (rank==0){
-    printf("# [main] init complete .\n",rank);
+    printf("# [main] rank %i init complete .\n",rank);
     display_test_evaluation_results(kernel);
     ode_solver_print_stats(solver[0], stdout);
     fflush(stdout);
@@ -796,7 +825,6 @@ int main (int argc, char* argv[]) {
   }
   
   size_t SampleSize = cnf_options.sample_size;  
-
   
   /* in parallel tempering th echains can swap their positions;
    * this buffers the communication between chains.
@@ -835,13 +863,10 @@ int main (int argc, char* argv[]) {
    * these iterations are recorded and saved to an hdf5 file
    * the file is set up and identified via the h5block variable.
    */  
-  mcmc_error=mcmc_foreach(rank, R, SampleSize, omp, kernel, h5block, buffer);
+  mcmc_error=mcmc_foreach(rank, R, SampleSize, omp, kernel, h5block, buffer, &cnf_options);
   assert(mcmc_error==EXIT_SUCCESS);
   append_meta_properties(h5block,&seed,&BurnInSampleSize, h5file, lib_base);
   h5block_close(h5block);
-
-  int resume_EC=write_resume_state(resume_filename, rank, R, kernel);
-  assert(resume_EC==EXIT_SUCCESS);
 
   /* clear memory */
   smmala_model_free(model);

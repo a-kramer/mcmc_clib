@@ -43,6 +43,11 @@
 #define NORM_OUTPUT 1
 #define NORM_TIME 2
 
+#define LOG_SCALE 0
+#define LOG10_SCALE 1
+#define LIN_SCALE 2
+
+
 sbtab_t* parse_sb_tab(char *);
 gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT, int IsNormalisingExperiment);
 gsl_vector* get_time_vector(sbtab_t *DataTable);
@@ -654,34 +659,43 @@ gsl_vector_int* get_parameter_scale(GPtrArray *Scale){
   gchar *Type;
   regmatch_t match[5];
   int EC=0;
-  assert(Scale!=NULL);
+  assert(Scale);
   n=Scale->len;
   // int regexec(const regex_t *restrict preg, const char *restrict string,
   //             size_t nmatch, regmatch_t pmatch[restrict], int eflags);
-  EC&=make_regular_expression(&LogType,"(natural|base-e)?[[:blank:]]*(log(arithm)?)$|^ln$");
-  EC&=make_regular_expression(&Log10Type,"(decadic|base-10)[[:blank:]]*(log(arithm)?)$|^log10$");
-  EC&=make_regular_expression(&LinType,"linear");
+  EC&=make_regular_expression(&LogType,"^(natural|base-e)?[[:blank:]]*(log(arithm)?)$|^ln$");
+  EC&=make_regular_expression(&Log10Type,"^(decadic|base-10)[[:blank:]]*(log(arithm)?)$|^log10$");
+  EC&=make_regular_expression(&LinType,"^lin(ear)$");
   assert(EC==0);
  
   scale_type=gsl_vector_int_alloc((size_t) n);
   gsl_vector_int_set_all(scale_type,-1);
   for (i=0;i<n;i++){
     Type=g_ptr_array_index(Scale,i);
-    if (regexec(&LogType, Type, 3, match, 0)){
-      gsl_vector_int_set(scale_type,i,1);
-    } else if (regexec(&Log10Type, Type, 3, match, 0)){
-      gsl_vector_int_set(scale_type,i,2);
-    } else if (regexec(&LinType, Type, 1, match, 0)){
-      gsl_vector_int_set(scale_type,i,0);
+    if (regexec(&LogType, Type, 3, match, 0)==0){
+      //printf("[get_parameter_scale] (%i) «%s» matches RE for 'natural logarithm'\n",i,Type);
+      gsl_vector_int_set(scale_type,i,LOG_SCALE);
+    } else if (regexec(&Log10Type, Type, 3, match, 0)==0){
+      //printf("[get_parameter_scale] (%i) «%s» matches RE for 'base-10 logarithm'\n",i,Type);
+      gsl_vector_int_set(scale_type,i,LOG10_SCALE);
+    } else if (regexec(&LinType, Type, 3, match, 0)==0){
+      //printf("[get_parameter_scale] (%i) «%s» matches RE for 'linear scale'\n",i,Type);
+      gsl_vector_int_set(scale_type,i,LIN_SCALE);
     } else {
       printf("[get_parameter_scale] This «!Scale[%i]» is unknown: «%s»\n",(int) i, Type);
       exit(-1);
     }
   }
-  //gsl_vector_int_fprintf(stdout,scale_type,"%i");
+  printf("[get_parameter_scale] ScaleType legend: natural logarithm = %i, base-10 logarithm = %i, linear = %i\n",LOG_SCALE,LOG10_SCALE,LIN_SCALE);
+  for (i=0; i<n; i++) printf("%1i",gsl_vector_int_get(scale_type,i));
+  printf("\n");
+  //  gsl_vector_int_fprintf(stdout,scale_type,"%i");
   return scale_type;
 }
 
+/* the mcmc sampling software operates in natural logarithm scale
+ * so everything but log-scale needs to be conerted to it
+ */
 int adjust_scale(gsl_vector *mu, gsl_vector *stdv, gsl_vector_int *ScaleType){
   assert(ScaleType);
   assert(mu);  
@@ -695,7 +709,7 @@ int adjust_scale(gsl_vector *mu, gsl_vector *stdv, gsl_vector_int *ScaleType){
     mu_i=gsl_vector_get(mu,i);
     stdv_i=gsl_vector_get(stdv,i);
     switch (t_i){
-    case 0:      
+    case LIN_SCALE:      
       median_i=mu_i;
       //var_i=gsl_pow_2(stdv_i);
       // find mu and sigma of logspace
@@ -707,13 +721,15 @@ int adjust_scale(gsl_vector *mu, gsl_vector *stdv, gsl_vector_int *ScaleType){
       gsl_vector_set(stdv,i,stdv_i);
       gsl_vector_set(mu,i,mu_i);
       break;    
-    case 2:
+    case LOG10_SCALE:
       // here we just have to do a very simple shift by a factor of log(10).
       mu_i*=LOG10;
       stdv_i*=LOG10;
       gsl_vector_set(mu,i,mu_i);
       gsl_vector_set(stdv,i,stdv_i);
-      break;      
+      break;
+    /* case LOG_SCALE: */
+    /*   printf("[adjust_scale] (%i) prior value (parameter DefaultValues) seems to be in log-scale (natural logarithm); no scale conversion needed.\n",i); */
     }
   }
   return EXIT_SUCCESS;
@@ -749,21 +765,23 @@ herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash){
   Scale=sbtab_get_column(Parameters,"!Scale");
   gsl_vector_int *ScaleType; // 0 linear; 1 natural logarithm; 10 decadic logarithm;
   if (Scale){
+    fprintf(stdout,"[process_prior] «!Scale» found in Parameter Table.\n");
     ScaleType=get_parameter_scale(Scale);
   }else{
+    fprintf(stderr,"[process_prior] «!Scale» not found in Parameter Table, defaulting to LOG10 Scale.\n");
     ScaleType=gsl_vector_int_alloc((int) P_ID->len);
     gsl_vector_int_set_all(ScaleType,1);
   }
   
   mu=sbtab_column_to_gsl_vector(Parameters,"!DefaultValue");
-  if (mu==NULL){ // the above name is not a column, so try a couple of other names
+  if (!mu){ // the above name is not a column, so try a couple of other names
     ValueName=g_strsplit("!Value !Mean !Median !Mode"," ",-1);  
     n=(int) g_strv_length(ValueName);
     i=-1;
-    while (mu==NULL && i<n){
+    while (!mu && i<n){
       mu=sbtab_column_to_gsl_vector(Parameters,ValueName[++i]);
     }
-    assert(mu!=NULL);
+    assert(mu);
     printf("[process_prior] Using column «%s» for prior μ (mu).\n",ValueName[i]);
     g_strfreev(ValueName);
   }
@@ -799,7 +817,7 @@ herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash){
       column=gsl_matrix_column(M,i);
       s=g_ptr_array_index(P_ID,i);
       c=sbtab_column_to_gsl_vector(C,s);
-      if (c!=NULL){
+      if (c){
     	gsl_vector_memcpy(&(column.vector),c);
 	gsl_vector_free(c);
       }
@@ -823,7 +841,7 @@ herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash){
       gsl_vector *alpha;
       par_max=sbtab_column_to_gsl_vector(Parameters,"!Max");
       par_min=sbtab_column_to_gsl_vector(Parameters,"!Min");
-      if (par_max!=NULL && par_min!=NULL){
+      if (par_max && par_min){
 	alpha=gsl_vector_alloc(D);
 	gsl_vector_set_zero(alpha);
 	printf("[process_prior] Creating generalised Gaussian prior from !Min and !Max fields.\n");
