@@ -31,7 +31,10 @@ the problem using a different thermodynamic temperature beta, with
     Posterior(theta|data,beta) = Likelihood(D|theta)^beta * prior(theta)
 
 
-Experimental data is compared
+Experimental data is compared to simulations (one per experiment). The
+simulation are done in parallel via OpenMP (parallel for loop), so one MPI instance
+per Node is ok if the number of experiments is higher than the number
+of cores/node.
 
 This project has a gh page:
 [http://a-kramer.github.io/mcmc_clib/](http://a-kramer.github.io/mcmc_clib/),
@@ -50,9 +53,9 @@ Dependencies (libraries)
 |ODEs|	Sundials CVODES |=2.7.0|
 |MCMC|	GSL |>=2.3|
 | |CBLAS| |
-|VFGEN|	CLN |>=1.3.2 or later|
-| |GiNaC |>=1.6.2 or later|
-||mini XML| >=2.6 or later|
+|VFGEN|	CLN |>=1.3.2|
+| |GiNaC |>=1.6.2|
+||mini XML| >=2.6|
 
 for example, on ubuntu, you can install the following packages, or similar:
 
