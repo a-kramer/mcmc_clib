@@ -1,134 +1,112 @@
 mcmc_clib
 =========
 
-is a C program for simplified manifold MALA sampling of ODE model parameters.
-This project has a gh page: [http://a-kramer.github.io/mcmc_clib/](http://a-kramer.github.io/mcmc_clib/), with more detailed instructions.
+A program written in C for simplified manifold Metropolis adjusted
+Lengevin algorithm (SMMALA) sampling of the parameters of ordinary
+differential euqations. The main purpose is to fit models to data in
+systems biology.
+
+The main program relies on the [GNU Scientific
+Library](http://www.gnu.org/software/gsl/doc/html/index.html), and the
+[SUNDIALS solver](https://computation.llnl.gov/projects/sundials)
+cvodes for initial value problem integration with (forward) sensitiviy
+analysis.
+
+Systens biology models are quite large, so handling them should be
+automatic. For this purpose we heavily rely on the
+[vfgen](https://github.com/WarrenWeckesser/vfgen) tool, which creates
+C code for the model. VFGEN depends [CLN](https://www.ginac.de/CLN/),
+[Ginac](https://www.ginac.de/), and
+[mini-xml](https://github.com/michaelrsweet/mxml)
+(https://www.msweet.org/mxml/).
+
+The code is intended to run on a computing cluster for big problems
+(~100 parameters) but can also run on a workstation for problens with
+~25 parameters. The appropriate number of nodes is ~16 for bigger
+problems. We use a parallel tempering scheme, so each node processes
+the problem using a different thermodynamic temperature beta, with
+
+    gamma = 2 # by default
+    beta=(1-MPI_rank/MPI_Comm_size)^gamma
+    Posterior(theta|data,beta) = Likelihood(D|theta)^beta * prior(theta)
+
+
+Experimental data is compared
+
+This project has a gh page:
+[http://a-kramer.github.io/mcmc_clib/](http://a-kramer.github.io/mcmc_clib/),
+with more detailed instructions.
 
 Installation Instructions
 =========================
 
-install the following dependencies (libraries)
+Dependencies (libraries)
 
-~~~
-External library dependencies
-	For ODE: 
-		Sundials 2.4.0 or later
-	For MCMC:
-		GSL	1.15 or later
-		CBLAS
+|Component|library|version|
+|--------:|:-----:|:------|
+|data storage| hdf5| |
+|Parallelization|OpenMPI| |
+| |OpenMP| |
+|ODEs|	Sundials CVODES |=2.7.0|
+|MCMC|	GSL |>=2.3|
+| |CBLAS| |
+|VFGEN|	CLN |>=1.3.2 or later|
+| |GiNaC |>=1.6.2 or later|
+||mini XML| >=2.6 or later|
 
-For VFGEN:
-	CLN 1.3.2 or later
-	GiNaC 1.6.2 or later
-	mini XML 2.6 or later
-~~~
-
-for example, on ubuntu, you can install the following packages:
+for example, on ubuntu, you can install the following packages, or similar:
 
     libmxml-dev 
     libmxml1 
     libatlas-base-dev 
-    libatlas3gf-base
+    libatlas3-base
     libginac-dev 
-    libcln-dev 
-    libsundials-serial-dev 
-    libsundials-cvode1
-    libsundials-cvodes2
-    libatlas-dev
-    libgsl0-dev
+    libcln-dev
+    libsundials-dev
+    libgsl-dev
+    libhdf5-dev
+    libopenmpi-dev
+    libgomp1
 
 to satisfy these dependencies. 
 
-Then, inspect the Makefile. Once you are satisfied, type
+There is no build system yet. To compile the code you will need to edit the Makefile.
+Makefile.ubuntu is agood place to start. Once you are satisfied:
 ```
-make -B
+make
 ```
-note that the option ```-B``` will compile everything, even if the
-binaries appear up to date. This option is not necessary once you have compiled
-the binaries a first time successfully.
+
 
 Usage
 =====
+	Examples:
+	./bin/ode_smmala --help
+			 to get a list of command line options
+			 
+	./ode_smmala -l ./model.so -d ./data.h5 \
+                     -s ${sample_size} > mcmc_run_1.log 2> mcmc_run_1.err
 
-	./ode_smmala -l ./model.so -c ./data.cfg -b \
-                     -o sample.double -s ${sample_size} > ttr.out
-
-	-b 
-	      switches output mode to binary, otherwise text mode (printf)
-	      Burn-In Sample will always be printed to stdout
-
-	-c data.cfg
-	      configuration (data, reference data, inputs, output function,
-              prior, etc.)
+	important options
+	-d data.h5
+	      HDF5 file with: data, reference data, inputs, and
+              prior
 
 	-l model.so
 	      shared library file
 
-	-s N
+	-s $N
               sample size
 
-	-h 
-              prints help
 
+The contents of the data file are described in doc/documentation.pdf
 
-The configuration file includes the measurement time specifications,
-the data, the standard deviation of observations and the
-hyperparameters \mu and \Sigma^{-1} of the Gaussian prior.  Optionally
-some of the sampling parameters can be set there for convenience.
+Result
+======
 
-The following Parameters can be set in the cfg file:
+If the run is successful, the result is an hdf5 file containing the
+MCMC sample in log-space (natural logarithm), log-posterior
+probability values with som eannotation saved as hdf5 attributes and
+some description of the contents.
 
-Property     |  Setting
------------: | :------------
-sample size  |  ```sample_size=[integer]```
-step size    |  ```step_size=[double]```
-target acceptance | ```acceptance=[0, 1]```
-sample file name  | ```output=[string]```
-initial condition time | ```t0=[double]```
-
-These definitions should not have spaces before the '=' sign since
-everything before = is checked for matches with option names (i.e.  
-```« t0 »=0.0;``` is not the same as ```«t0»=0.0;``` ).
-
-
-Hints
-=====
-
-it might be helpful to specify the sample size like this in bash: 
-```
-   -s $((2**14))
-   -s $((10**6))
-```
-because ```1e6``` or ```1E6``` will not work. (the sample size is an integer).
-
-
-====================================================================================
-
-Output of parameters sample {p} will have the following structure (in
-binary and text mode; though, in binary mode there are no newlines):
-
-sampling is done in logarithmic space, so use exp(p[i]) if you want to simulate trajectories
-
-columns: parameters and log-posterior
-   rows: Markov Chain members (i.e. the sample members)
-```
-   Line 
-   L1   p[0] p[1] p[2] ... p[n-1] log-Posterior {\n}
-   L2   p[0] p[1] p[2] ... p[n-1] log-Posterior {\n}
-   L3   p[0] p[1] p[2] ... p[n-1] log-Posterior {\n}
-   L4   p[0] p[1] p[2] ... p[n-1] log-Posterior {\n}
-   ...
-   L{sample_size}      ...
-```
-you can load the binary sample using an fread type function.
-
-e.g. in octave: ```[VAL, COUNT] = fread (FID, SIZE, PRECISION,SKIP, ARCH)```
-
-so:
-```
-     FID=fopen("MySample.double","r");
-     sample=fread(FID,[n+1,sample_size],"double");
-     fclose(FID);
-```
-should work fine. In fact, the sources include octave scripts that read and process the sample. 
-
+In [GNU Octave](https://www.gnu.org/software/octave/) the file can be
+loaded as is via `load sample.h5`.
