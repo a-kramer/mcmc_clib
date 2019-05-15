@@ -20,18 +20,16 @@
 #include "normalisation_sd.h"
 
 
-/* this loads each standard deviation dataset from the hdf5 data file
+/* loads each standard deviation dataset from the hdf5 data file
  * and saves the information in the experiment structure indexed as
- * annotated in the hdf5 dataset. Both the data and stdv block carryhh
- * an index attribute and are then saved in E[index].  herr_t
- *
- * load_stdv_block(hid_t g_id, const char *name, 
- *                 const H5L_info_t *info, void *op_data)
- *
- * interface is as defined by H5Literate. op_data is the model
- * parameters struct.
+ * annotated in the hdf5 dataset. Both the data and stdv block carry
+ * an index attribute and are then saved in @code E[index]@. 
  */
-herr_t load_stdv_block(hid_t g_id, const char *name, const H5L_info_t *info, void *op_data){
+herr_t /*hdf5 error type, undocumented*/
+load_stdv_block(hid_t g_id, /*group id (hdf5)*/
+		const char *name, /*dataset name*/
+		const H5L_info_t *info, /*info struct, as defined in hdf5 API*/
+		void *op_data)/*model parameter struct, contains experiment array*/{
   ode_model_parameters *mp=op_data;
   int rank;
   herr_t status=H5LTget_dataset_ndims(g_id, name, &rank);
@@ -72,18 +70,16 @@ herr_t load_stdv_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   return status>=0?0:-1;  
 }
 
-/* this loads each experimental data from the hdf5 file and saves the
+/* loads each experimental data block from the hdf5 file and saves the
  * information in the experiment structure indexed as annotated. Both
  * the data and stdv block carry an index attribute and are then saved
- * in E[index].  
- *
- * herr_t load_data_block(hid_t g_id, const char *name, 
- *                        const H5L_info_t *info, void *op_data)
- *
- * interface is as defined by H5Literate. op_data is the model
- * parameters struct.
+ * in @code E[index]@.  
  */
-herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, void *op_data){
+herr_t /*hdf5 error type, undocumented*/
+load_data_block(hid_t g_id,
+		const char *name,
+		const H5L_info_t *info,
+		void *op_data)/*ode model parameters, contains experiment array E[]*/{
   ode_model_parameters *mp=op_data;
   int rank;
   herr_t status=H5LTget_dataset_ndims(g_id, name, &rank);
@@ -181,13 +177,13 @@ herr_t load_data_block(hid_t g_id, const char *name, const H5L_info_t *info, voi
   return status>=0?0:-1;
 }
 
-/* int load_prior(hid_t g_id, void *op_data)
- * H5Literate function to load prior parameters
- * op_data is the model parameters struct
- * loads mu and one of: sigma, Sigma, Precision;
+
+/* H5Literate function to load prior parameters @code op_data@ is the model
+ * parameters struct. The function copies mu and one of: sigma, Sigma, Precision into the struct
  * Checks what type of prior has been set.
  */
-int load_prior(hid_t g_id, void *op_data){
+int /*returns GSL error codes*/
+load_prior(hid_t g_id, void *op_data) /*ode model parameters, contains prior parameter struct*/{
   ode_model_parameters *mp=op_data;
   hsize_t D;
   herr_t status=0;
@@ -221,13 +217,17 @@ int load_prior(hid_t g_id, void *op_data){
 }
 
 
-/* this function loads the experimental data from an hdf5 file the
+/* loads the experimental data from an hdf5 file the
  * second argument is called model_parameters because it stores
  * everything that must be part of the "ODE model" for a specific mcmc
  * algorithm to run. It contains the data but also allocated space for
  * simulation results and much more.
  */
-int read_data(const char *file, void *model_parameters){
+int /*casts hdf5 error codes to int*/
+read_data(const char *file,
+	  void *model_parameters)/*a fairly big struct that contains
+	 data, prior parameters, and pre allocated space for
+	 simulation results and normalisation calculations*/{
   ode_model_parameters *mp=model_parameters;
   herr_t status;
   hid_t file_id = H5Fopen(file,H5F_ACC_RDONLY,H5P_DEFAULT);

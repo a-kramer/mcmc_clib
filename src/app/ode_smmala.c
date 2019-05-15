@@ -54,22 +54,6 @@
 #define INTEGER_BLOCK 1
 #define DOUBLE_BLOCK 2
 
-// data field ids, should be consecutive atm., because they are sometimes looped over.
-#define i_time 0
-#define i_reference_input 1
-#define i_reference_data 2
-#define i_sd_reference_data 3
-#define i_input 4
-#define i_data 5
-#define i_sd_data 6
-#define i_prior_mu 7
-#define i_prior_icov 8
-#define i_initial_conditions 9
-#define i_ref_initial_conditions 10
-#define i_norm_f 11
-#define i_norm_t 12
-#define NumberOfFields 13
-
 #define yes 1
 #define no 0
 #define CHUNK 100
@@ -84,20 +68,32 @@
 //#define BETA(rank,R) gsl_sf_exp(-gamma*((double) rank))
 
 
-
+/* collects most of the options that have defaults, values from
+   possible configuration files and values from command line
+   arguments.
+ */
 typedef struct {
-  char *library_file;
-  char *output_file;
-  char *resume_file;
-  double target_acceptance;
-  double initial_stepsize;
-  double initial_stepsize_rank_factor; // step_size = pow(rank_factor,rank) * initial_step_size;
-  long sample_size;
-  double abs_tol;
-  double rel_tol;
-  double t0;
+  char *library_file; /*@code .so@ file*/
+  char *output_file; /*name suffix of the result file*/
+  char *resume_file; /*name prefix of the sesume file*/
+  double target_acceptance; /*taget acceptance of the mcmc algorithm, Metropolis works well with 24%, smmala probably at 50%*/
+  double initial_stepsize; /*mcmc step size before tuning*/
+  double initial_stepsize_rank_factor; /* the initial size can be
+					  adjusted depending on
+					  temperature by setting thos
+					  to a value larger than 1:
+					  @code step_size =
+					  pow(rank_factor,rank) *
+					  initial_step_size;@*/
+  long sample_size; /*target recorded sample size*/
+  double abs_tol; /* ode solver parameter*/
+  double rel_tol; /* ode solver parameter*/
+  double t0; /* global initial time for integration (ivp)*/
 } main_options;  // these are user supplied options to the program
 
+
+/* collects all parameters and size arrays needed for hdf5 functions
+ */
 typedef struct {  
   hid_t file_id;
   hid_t para_property_id;
@@ -116,7 +112,9 @@ typedef struct {
   hsize_t *block;
 } hdf5block_t;
 
-int h5block_close(hdf5block_t *h5block){
+/* closes all hdf5 id's and frees h5block
+ */
+int /*always returns success*/ h5block_close(hdf5block_t *h5block){
   H5Dclose(h5block->posterior_set_id);
   H5Dclose(h5block->parameter_set_id);
   H5Sclose(h5block->para_dataspace_id);
@@ -134,7 +132,16 @@ int h5block_close(hdf5block_t *h5block){
   return EXIT_SUCCESS;
 }
 
-hdf5block_t* h5block_init(char *output_file, ode_model_parameters *omp, size_t Samples, const char **x_name, const char **p_name, const char **f_name){
+/* initializes hdf5 struct and writes some of the initially known
+   problem properties such as state variable names into hdf5 file*/
+hdf5block_t* /*freshly allocated struct with ids and size parameters*/
+h5block_init(char *output_file, /*will create this file for writing*/
+	     ode_model_parameters *omp, /*contains MCMC problem description*/
+	     size_t Samples, /* MCMC sample size*/
+	     const char **x_name, /*ODE model State Variable names, array of strings*/
+	     const char **p_name, /*ODE model parameter names, array of strings*/
+	     const char **f_name)/*ODE model output function names, array of strings*/
+{
   hsize_t *size=malloc(sizeof(hsize_t)*2);
   hsize_t *chunk_size=malloc(sizeof(hsize_t)*2);
   hid_t file_id = H5Fcreate(output_file, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
@@ -223,19 +230,8 @@ hdf5block_t* h5block_init(char *output_file, ode_model_parameters *omp, size_t S
   return h5block;
 }
 
-/* Auxiliary structure with working storage and aditional parameters for
- * a multivariate normal model with known covariance matrix and zero mean.
- *
-typedef struct {
-	int D
-	double* Variance;
-	double* Precision;
-	double* tmpVec;
-	char init;
-} mvNormParams;
- */
-
-double assign_beta(int rank, int R, int gamma){
+/*assigns a temperature @code beta@ to an MPI rank*/
+double /*beta*/ assign_beta(int rank,/*MPI rank*/ int R, /*MPI Comm size*/ int gamma)/*exponent: @code beta=(1-rank/R)^gamma@*/{
   double x=(double)(R-rank)/(double) R;
   double b=-1;
   assert(gamma>=1);
@@ -244,6 +240,7 @@ double assign_beta(int rank, int R, int gamma){
   return b;
 }
 
+/*output of @code ./ode_smmala --help@*/
 void print_help(){
   printf("Usage ($SOMETHING are values you choose, written as bash variables):\n");
   printf("-a $ACCEPTANCE_RATE\n");
@@ -253,9 +250,11 @@ void print_help(){
   printf("-g $G\n");
   printf("\t\t\tThis will define how the inverse MCMC temperatures β are chosen: β = (1-rank/R)^G, where R is MPI_Comm_Size.\n\n");
   printf("-i $STEP_SIZE\n");
-  printf("\t\t\tThe initial step size of each markov chain, this will usually be tuned to get the desired acceptance rate $A (-a $A).\n\n");
+  printf("\t\t\tThe initial step size of each markov chain, this will usually be tuned later to get the desired acceptance rate $A (-a $A).\n\n");
   printf("-l ./ode_model.so\n");
   printf("\t\t\tode_model.so is a shared library containing the CVODE functions of the model.\n\n");
+  printf("-m $M\n");
+  printf("\t\t\tIf this number is larger than 1.0, each MPI rank will get a different initial step size s: step_size(rank)=STEP_SIZE*M^(rank).\n\n");
   printf("-o ./output_file.h5\n");
   printf("\t\t\tFilename for hdf5 output. This file will contain the log-parameter sample and log-posterior values. The samples will have attributes that reflect the markov chain setup.\n\n");
   printf("-p, --prior-start\n");
@@ -271,7 +270,10 @@ void print_help(){
   exit(EXIT_SUCCESS);
 }
 
-void print_chunk_graph(gsl_matrix *X, gsl_vector *lP){
+/* pseudo graphical display of sample chunk statistical properties,
+   only useful with one MPI worker as it prints to terminal.
+ */
+void print_chunk_graph(gsl_matrix *X,/*sub-sample of CHUNK rows*/ gsl_vector *lP)/*log-Posterior values, unnormalized*/{
   int width=100; // we assume that the display can show $width characters
   int i,j,k,n,nc;
   int tmp;
@@ -323,7 +325,8 @@ void print_chunk_graph(gsl_matrix *X, gsl_vector *lP){
   printf("%+4.4g\n",max);  
 }
 
-void display_chunk_properties(hdf5block_t *h5block){
+/*debug function: shows whether the size, offset, count and stride have been set to sensible values*/
+void display_chunk_properties(hdf5block_t *h5block)/*structure holding the hdf5 parameters*/{
   hsize_t *offset=h5block->offset;
   hsize_t *block=h5block->block;
   hsize_t *count=h5block->count;
@@ -335,7 +338,8 @@ void display_chunk_properties(hdf5block_t *h5block){
   printf("#  count: %lli×%lli.\n",count[0],count[1]);
 }
 
-herr_t h5write_current_chunk(hdf5block_t *h5block, gsl_matrix *log_para_chunk, gsl_vector *log_post_chunk){
+/*writes a sampled chunk into the appropriate hyperslab of hdf5 file*/
+herr_t /*hdf5 error type*/ h5write_current_chunk(hdf5block_t *h5block,/*holds hdf5 properties and ids*/ gsl_matrix *log_para_chunk, /*log-parameter chunk*/ gsl_vector *log_post_chunk)/*log-posterior value chunk*/{
   herr_t status;
   assert(log_para_chunk);
   assert(log_post_chunk);
@@ -351,8 +355,14 @@ herr_t h5write_current_chunk(hdf5block_t *h5block, gsl_matrix *log_para_chunk, g
   H5Dwrite(h5block->posterior_set_id, H5T_NATIVE_DOUBLE, h5block->post_chunk_id, h5block->post_dataspace_id, H5P_DEFAULT, log_post_chunk->data);
   return status;
 }
-
-int burn_in_foreach(int rank, int R, size_t BurnInSampleSize, ode_model_parameters *omp, mcmc_kernel *kernel, void *buffer){
+/*this executes a sampling loop, without recording the values, it adapts step size to get target acceptance*/
+int /*always returns success*/
+burn_in_foreach(int rank, /*MPI rank*/
+		int R, /*MPI Comm size*/
+		size_t BurnInSampleSize, /*number of iterations for tuning*/
+		ode_model_parameters *omp, /*ODE problem definition, allocated space*/
+		mcmc_kernel *kernel, /*MCMC kernel struct*/
+		void *buffer)/*MPI communication buffer, a deep copy of @code kernel@*/{
   int master=0;
   int swaps=0;
   int acc=0, acc_c=0;
@@ -390,7 +400,16 @@ int burn_in_foreach(int rank, int R, size_t BurnInSampleSize, ode_model_paramete
   return EXIT_SUCCESS;
 }
 
-int mcmc_foreach(int rank, int R, size_t SampleSize, ode_model_parameters *omp, mcmc_kernel *kernel, hdf5block_t *h5block, void *buffer, main_options *option){
+/*main mcmc loop, records sampled values, performs no tuning of the step size.*/
+int /*always returns success*/
+mcmc_foreach(int rank, /*MPI rank*/
+	     int R, /*MPI Comm size*/
+	     size_t SampleSize, /*number of iterations of MCMC*/
+	     ode_model_parameters *omp, /*ODE problem cpecification and pre-allocated space*/
+	     mcmc_kernel *kernel, /* MCMC kernel sturct, holds MCMC-algorithm's parameters*/
+	     hdf5block_t *h5block, /*defines the hdf5 file to write into, holds ids and sizes*/
+	     void *buffer, /* for MPI communication, similar to kernel*/
+	     main_options *option)/*options from defaults, files and command line*/{
   clock_t ct=clock();
   gsl_matrix *log_para_chunk;
   gsl_vector *log_post_chunk;
@@ -504,7 +523,13 @@ int mcmc_foreach(int rank, int R, size_t SampleSize, ode_model_parameters *omp, 
   return EXIT_SUCCESS;
 }
 
-herr_t append_meta_properties(hdf5block_t *h5block, double *seed, size_t *BurnInSampleSize, char *h5file, char *lib_base){
+/*writes properties of the current run related to implementation and command line choices*/
+herr_t /*hdf5 error*/
+append_meta_properties(hdf5block_t *h5block,/*hdf5 file ids*/
+		       double *seed,/*random number seed*/
+		       size_t *BurnInSampleSize, /*tuning iterations*/
+		       char *h5file, /*name of hdf5 file containing the experimental data and prior set-up*/
+		       char *lib_base)/*basename of the library file @code .so@ file*/{
   herr_t status;
   int omp_n,omp_np,i;
   status&=H5LTset_attribute_double(h5block->file_id, "LogParameters", "seed", seed, 1);
@@ -530,7 +555,9 @@ herr_t append_meta_properties(hdf5block_t *h5block, double *seed, size_t *BurnIn
   return status;
 }
 
-void print_experiment_information(int rank, int R, ode_model_parameters *omp, gsl_vector *y0){
+/*prints how many experiments are normalization experiments and sets
+  each experiment's initial conditions if not previously set*/
+void print_experiment_information(int rank,/*MPI rank*/ int R, /*MPI Comm size*/ ode_model_parameters *omp, /*ODE model parameters*/ gsl_vector *y0)/*globally set initial conditions*/{
   int i;
   int C=omp->size->C;
   int N=omp->size->N;
@@ -559,7 +586,8 @@ void print_experiment_information(int rank, int R, ode_model_parameters *omp, gs
   }
 }
 
-void display_test_evaluation_results(mcmc_kernel *kernel){
+/*Kernel init makes a test evakuation of log-posterior pdf; this function prints the results (uses a couple of unicode characters)*/
+void display_test_evaluation_results(mcmc_kernel *kernel)/*MCMC kernel struct*/{
   int i;
   assert(kernel);
   int D=MCMC_DIM(kernel);
@@ -573,7 +601,11 @@ void display_test_evaluation_results(mcmc_kernel *kernel){
   printf("%+g\tLogPrior(θ)=%+g.\n",log_p[1],log_p[2]);
 }
 
-main_options get_default_options(char *global_sample_filename_stem, char *lib_name){
+/*this is where the hard coded defaults are set. All options are
+  scalars (or pointers to elsewhere allocated memory) so the result is
+  not a reference*/
+main_options /*a struct with default values*/
+get_default_options(char *global_sample_filename_stem,/*for mcmc result files*/ char *lib_name)/*Model library name*/{
   main_options option;
   option.initial_stepsize_rank_factor=1.0;
   option.output_file=global_sample_filename_stem;
@@ -586,7 +618,19 @@ main_options get_default_options(char *global_sample_filename_stem, char *lib_na
   return option;
 }
 
-int main(int argc, char* argv[]) {
+/* Initializes MPI,
+ * loads defaults, 
+ *       command line arguments,
+ *       hdf5 data,
+ *       ode model from shared library @code dlopen@
+ * allocates kernel, 
+ *           ode model parameters
+ *           MPI communivcation buffers
+ * calls MCMC routines
+ * finalizes and frees (most) structs
+ */
+int/*always returns success*/
+main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   int i=0;
   int warm_up=0; // sets the number of burn in points at command line
   char lib_name[BUFSZ];
