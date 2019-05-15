@@ -510,7 +510,7 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   hid_t data_group_id, sd_group_id;  
   
   data_group_id = H5Gcreate2(file_id, "/data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  sd_group_id = H5Gcreate2(file_id, "/sd_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  sd_group_id = H5Gcreate2(file_id, "/stdv", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   assert(data_group_id>0 && sd_group_id>0);
   guint nE=get_table_length(E_table);
   printf("[process_data_tables] %i Experiments.\n",nE);
@@ -912,8 +912,8 @@ herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vect
   printf("[write_data_to_hdf5] writing data set with index %i (MAJOR=%i, MINOR=%i)\n",index,major,minor);
   printf("[write_data_to_hdf5] looking up data group «H5_ROOT/data»");
   data_group_id=H5Gopen(file_id,"/data",H5P_DEFAULT); printf(" id=%li\n",data_group_id);
-  printf("[write_data_to_hdf5] looking up standard deviation group «H5_ROOT/sd_data»");
-  sd_group_id=H5Gopen(file_id,"/sd_data",H5P_DEFAULT); printf(" id=%li\n",sd_group_id);
+  printf("[write_data_to_hdf5] looking up standard deviation group «H5_ROOT/stdv»");
+  sd_group_id=H5Gopen(file_id,"/stdv",H5P_DEFAULT); printf(" id=%li\n",sd_group_id);
   assert(data_group_id>0);
   assert(sd_group_id>0);
   // write data and standard deviation to file
@@ -961,7 +961,7 @@ herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vect
   }
   status &= H5Dclose(dataset_id);
   // dY
-  sprintf(H5_data_name,"sd_data_block_%i",index);
+  sprintf(H5_data_name,"stdv_block_%i",index);
   sd_data_id = H5Dcreate2(sd_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   status &= H5Dwrite(sd_data_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dY->data);
   status &= H5Dclose(sd_data_id);

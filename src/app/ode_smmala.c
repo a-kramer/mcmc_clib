@@ -48,7 +48,7 @@
 #include "diagnosis_output.h"
 #include "hdf5.h"
 #include "hdf5_hl.h"
-
+#include "omp.h"
 #include "../mcmc/model_parameters_smmala.h"
 // define target block types
 #define INTEGER_BLOCK 1
@@ -506,11 +506,27 @@ int mcmc_foreach(int rank, int R, size_t SampleSize, ode_model_parameters *omp, 
 
 herr_t append_meta_properties(hdf5block_t *h5block, double *seed, size_t *BurnInSampleSize, char *h5file, char *lib_base){
   herr_t status;
-  status=H5LTset_attribute_string(h5block->file_id, "LogParameters", "ModelLibrary", lib_base);
-
+  int omp_n,omp_np,i;
   status&=H5LTset_attribute_double(h5block->file_id, "LogParameters", "seed", seed, 1);
   status&=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "BurnIn", BurnInSampleSize, 1);
-  status&=H5LTset_attribute_string(h5block->file_id, "LogParameters", "DataFrom", h5file);  
+  status&=H5LTset_attribute_string(h5block->file_id, "LogParameters", "DataFrom", h5file);
+  status&=H5LTmake_dataset_string(h5block->file_id,"Model",lib_base);
+  // here we make a short test to see what the automatic choice of the
+  // number of threads turns out to be.
+#pragma omp parallel private(omp_n,omp_np) reduction(+:i)
+  {
+    i=1;
+    omp_n=omp_get_num_threads();
+    omp_np=omp_get_num_procs();
+  }
+  if (i!=omp_n){
+    fprintf(stderr,"[append_meta_properties] warning: finding out number of threads possibly failed reduction of (n×1: %i) != get_num_threads():%i.\n",i,omp_n);
+  } else {
+    h5block->size[0]=1;
+    h5block->size[1]=1;
+    status&=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_THREADS",1,h5block->size,&omp_n);
+    status&=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_PROCS",1,h5block->size,&omp_np);
+  }
   return status;
 }
 
