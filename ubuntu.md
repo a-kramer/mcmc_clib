@@ -29,7 +29,7 @@ and ubuntu based distributions like [Linux Mint](http://linuxmint.com/ and [Elem
 ||libsundials-dev (2.7.0+dfsg)|https://packages.ubuntu.com/bionic/libsundials-dev|
 |OpenMPI|libopenmpi-dev|https://packages.ubuntu.com/disco/libopenmpi3|
 |SBtab import|libglib2.0-0|https://packages.ubuntu.com/disco/libglib2.0-0|
-|libhdf5-dev|same|
+
 
 
 Package names and versions can be searched at

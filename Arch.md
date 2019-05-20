@@ -17,7 +17,7 @@ create models and data files via other methods.
 ||lapack|https://www.archlinux.org/packages/extra/x86_64/lapack/|
 ||hdf5|https://www.archlinux.org/packages/community/x86_64/hdf5/|
 |SBtab import|glib2|https://www.archlinux.org/packages/core/x86_64/glib2/|
-|hdf5|https://www.archlinux.org/packages/community/x86_64/hdf5/|
+||hdf5|https://www.archlinux.org/packages/community/x86_64/hdf5/|
 
 
 Package names and versions can be searched at the 

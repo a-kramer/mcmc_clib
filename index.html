@@ -41,26 +41,27 @@
           <span class="credits right">Hosted on GitHub Pages &mdash; Theme by <a href="https://twitter.com/michigangraham">mattgraham</a></span>
         </div>
 
-	This software's characteristics:
-	<ul>
-	  <li> accepts unnormalized data and reference data (arbitrary units)</li>
-	  <li> command line tool</li>
-	  <li> samples in logarithmic space</li>
-	  <li> multivariate Gaussian prior densities only (in logspace)</li>
-	  <li> aimed at HPC use</li>
+	<div>
+	<p>This software's characteristics:
 	  <ul>
-	    <li>parallel tempering scheme using MPI</li>
-	    <li>parallel simulation of all experiment setups using OpenMP</li>
+	    <li> accepts unnormalized data and reference data (arbitrary units)</li>
+	    <li> command line tool</li>
+	    <li> samples in logarithmic space</li>
+	    <li> multivariate Gaussian prior densities only (in logspace)</li>
+	    <li> aimed at HPC use</li>
+	    <ul>
+	      <li>parallel tempering scheme using MPI</li>
+	      <li>parallel simulation of all experiment setups using OpenMP</li>
+	    </ul>
+	    <li> uses hdf5 for the storage of experimental data and resulting parameter sample</li>
+	    <li> uses CVODES solver to obtain numerical solutions to the model's initial value problems</li>
+	    <ul>
+	      <li> forward sensitivity analysis</li><li> Fisher information</li>
+	    </ul>
 	  </ul>
-	  <li> uses hdf5 for the storage of experimental data and resulting parameter sample</li>
-	  <li> uses CVODES solver to obtain numerical solutions to the model's initial value problems</li>
-	  <ul>
-	    <li> forward sensitivity analysis</li><li> Fisher information</li>
-	  </ul>
-	</ul>
-	<!--        <h1>
-	  -->
-
+	</p>
+	</div>
+	<div>
 	<h2>Alternatives</h2> The software is not developed by
 	a <span title="rather one person">team</span> and new features
 	are added very slowly.
@@ -76,14 +77,21 @@
 	&amp; <a href="https://github.com/ICB-DCM/AMICI">AMICI</a>, or
 	perhaps even an alternatuve methodology like
 	the <a href="https://febs.onlinelibrary.wiley.com/doi/full/10.1111/febs.12276">profile
-	likelihood method</a>.	
+	  likelihood method</a>.
+	</div>
+	<div>
 	<h1>
-	  <a name="installation-instructions" class="anchor" href="#installation-instructions"><span class="octicon octicon-link"></span></a>General Installation Instructions</h1>
+	  <a name="installation-instructions" class="anchor"
+	  href="#installation-instructions"><span class="octicon
+	  octicon-link"></span></a>General Installation
+	  Instructions
+	</h1>
 
-	<p>The Software uses a shared library as model. Any way to create the
-	  shared library will work. We use the vfgen tool for these
-	  purposes. The experimental data is stored in hdf5 files with agrred
-	  upon annotation. The naming rules are listed in the
+	<p>The Software uses a shared library as model. Any way to
+	  create the shared library will work. We use the vfgen tool
+	  for these purposes. The experimental data is stored in hdf5
+	  files with agrred upon annotation. The naming rules are
+	  listed in the
 	  <a href="https://github.com/a-kramer/mcmc_clib/blob/sbtab/doc/documentation.pdf">documentation</a>. This
 	  file can be generated using any software that supports hdf5 output
 	  (e.g. Matlab, R, python). But, we also provide a program for the
@@ -115,14 +123,19 @@
 	  workflow. Vfgen calculates the <span title="right hand
 	  side">rhs</span> vector field's jacobian (symbolically).
 	</p>
-	<p>The sampler repeatedly solves the initial value problem
-	specified in such a way as to replicate the experimental data
-	and normalises the result in the same way as in the
-	experiment's description. This way arbitrary scale constants
-	are cancelled. The simulations are done via the sundials
-	cvodes solver.</p>
+	</div>
+	<div>
+	  <h2>Simulations</h2>
+	  <p>The sampler repeatedly solves the initial value problem
+	    specified in such a way as to replicate the experimental
+	    data and normalises the result in the same way as in the
+	    experiment's description. This way arbitrary scale
+	    constants are cancelled. The simulations are done via the
+	    sundials cvodes solver.</p>
+	  
 	<pre>
-	  <code>External library dependencies
+	  <code>
+	    External library dependencies
 	    For ODE solutions:
               Sundials CVODES 2.7.0
 	    
@@ -137,17 +150,20 @@
 	      mini XML 
 	  </code>
 	</pre>
-
-	<p>Here are some more detailed instructions for installation
-	on <a href="Gentoo">Gentoo</a>, <a href="Arch">Arch</a>, <a href="OpenSUSE">OpenSUSE</a>,
-	and <a href="ubuntu">Ubuntu</a>.</p>
-
-	<p>In principle, it is possible to compile the sources on
-	a <a href="ms_win64">windows</a> system. We provide no binary
-	releas. In addition, since this software is aimed at HPC use,
-	we strongly discourage this.</p>
-	
-	<h2>Makefile</h2>
+	</div>
+	<div>
+	  <h2>Installation Instructions</h2>
+	  <p>Here are some more detailed instructions for installation
+	    on <a href="Gentoo">Gentoo</a>, <a href="Arch">Arch</a>, <a href="OpenSUSE">OpenSUSE</a>,
+	    and <a href="ubuntu">Ubuntu</a>.</p>
+	  
+	  <p>In principle, it is possible to compile the sources on
+	    a <a href="ms_win64">windows</a> system. We provide no binary
+	    releas. In addition, since this software is aimed at HPC use,
+	    we strongly discourage this.</p>
+	</div>
+	<div>
+	<h3>Makefile</h3>
 	<p> As mentioned earlier, we don't use an automated build
 	    system.</p>
 	<p>Inspect
@@ -160,8 +176,8 @@
 	<p>Afterwards, use the Makefile by typing</p>
 
 	<pre><code>make</code></pre>
-
-
+	</div>
+	<div>
 	<h1>
 	  <a name="usage" class="anchor" href="#usage"><span class="octicon octicon-link"></span></a>Short Usage hint</h1>
 
@@ -190,11 +206,12 @@
 	<pre><code>-s $((2**14))
 	    -s $((10**6))
 	</code></pre>
-	<p>because <code>1e6</code> or <code>1E6</code> will not work as the sample size is an integer.</p>
-	<p>you can load the resulting sample using any hdf5 reading
-	language or simly <tt>h5dump<tt>. GNU Octave can read the
-	sample files using the load function: <code>load
+	<p>because <code>1e6</code> or <code>1E6</code> will not work as the sample size is read as an integer.</p>
+	<p>you can load the resulting sample using any `hdf5` reading
+	script language or simly <tt>h5dump</tt>. GNU Octave can read
+	the sample files using the load function: <code>load
 	mcmc_rank_00_of_8_sample.h5</code>.</p>
+	</div>
       </section>
     </div>
     <!--[if !IE]><script>fixScale(document);</script><![endif]-->
