@@ -7,27 +7,42 @@ layout: default
 Gentoo Installation Instructions
 ================================
 
-some of the dependencies are available in Portage (though you might
-want to install packages from overlays) 
+Most of the dependencies are available in Portage. You might want to
+install better performing linear algebra packages from the [science
+overlay](https://wiki.gentoo.org/wiki/Project:Science/Overlay;
+e.g. atlas. The [sundials](https://github.com/LLNL/sundials) suite has
+changed its API somewhat. Until our mcmc code is changed to adapt to
+these changes, you should install version `2.7.0`.
 
 ~~~ bash
+  # vfgen
   emerge dev-libs/mini-xml \
-         sci-libs/gsl \
+         sci-mathematics/ginac
+
+  # MCMC
+  USE="hl" emerge sci-libs/gsl \
          sci-libs/cblas-reference \
-         sci-libs/cln \
-         sci-mathematics/ginac 
+	 =sci-libs/sundials-2.7.0
+	 
+  # SBtab to hdf5
+  emerge dev-libs/glib
 ~~~
 
-Some of these packages might not have been declared stable in the
-required version yet. In this case you will have to add them to the
-[package.accept_keywords](https://www.gentoo.org/doc/en/handbook/handbook-x86.xml?part=3&chap=1) file.
+The high level API of hdf5 is used by the sampler. So, it's probably best
+to add it to the hdf5 [USE flags](https://wiki.gentoo.org/wiki/USE_flag).
 
-Unfortunately the sundials ode solvers are not available through
-portage. You can manually install them after downloading
-[CVODES](http://computation.llnl.gov/casc/sundials/download/download.html). Gain
-root priviliges, extract and follow the instructions. It should
-be very easy to install cvodes.
+Some of these packages might not have been declared stable. In this
+case you will have to add them to the
+[package.accept_keywords](https://www.gentoo.org/doc/en/handbook/handbook-x86.xml?part=3&chap=1)
+file.
 
-You might want to install [ATLAS](http://math-atlas.sourceforge.net/)
-from the science overlay. If you do, you have to migrate to the
-science overlay eselect modules.
+The MCMC solver uses the
+[CVODES](http://computation.llnl.gov/casc/sundials/download/download.html).
+solver for ODE model integration with forward sensitivity analysis.
+
+As mentioned before, you might want to install
+[atlas](http://math-atlas.sourceforge.net/) from the science
+overlay. If you do, you have to migrate to the science overlay eselect
+modules. Another alternative is `sci-libs/gotoblas2` or
+`sci-libs/openblas/`, also from the [science
+overlay](https://github.com/gentoo/sci/tree/master/sci-libs/openblas).
