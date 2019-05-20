@@ -10,8 +10,8 @@ only for model handling and creating the hdf5 data files. You can
 create models and data files via other methods.
 
 |Component|Package|URL|
-|vfgen|-----:|:---|
-||mxml|https://www.archlinux.org/packages/community/x86_64/mxml/|
+|--------:|------:|:--|
+|vfgen|mxml|https://www.archlinux.org/packages/community/x86_64/mxml/|
 ||ginac|https://www.archlinux.org/packages/community/x86_64/ginac/|
 |MCMC|gsl|https://www.archlinux.org/packages/extra/x86_64/gsl/|
 ||lapack|https://www.archlinux.org/packages/extra/x86_64/lapack/|

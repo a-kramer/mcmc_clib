@@ -20,8 +20,8 @@ This should work for all [ubuntu derivatives](http://www.ubuntu.com/about/about-
 and ubuntu based distributions like [Linux Mint](http://linuxmint.com/ and [Elementary OS](http://elementaryos.org/).
 
 |Component|Package|URL|
-|vfgen|-----:|:---|
-||libmxml-dev|https://packages.ubuntu.com/disco/libmxml-dev|
+|--------:|------:|:--|
+|vfgen|libmxml-dev|https://packages.ubuntu.com/disco/libmxml-dev|
 ||libginac-dev|https://packages.ubuntu.com/disco/ginac-tools|
 |MCMC|libgsl-dev|https://packages.ubuntu.com/disco/libgsl-dev|
 ||libatlas-base-dev|https://packages.ubuntu.com/disco/libatlas-base-dev|
