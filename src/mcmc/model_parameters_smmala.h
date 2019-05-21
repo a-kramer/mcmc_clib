@@ -89,6 +89,7 @@ typedef struct {
   gsl_vector *t;
   view_t *view;
   normalisation_t *normalise;
+  double pdf_lognorm; // normalisation constant of the probability density
   int lflag;                // TRUE if this data should influence LogLikelihood explicitely; FALSE if it is used in some implicit way (e.g. normalisation) 
   gsl_matrix *data_block;   // either a pointer to a submatrix or self-allocated storage
   gsl_matrix *sd_data_block;// either a pointer to a submatrix or self-allocated storage
@@ -129,6 +130,7 @@ typedef struct {
 typedef struct {
   double t0;
   problem_size *size;
+  double pdf_lognorm;
   gsl_vector *p; // memory for the ODE's parameters (they are
 		 // exponential) and input parameters, appended: p=[exp(x),u];
   experiment **E; // an experiment (data, initial conditions, inputs, simulation results)

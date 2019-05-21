@@ -618,6 +618,37 @@ get_default_options(char *global_sample_filename_stem,/*for mcmc result files*/ 
   return option;
 }
 
+/* Calculates the normalisation constant of the likelihood function:
+ * 1/sqrt(2*pi*sigma²)^beta for all data points (product).
+ * This is done in log-space
+ */
+int /*error flag*/
+pdf_normalisation_constant(ode_model_parameters *omp)/*pre-allocated storage for simulation results, used in LogLikelihood calculations*/{
+  assert(omp && omp->size);
+  int c,C=get_number_of_experimental_conditions(omp);
+  int i,F=get_number_of_model_outputs(omp);
+  int t,T;
+  double E_lN,lN=0; // log normalisation constant;
+  double stdv;
+  for (c=0;c<C;c++){
+    T=omp->E[c]->t->size;
+    E_lN=-0.5*(M_LN2+M_LNPI);
+    for (t=0;t<T;t++){
+      for (i=0;i<F;i++){
+	stdv=gsl_vector_get(omp->E[c]->sd_data[t],i);
+	if (gsl_finite(stdv)){
+	  E_lN-=gsl_sf_log(stdv);
+	}
+      }
+    }
+    omp->E[c]->pdf_lognorm=E_lN;
+    lN+=E_lN;
+  }
+  omp->pdf_lognorm=lN;
+  return EXIT_SUCCESS;
+}
+
+
 /* Initializes MPI,
  * loads defaults, 
  *       command line arguments,
@@ -702,8 +733,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
     fprintf(stderr,"# [main] (rank %i) no data provided (-d option), exiting.\n",rank);
     MPI_Abort(MPI_COMM_WORLD,-1);
   }
-
-  
+    
   /* load model from shared library
    */
   ode_model *odeModel = ode_model_loadFromFile(lib_name);  /* alloc */
@@ -763,15 +793,20 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   const char **p_name=ode_model_get_param_names(odeModel);
   const char **f_name=ode_model_get_func_names(odeModel);
   
-  /* define local variables for parameters and inital conditions */
+  /* local variables for parameters and inital conditions as presented
+     in ode model lib: */
   int N = ode_model_getN(odeModel);
   int P = ode_model_getP(odeModel);
   int F = ode_model_getF(odeModel);
-  
-  omp->size->N=N;
-  omp->size->P=P;
-  omp->size->F=F;
+
+  /* save in ode model parameter struct: */
+  set_number_of_state_variables(omp,N);
+  set_number_of_model_parameters(omp,P);
+  set_number_of_model_outputs(omp,F);
+
   omp->t0=t0;
+  /* ode model parameter struct has pointers for sim results that need
+     memory allocation: */
   ode_model_parameters_alloc(omp);
   ode_model_parameters_link(omp);
   fflush(stdout);
@@ -842,6 +877,8 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   double m=cnf_options.initial_stepsize_rank_factor;
   double step=cnf_options.initial_stepsize;
   if (m>1.0 && rank>0) step*=gsl_pow_int(m,rank);
+  pdf_normalisation_constant(omp);
+  printf("[main] (rank %i) likelihood log(normalisation constant): %g\n",rank,omp->pdf_lognorm);
   mcmc_kernel* kernel = smmala_kernel_alloc(beta,D,step,model,seed,tgac);
   
   int resume_load_status;

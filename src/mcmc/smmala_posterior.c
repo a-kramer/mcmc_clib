@@ -492,7 +492,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
     // save_simulation_results(mp); fflush(stdout);
     //initialise all return values
     // log-likelihood
-    l[0]=0;    
+    l[0]=mp->pdf_lognorm;    
     // gradient of the log-likelihood
     gsl_vector_set_zero(grad_l);
     gsl_matrix_set_zero(fisher_information);  
