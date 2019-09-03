@@ -429,6 +429,7 @@ mcmc_foreach(int rank, /*MPI rank*/
   herr_t status;
   int resume_EC;
   int last_chunk=no, not_written_yet=yes;
+  double mpi_t_start = MPI_Wtime();
   for (it = 0; it < SampleSize; it++) {
     mcmc_sample(kernel, &acc);
     last_chunk=SampleSize-it<CHUNK;
@@ -500,22 +501,37 @@ mcmc_foreach(int rank, /*MPI rank*/
   // annotate written sample with all necessary information
   //printf("[main] writing some annotation about the sampled points as hdf5 attributes.\n");
   status&=H5LTset_attribute_int(h5block->file_id, "LogParameters", "MPI_RANK", &rank, 1);
+  status&=H5LTset_attribute_int(h5block->file_id, "LogParameters", "MPI_COMM_SIZE", &R, 1);
   status&=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "SampleSize", &SampleSize, 1);
   status&=H5LTset_attribute_double(h5block->file_id, "LogParameters", "InverseTemperature_Beta", &beta, 1);
+
+  double mpi_t_end = MPI_Wtime();
   
   ct=clock()-ct;
   double sampling_time=((double) ct)/((double) CLOCKS_PER_SEC);
+  double wall_time=mpi_t_end-mpi_t_start;
+  int wt=round(wall_time);
+  int mpi_wt_hms[3];
   int ts=round(sampling_time);
   int hms[3]; // hours, minutes, seconds
   hms[0]=ts/3600;
   hms[1]=(ts%3600)/60;
   hms[2]=(ts%60);
-  printf("# computation time spend sampling: %i:%i:%i\n",hms[0],hms[1],hms[2]);
-  
+
+  mpi_wt_hms[0]=wt/3600;
+  mpi_wt_hms[1]=(wt%3600)/60;
+  mpi_wt_hms[2]=(wt%60);
+
+
+  printf("# MPI Wall Time time spend sampling: %i:%i:%i\n",mpi_wt_hms[0],mpi_wt_hms[1],mpi_wt_hms[2]);
   h5block->size[0]=1;
-  status&=H5LTmake_dataset_double (h5block->file_id, "SamplingTime_s", 1, h5block->size, &sampling_time);
+  status&=H5LTmake_dataset_double (h5block->file_id, "MPI_WallTime_s", 1, h5block->size, &wall_time);
   h5block->size[0]=3;
-  status&=H5LTmake_dataset_int(h5block->file_id, "SamplingTime_hms", 1, h5block->size, hms);
+  status&=H5LTmake_dataset_int(h5block->file_id, "MPI_WallTime_hms", 1, h5block->size, mpi_wt_hms);
+  h5block->size[0]=1;
+  status&=H5LTmake_dataset_double (h5block->file_id, "CpuTime_s", 1, h5block->size, &sampling_time);
+  h5block->size[0]=3;
+  status&=H5LTmake_dataset_int(h5block->file_id, "CpuTime_hms", 1, h5block->size, hms);
   
   if(status){
     printf("[rank %i] statistics written to file.\n",rank);
@@ -544,13 +560,14 @@ append_meta_properties(hdf5block_t *h5block,/*hdf5 file ids*/
     omp_n=omp_get_num_threads();
     omp_np=omp_get_num_procs();
   }
+  omp_n=i;
   if (i!=omp_n){
     fprintf(stderr,"[append_meta_properties] warning: finding out number of threads possibly failed reduction of (n×1: %i) != get_num_threads():%i.\n",i,omp_n);
   } else {
     h5block->size[0]=1;
     h5block->size[1]=1;
-    status&=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_THREADS",1,h5block->size,&omp_n);
-    status&=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_PROCS",1,h5block->size,&omp_np);
+    status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_THREADS",1,h5block->size,&omp_n);
+    status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_PROCS",1,h5block->size,&omp_np);
   }
   return status;
 }
@@ -962,6 +979,9 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
    */  
   mcmc_error=mcmc_foreach(rank, R, SampleSize, omp, kernel, h5block, buffer, &cnf_options);
   assert(mcmc_error==EXIT_SUCCESS);
+
+  // Do something here
+
   append_meta_properties(h5block,&seed,&BurnInSampleSize, h5file, lib_base);
   h5block_close(h5block);
 
