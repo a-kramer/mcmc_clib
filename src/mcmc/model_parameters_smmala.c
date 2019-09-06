@@ -5,6 +5,7 @@
  */
 int init_E(ode_model_parameters *omp){
   int i;
+  size_t MaxEvents=3; // is reallocated when needed
   int C=omp->size->C;
   omp->E=(experiment**) malloc(sizeof(experiment*)*C);
   for (i=0;i<C;i++) {
@@ -12,7 +13,9 @@ int init_E(ode_model_parameters *omp){
     omp->E[i]->t=NULL;
     omp->E[i]->init_y=NULL;
     omp->E[i]->input_u=NULL;
-  }
+    omp->E[i]->event=event_alloc(MaxEvents);
+    omp->E[i]->single=NULL;
+   }
   omp->Data=NULL;
   omp->sdData=NULL;
   for (i=0;i<C;i++) {
@@ -98,6 +101,7 @@ int experiment_alloc(experiment *E, problem_size *size){
     E->normalise->data[j]=gsl_vector_alloc(F);
     E->normalise->stdv[j]=gsl_vector_alloc(F);
   }
+  E->single=single_event_list_alloc(T);
   return GSL_SUCCESS;
 }
 
@@ -141,13 +145,8 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
     experiment_alloc(omp->E[i],omp->size);
     omp->E[i]->t0=omp->t0;
   }
-  /* during burn-in, we slowly increase beta from 0 to 1; if no
-   * burn-in is performed, beta needs to be 1.0
-   */
   omp->p=gsl_vector_alloc(P);
-
-  
-    // prior
+  // prior
   omp->prior->p=gsl_permutation_alloc((size_t) D);
   omp->prior->n=3;
   omp->prior->tmp=malloc(sizeof(gsl_vector*) * omp->prior->n);

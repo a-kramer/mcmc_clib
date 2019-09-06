@@ -4,5 +4,5 @@ typedef struct {
   gsl_matrix *sd;
 } gsl_matrix_sd;
 
-
+void data_normalisation(void *mp);
 int normalise_with_sd(void *model_parameters);

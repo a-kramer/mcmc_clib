@@ -17,7 +17,6 @@
 #include "hdf5.h"
 #include "hdf5_hl.h"
 #include "omp.h"
-
 int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *dl, gsl_matrix *FI);
 
 int ode_solver_process_sens(ode_solver *solver, double tout,
@@ -223,7 +222,7 @@ int normalise(ode_model_parameters *mp){
   experiment *ref_E=NULL;
   v=mp->tmpF;
   M=mp->tmpDF;
-  assert(v!=NULL && M!=NULL);
+  assert(v && M);
   //printf("[normalise] normalising all Experiments according to the flags: NormaliseByExperiment, NormaliseByTimePoint and NormaliseByOutput.\n");
   
   for (c=0;c<C;c++){
@@ -241,6 +240,9 @@ int normalise(ode_model_parameters *mp){
 	fyS=mp->E[c]->fyS[j];
 	oS=mp->E[c]->oS[j];
 	rfy=mp->E[c]->normalise->fy[j];
+	if (!gsl_vector_ispos(rfy)){
+	  gsl_vector_add_constant(rfy,1E-10);
+	}
 	rfyS=mp->E[c]->normalise->fyS[j];
 	gsl_vector_div(fy,rfy);
 	// here, we create matrix views of the right size for
@@ -422,8 +424,10 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
    * while D is the number of MCMC related parameters
    * P=D+U
    */
-  int i,j,c,T,C,P,U,N,D;
+  int i,j,c,T;
+  size_t k,K;
   double l_t_j;
+  double e_t; //event_time
   int status=GSL_SUCCESS;
   gsl_vector *y,*fy;
   gsl_matrix *yS,*fyS;
@@ -435,21 +439,24 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
   ode_solver **solver;
   sensitivity_approximation *a;
   solver=mp->solver;
-  C=mp->size->C;
-  P=mp->size->P;
-  U=mp->size->U;
-  N=mp->size->N;
-  D=mp->size->D;
+  int N=get_number_of_state_variables(mp);
+  int D=get_number_of_MCMC_variables(mp);
+  int P=get_number_of_model_parameters(mp);
+  //int F=get_number_of_model_outputs(mp);
+  int U=get_number_of_model_inputs(mp);
+  int C=get_number_of_experimental_conditions(mp);
+
   /* The ODE model integration below takes by far the most time to
    * calculate.  This is the only bit of the code that needs to be
    * parallel apart from parallel tempering done by mpi.
    */
-#pragma omp parallel for private(model,j,a,y,fy,yS,fyS,t,T,input_part) reduction(&:i_flag)
-  for (c=0; c<C; c++){// loop over different experimental conditions
+#pragma omp parallel for private(model,j,e_t,k,K,a,y,fy,yS,fyS,t,T,input_part) reduction(|:i_flag)
+  for (c=0; c<C; c++){/* loop over different experimental conditions */
     model=solver[c]->odeModel;    
     a=mp->S_approx[c];
-    gsl_vector_memcpy(mp->E[c]->p,mp->p); // the first P entries are the same for each loop iteration
-    /* each loop iteration gets a different input vector
+    gsl_vector_memcpy(mp->E[c]->p,mp->p); // events may modify this vector
+    /* each loop iteration gets a different input vector, because an
+       event may change the input parameters.
      */
     input_part=gsl_vector_subvector(mp->E[c]->p,D,U);    
     gsl_vector_memcpy(&(input_part.vector),mp->E[c]->input_u);
@@ -466,7 +473,17 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
       fy=mp->E[c]->fy[j]; //printf("fy: %i, %zi\n",mp->size->F,fy->size);
       yS=mp->E[c]->yS[j]; //printf("yS: %i, %zi\n",mp->size->N*P,yS->size1*yS->size2);
       fyS=mp->E[c]->fyS[j]; //printf("fyS: %i, %zi\n",mp->size->F*P,fyS->size1*fyS->size2);
-      i_flag=ode_solver_step(solver[c], gsl_vector_get(t,j), y, fy, yS, fyS, a);
+      /* 1. process all events that precede t(j) */
+      if (mp->E[c]->event && mp->E[c]->before_t && mp->E[c]->before_t[j]){
+	K=mp->E[c]->before_t[j]->size; // number of events prior to t[j]
+	for (k=0;k<K;k++){
+	  e_t=mp->E[c]->before_t[j]->event[k]->t;
+	  i_flag|=ode_solver_step(solver[c], e_t, y, fy, yS, fyS, a);
+	  apply_event(mp->E[c]->before_t[j]->event[k],y,mp->E[c]->p);
+	}
+      }
+      /* 2. advance the state to the measurement time t(j) */
+      i_flag|=ode_solver_step(solver[c], gsl_vector_get(t,j), y, fy, yS, fyS, a);
     }
   }
   
@@ -508,10 +525,16 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 	  gsl_vector_div(mp->E[c]->fy[j],mp->E[c]->sd_data[j]); // (fy-data)/sd_data
 	  l_t_j=0; // l_t_j =?= mp->E[c]->fy[j]->size * (0.5*log(2*M_PI) + gsl_vector_prod(mp->E[c]->sd_data[j]));
 	  if (gsl_blas_ddot(mp->E[c]->fy[j],mp->E[c]->fy[j], &l_t_j)!=GSL_SUCCESS){
-	    printf("ddot was unsuccessful\n");
+	    printf("[%s] blas ddot was unsuccessful\n",__func__);
 	    exit(-1);
 	  } // sum((fy-data)²/sd_data²)
-	  
+	  if (isnan(l_t_j)){
+	    fprintf(stderr,"[%s] likelihood evaluation resulted in nan.\n",__func__);
+	    printf_omp(mp);
+	    fflush(stdout);
+	    fflush(stderr);
+	    exit(-1);
+	  }
 	  l[0]+=-0.5*l_t_j;
 	  /* Calculate The Likelihood Gradient and Fisher Information:
 	   */
@@ -522,7 +545,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 	  if (status!=GSL_SUCCESS){
 	    gsl_printf("oS",mp->E[c]->oS[j],1);
 	    gsl_printf("(fy-data)/sd_data²",mp->E[c]->fy[j],0);
-	    fprintf(stderr,"dgemv was unsuccessful: %i %s\n",status,gsl_strerror(status));
+	    fprintf(stderr,"[%s] dgemv was unsuccessful: %i %s\n",__func__,status,gsl_strerror(status));
 	    //exit(-1);
 	  }
 	  /* Calculate the Fisher information
@@ -542,8 +565,6 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
     } //end for different experimental conditions (i.e. inputs)
   }
   //printf("[LogLikelihood] done.\n"); fflush(stdout);
-  /* debug output
-   */
   return i_flag & status;
 }
 

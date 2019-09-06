@@ -34,7 +34,59 @@ sbtab_t* sbtab_alloc(gchar **keys){
   return sb;
 }
 
-sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names){
+int sbtab_get_row_index(const sbtab_t* sbtab, const gchar *ID){
+  assert(sbtab);
+  GHashTable *row=sbtab->row;
+  guint r[1];
+  int i=-1;
+  r=g_hash_table_lookup(row,ID);
+  if (r){
+    i=r[0];
+  }
+  return i;
+}
+
+char* sbtab_get_field_by_rowID(const sbtab_t* sbtab, const gchar *ID, const gchar *RequestedColumn){
+  assert(sbtab);
+  assert(ID);
+  int r=sbtab_get_row_index(sbtab,ID);
+  GPtrArray *C;
+  C=sbtab_get_column(sbtab,ID);
+  char *c=sbtab_get(sbtab,ID,r);
+}
+
+typedef struct {
+  sbtab_t *table;
+  gchar *rowID;
+} sbtab_and_row;
+
+void sbtab_contains(gpointer key, gpointer value, gpointer data){
+  sbtab_t *T=value;
+  sbtab_and_row *D=data;
+  int r=sbtab_get_row_index(T,data->rowID);
+  if (r>=0){
+    D->table=T;
+  }
+}
+
+sbtab_t *sbtab_find_table_with(const GHashTable *sbtab_hash, const gchar *rowID){
+  sbtab_t* table_has_rowID=NULL;
+  sbtab_and_row data;
+  data->rowID=rowID;
+  g_hash_table_foreach(sbtab_hash, sbtab_contains,
+		       &data);
+  table_has_rowID=data.table;
+  if (table_has_rowID){
+    printf("[%s] found a table named «%s» that contains «%s».\n",
+	   table_has_rowID->TableName,
+	   rowID);
+  }else{
+    fprintf(stderr,"[%s] warning, no table containing ID «%s» was found.\n",rowID);
+  }
+  return table_has_rowID;
+}
+
+sbtab_t* sbtab_find(const GHashTable *sbtab_hash, const gchar *Names){
   sbtab_t *table=NULL;
   gchar **Name;
   printf("[sbtab_find] Looking up any of: %s.\n",Names);
@@ -46,14 +98,32 @@ sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names){
     table=g_hash_table_lookup(sbtab_hash,Name[++i]);
   }
   if (table!=NULL){
-    printf("[sbtab_find] found table «%s».\n",Name[i]);
+    printf("[%s] found table «%s».\n",__func__,Name[i]);
   } else {
-    printf("[sbtab_find] not found (%s).\n",Name[i]);
+    printf("[%s] not found (%s).\n",__func__,Name[i]);
   }
   g_strfreev(Name);  
   return table;
 }
 
+GPtrArry* sbtab_get_tables(const GHashTable *sbtab_hash, const gchar *TableNames){
+  assert(TableNames);
+  gchar **Name=g_strsplit(TableNames," ",-1);
+  guint n=g_strv_length(Name);
+  GPtrArray *table=g_ptr_array_sized_new(n);
+  sbtab_t *t;
+  guint i;
+  for (i=0;i<n;i++){
+    t=g_hash_table_lookup(sbtab_hash,Name[i]);
+    if (t){
+      g_ptr_array_add(table,t);
+      printf("[%s] %s found.\n",__func__,Name[i]);
+    } else {
+      printf("[%s] warning: %s not found.\n",__func__,Name[i]);
+    }
+  }
+  return table;
+}
 
 int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
   int i,N;
@@ -78,7 +148,7 @@ int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
       g_ptr_array_add(sbtab->column[i],g_strdup(s[i]));
     }      
     if(n!=c) {
-      fprintf(stderr,"[sbtab_append_row] data contained %i entries while table has %i headers\n\t\t",n,c);
+      fprintf(stderr,"[%s] data contained %i entries while table has %i headers\n\t\t",__func__,n,c);
       for (i=0;i<c;i++) fprintf(stderr,"«%s» ",sbtab->key[i]);
       fprintf(stderr,"\n\t\t");
       for (i=0;i<n;i++) fprintf(stderr,"«%s» ",s[i]);
@@ -87,7 +157,7 @@ int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
       const gchar **TK=(const gchar **) g_hash_table_get_keys_as_array(sbtab->col,&nTK);
       for (i=0;i<c;i++)
 	fprintf(stderr,"\t\t\tcolumn(%i): '%s'.\n",i,TK[i]);
-      status&=EXIT_FAILURE;
+      status|=EXIT_FAILURE;
     }
   }
   return status;
@@ -113,12 +183,18 @@ gchar* sbtab_get(const sbtab_t *sbtab, char *key, size_t i){
   return d;
 }
 
-GPtrArray* sbtab_get_column(const sbtab_t *sbtab, char *key){
+GPtrArray* sbtab_get_column(const sbtab_t *sbtab, const char *key){
+  gchar** Key=g_strsplit(key," ",-1);
+  guint n=g_strv_length(Key);
   GPtrArray *a=NULL;
-  a=g_hash_table_lookup(sbtab->col,key);
+  guint i=0;
+  while (!a && i<n){
+    a=g_hash_table_lookup(sbtab->col,Key[i++]);
+  }
   if (a==NULL){
     fprintf(stderr,"[sbtab_get_column] warning: lookup of «%s» in Table «%s» failed.\n",key,sbtab->TableName);
   }
+  g_strv_free(Key);
   return a;
 }
 

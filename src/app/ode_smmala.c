@@ -42,6 +42,7 @@
 #include <mpi.h>
 #include "flatten.h"
 #include "read_data_hdf5.h"
+#include "normalisation_sd.h"
 #include "../mcmc/smmala.h"
 #include "../ode/ode_model.h"
 #include "../mcmc/smmala_posterior.h"
@@ -156,9 +157,9 @@ h5block_init(char *output_file, /*will create this file for writing*/
   char *f_names=flatten(f_name, (size_t) F, "; ");
 
   herr_t NameWriteError=0;
-  NameWriteError&=H5LTmake_dataset_string(file_id,"StateVariableNames",x_names);
-  NameWriteError&=H5LTmake_dataset_string(file_id,"ParameterNames",p_names);
-  NameWriteError&=H5LTmake_dataset_string(file_id,"OutputFunctionNames",f_names);
+  NameWriteError|=H5LTmake_dataset_string(file_id,"StateVariableNames",x_names);
+  NameWriteError|=H5LTmake_dataset_string(file_id,"ParameterNames",p_names);
+  NameWriteError|=H5LTmake_dataset_string(file_id,"OutputFunctionNames",f_names);
   if (NameWriteError){
     fprintf(stderr,"[h5block_init] writing (x,p,f)-names into hdf5 file failed.");
   }/* else {
@@ -492,16 +493,16 @@ mcmc_foreach(int rank, /*MPI rank*/
     printf("[main] writing their %i log-posterior values to file.\n",Rest);
     display_chunk_properties(h5block);
 
-    status &= H5Sselect_hyperslab(h5block->post_dataspace_id, H5S_SELECT_SET, h5block->offset, h5block->stride, h5block->count, h5block->block);
+    status |= H5Sselect_hyperslab(h5block->post_dataspace_id, H5S_SELECT_SET, h5block->offset, h5block->stride, h5block->count, h5block->block);
     H5Dwrite(h5block->posterior_set_id, H5T_NATIVE_DOUBLE, h5block->post_chunk_id, h5block->post_dataspace_id, H5P_DEFAULT, log_post_chunk->data);
     assert(status>=0);
   }
 
   // annotate written sample with all necessary information
   //printf("[main] writing some annotation about the sampled points as hdf5 attributes.\n");
-  status&=H5LTset_attribute_int(h5block->file_id, "LogParameters", "MPI_RANK", &rank, 1);
-  status&=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "SampleSize", &SampleSize, 1);
-  status&=H5LTset_attribute_double(h5block->file_id, "LogParameters", "InverseTemperature_Beta", &beta, 1);
+  status|=H5LTset_attribute_int(h5block->file_id, "LogParameters", "MPI_RANK", &rank, 1);
+  status|=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "SampleSize", &SampleSize, 1);
+  status|=H5LTset_attribute_double(h5block->file_id, "LogParameters", "InverseTemperature_Beta", &beta, 1);
   
   ct=clock()-ct;
   double sampling_time=((double) ct)/((double) CLOCKS_PER_SEC);
@@ -513,9 +514,9 @@ mcmc_foreach(int rank, /*MPI rank*/
   printf("# computation time spend sampling: %i:%i:%i\n",hms[0],hms[1],hms[2]);
   
   h5block->size[0]=1;
-  status&=H5LTmake_dataset_double (h5block->file_id, "SamplingTime_s", 1, h5block->size, &sampling_time);
+  status|=H5LTmake_dataset_double (h5block->file_id, "SamplingTime_s", 1, h5block->size, &sampling_time);
   h5block->size[0]=3;
-  status&=H5LTmake_dataset_int(h5block->file_id, "SamplingTime_hms", 1, h5block->size, hms);
+  status|=H5LTmake_dataset_int(h5block->file_id, "SamplingTime_hms", 1, h5block->size, hms);
   
   if(status){
     printf("[rank %i] statistics written to file.\n",rank);
@@ -531,11 +532,11 @@ append_meta_properties(hdf5block_t *h5block,/*hdf5 file ids*/
 		       char *h5file, /*name of hdf5 file containing the experimental data and prior set-up*/
 		       char *lib_base)/*basename of the library file @code .so@ file*/{
   herr_t status;
-  int omp_n,omp_np,i;
-  status&=H5LTset_attribute_double(h5block->file_id, "LogParameters", "seed", seed, 1);
-  status&=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "BurnIn", BurnInSampleSize, 1);
-  status&=H5LTset_attribute_string(h5block->file_id, "LogParameters", "DataFrom", h5file);
-  status&=H5LTmake_dataset_string(h5block->file_id,"Model",lib_base);
+  int omp_n,omp_np,i=1;
+  status=H5LTset_attribute_double(h5block->file_id, "LogParameters", "seed", seed, 1);
+  status|=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "BurnIn", BurnInSampleSize, 1);
+  status|=H5LTset_attribute_string(h5block->file_id, "LogParameters", "DataFrom", h5file);
+  status|=H5LTmake_dataset_string(h5block->file_id,"Model",lib_base);
   // here we make a short test to see what the automatic choice of the
   // number of threads turns out to be.
 #pragma omp parallel private(omp_n,omp_np) reduction(+:i)
@@ -549,8 +550,8 @@ append_meta_properties(hdf5block_t *h5block,/*hdf5 file ids*/
   } else {
     h5block->size[0]=1;
     h5block->size[1]=1;
-    status&=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_THREADS",1,h5block->size,&omp_n);
-    status&=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_PROCS",1,h5block->size,&omp_np);
+    status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_THREADS",1,h5block->size,&omp_n);
+    status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_PROCS",1,h5block->size,&omp_np);
   }
   return status;
 }
@@ -808,7 +809,10 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   /* ode model parameter struct has pointers for sim results that need
      memory allocation: */
   ode_model_parameters_alloc(omp);
+  /* data matrix row views are made */
   ode_model_parameters_link(omp);
+  /* necessoty of normalisation will be checked and noted for later: */
+  data_normalisation(omp);
   fflush(stdout);
 
   /* get default parameters from the model file

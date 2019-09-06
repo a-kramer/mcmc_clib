@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "../ode/ode_model.h"
+#include "../app/event.h"
 // prior types
 #include "ptype.h"
 // normalisation methods
@@ -15,14 +16,14 @@
 #define DATA_NORMALISED_BY_STATE_VAR 3
 #define DATA_NORMALISED_INDIVIDUALLY 4
 // for individual normalisation:
-#define NEEDS_NORMALISATION(E) (((E)->NormaliseByExperiment>=0) || ((E)->NormaliseByTimePoint)>=0 || ((E)->NormaliseByOutput)!=NULL)
+#define NEEDS_NORMALISATION(E) ((E->NormaliseByExperiment>=0) || (E->NormaliseByTimePoint)>=0)
 
-#define get_number_of_state_variables(omp) (omp->size->N)
-#define get_number_of_MCMC_variables(omp) (omp->size->D)
-#define get_number_of_model_parameters(omp) (omp->size->P)
-#define get_number_of_model_outputs(omp) (omp->size->F)
-#define get_number_of_model_inputs(omp) (omp->size->U)
-#define get_number_of_experimental_conditions(omp) (omp->size->C)
+#define get_number_of_state_variables(omp) (omp?omp->size->N:0)
+#define get_number_of_MCMC_variables(omp) (omp?omp->size->D:0)
+#define get_number_of_model_parameters(omp) (omp?omp->size->P:0)
+#define get_number_of_model_outputs(omp) (omp?omp->size->F:0)
+#define get_number_of_model_inputs(omp) (omp?omp->size->U:0)
+#define get_number_of_experimental_conditions(omp) (omp?omp->size->C:0)
 
 #define set_number_of_state_variables(omp,N) (omp->size->N=N)
 #define set_number_of_MCMC_variables(omp,D) (omp->size->D=D)
@@ -74,6 +75,7 @@ typedef struct {
   gsl_vector **stdv; // and its standard deviation;  
 } normalisation_t;
 
+
 /* Data can be stored in one of two places:
  * 1. in the model parameters structure (in the Data matrix).
  * 2. in the experiment structure, individually for each experiment.
@@ -107,6 +109,10 @@ typedef struct {
   int NormaliseByExperiment;
   int NormaliseByTimePoint;
   gsl_vector_int *NormaliseByOutput;
+  event_table *event;
+  single_event **single; // array of linked lists
+  before_measurement **before_t; // array of pointers, converted from linked list
+  int index[3];
 } experiment;
 
 typedef struct {

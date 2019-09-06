@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <glib.h>
+// "length" means: number of rows, for a table
+#define get_table_length(Table) ((Table && Table->column) ? Table->column[0]->len:0)
 
 /* This struct stores a complete sbtab table.
  * Table{Name,Type,Title} are strings (*gchar)
@@ -15,10 +17,7 @@ typedef struct {
   gchar *TableTitle;
   gchar *TableName;
   gchar *TableType;
-  gchar **key;
-  //  SBkey_t *col_label;
-  // flex_double *col_value;
-  // flex_double *row_index;
+  gchar **key; /* g_strv type of string array, NULL terminated */
   GPtrArray **column; //  instead of the hash table col;
   GHashTable *row; // 
   GHashTable *col; //
@@ -29,3 +28,5 @@ int sbtab_append_row(const sbtab_t *sbtab, const gchar *data, const char *fs);
 GPtrArray* sbtab_get_column(const sbtab_t *sbtab, char *key);
 void sbtab_free(void *tab);
 sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names);
+GPtrArry* sbtab_get_tables(GHashTable *sbtab_hash, const gchar *TableNames);
+int sbtab_get_row_index(const sbtab_t* sbtab, const gchar *ID);

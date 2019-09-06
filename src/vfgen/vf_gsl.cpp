@@ -129,6 +129,33 @@ void VectorField::PrintGSL(map<string,string> options)
     fout << "    }" << endl;
     fout << endl;
     //
+    // Print the DefaultParameter function
+    //
+    fout << "/*" << endl;
+    fout << " *  The default parameters." << endl;
+    fout << " */" << endl;
+    fout << endl;
+    fout << "gsl_vector * " << Name() << "_DefaultParameters()" << endl;
+    pout << "gsl_vector * " << Name() << "_DefaultParameters();" << endl;
+    fout << "    {" << endl;
+    if (HasPi)
+        {
+        fout << "    const double Pi = M_PI;\n";
+        }
+    for (int i = 0; i < nc; ++i)
+        {
+        fout << "    const double " << conname_list[i] << " = " << convalue_list[i] << ";" << endl;
+        }
+    CDeclare_double(fout,parname_list);
+    fout << "    gsl_vector *p=gsl_vector_alloc(" << np << ");" << endl;
+    fout << endl;
+    for (int i=0;i<np;i++){
+      fout << "    gsl_vector_set(p," << i << "," << pardefval_list[i] << ");" << endl;
+    }
+    fout << "    return p;" << endl;
+    fout << "    }" << endl;
+    fout << endl;
+    //
     // Print the Jacobian function.
     //
     fout << "/*" << endl;
