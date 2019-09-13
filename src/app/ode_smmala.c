@@ -547,28 +547,27 @@ append_meta_properties(hdf5block_t *h5block,/*hdf5 file ids*/
 		       char *h5file, /*name of hdf5 file containing the experimental data and prior set-up*/
 		       char *lib_base)/*basename of the library file @code .so@ file*/{
   herr_t status;
-  int omp_n,omp_np,i;
+  int omp_n=0,omp_np=0,i=0;
   status&=H5LTset_attribute_double(h5block->file_id, "LogParameters", "seed", seed, 1);
   status&=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "BurnIn", BurnInSampleSize, 1);
   status&=H5LTset_attribute_string(h5block->file_id, "LogParameters", "DataFrom", h5file);
   status&=H5LTmake_dataset_string(h5block->file_id,"Model",lib_base);
   // here we make a short test to see what the automatic choice of the
   // number of threads turns out to be.
-#pragma omp parallel private(omp_n,omp_np) reduction(+:i)
+#pragma omp parallel reduction(+:i)
   {
     i=1;
     omp_n=omp_get_num_threads();
     omp_np=omp_get_num_procs();
   }
-  omp_n=i;
   if (i!=omp_n){
     fprintf(stderr,"[append_meta_properties] warning: finding out number of threads possibly failed reduction of (n×1: %i) != get_num_threads():%i.\n",i,omp_n);
-  } else {
-    h5block->size[0]=1;
-    h5block->size[1]=1;
-    status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_THREADS",1,h5block->size,&omp_n);
-    status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_PROCS",1,h5block->size,&omp_np);
-  }
+  } 
+  h5block->size[0]=1;
+  h5block->size[1]=1;
+  status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_THREADS",1,h5block->size,&omp_n);
+  status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_PROCS",1,h5block->size,&omp_np);
+  
   return status;
 }
 

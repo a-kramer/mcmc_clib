@@ -4,7 +4,7 @@ CC=cc
 export CRAYPE_LINK_TYPE=dynamic
 
 CPPFLAGS = -O2
-CFLAGS = -O2 -std=gnu11 -D_GNU_SOURCE -Wall -march=haswell -fopenmp
+CFLAGS = -O2 -std=gnu11 -D_GNU_SOURCE -Wall -fopenmp
 
 FLAGS = `pkg-config --libs --cflags gsl` -lhdf5 -lhdf5_hl
 
