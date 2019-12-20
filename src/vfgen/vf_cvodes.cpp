@@ -732,10 +732,6 @@ void VectorField::PrintCVODES(map<string,string> options){
         tout << "    int flag;\n";
         tout << "    const int N_ = " << nv << ";\n" ;
         tout << "    const int P_ = " << np << ";\n" ;
-        if (HasPi)
-            {
-            tout << "    const realtype Pi = RCONST(M_PI);\n";
-            }
         for (int i = 0; i < nc; ++i)
             {
             tout << "    const realtype " << conname_list[i] << " = " << convalue_list[i] << ";" << endl;
