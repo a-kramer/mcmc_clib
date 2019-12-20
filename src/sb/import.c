@@ -789,9 +789,12 @@ void load_event(gpointer one_event, gpointer buffer){
     size_t n=SBEE->event_target->len;
     size_t m=time->size;
     value=gsl_matrix_alloc(value,m,n);
+    // (1) make the values a gsl_matrix
     gsl_matrix_const_view g_mv_value=gsl_matrix_const_view_array((double*)(SBEE->event_value->data),n,m);
-    // (2) transpose event matrix with
-    assert(gsl_matrix_transpose_memcpy(value, &(g_mv_value.matrix))==GSL_SUCCESS);
+    // (2) transpose event matrix
+    assert(gsl_matrix_transpose_memcpy(value,&(g_mv_value.matrix))==GSL_SUCCESS);
+    // (3) write matrix to file
+    H5
   } else {
     fprintf(stderr,"[%s] warning: empty event «%s»?\n",__func__,sb_event->TableTitle);
   }

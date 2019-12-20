@@ -30,3 +30,4 @@ void sbtab_free(void *tab);
 sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names);
 GPtrArry* sbtab_get_tables(GHashTable *sbtab_hash, const gchar *TableNames);
 int sbtab_get_row_index(const sbtab_t* sbtab, const gchar *ID);
+char *sbtab_get_field_by_rowID(const sbtab_t* sbtab, const gchar *ID, const gchar *RequestedColumn);
