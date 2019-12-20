@@ -22,22 +22,15 @@ VFGEN_SOURCE = `ls ./src/vfgen/*.cpp`
 BIN=./bin
 .PHONY: all
 
-all: bin/ode_smmala bin/sbtab_import
+all: bin/ode_smmala bin/sbtab_import vfgen
 
 
 bin/ode_smmala: ./src/app/ode_smmala.c $(MALA_SRC)
 	$(CC)  $(MALA_SRC) -o $(BIN)/ode_smmala -ldl $(CFLAGS) src/app/ode_smmala.c -lsundials_cvodes -lsundials_nvecserial $(FLAGS)
 
-vfgen: 
-	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread
-
-%_cvs.c: %.xml
-	./vfgen cvodes:sens=yes,func=yes $<
-
-%.so: %_cvs.c
-	$(CC) -shared -fPIC $(CFLAGS) -lm -o $@  $<
 
 bin/sbtab_import: ./src/sb/import.c $(SB_SRC)
 	$(CC) $(CFLAGS) $(SB_SRC) -o $(BIN)/sbtab_import ./src/sb/import.c -lm $(FLAGS)
 
-
+vfgen: 
+	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread

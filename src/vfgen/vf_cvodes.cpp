@@ -271,10 +271,6 @@ void VectorField::PrintCVODES(map<string,string> options){
     pout << "                N_Vector, N_Vector, N_Vector);" << endl;
     fout << "    {" << endl;
 
-    if (HasPi)
-        {
-        fout << "    const realtype Pi = RCONST(M_PI);\n";
-        }
     for (int i = 0; i < nc; ++i)
         {
         fout << "    const realtype " << conname_list[i] << " = RCONST(" << convalue_list[i] << ");" << endl;

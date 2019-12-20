@@ -1163,7 +1163,7 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
   gchar *stem, *leaf;
   sbtab_t *sbtab;
   
-  fs=g_strdup(";\t,");
+  fs=g_strdup("\t");
   sbtab=NULL;
   s=malloc(sizeof(char)*n_s); // a buffer to read strings from file via getline
   r_status&=regcomp(&EmptyLine,"^[[:blank:]]*$",REG_EXTENDED);
@@ -1197,12 +1197,12 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
 	  s[a]='\0';
 	}
 	if (regexec(&SBtab,s,0,NULL,0)==0){
-	  i_sep=strcspn(s,fs);
+	  //i_sep=strcspn(s,fs);
 	  L=strlen(s);
-	  if (i_sep<L){
-	    g_free(fs);
-	    fs=g_strndup(&s[i_sep],1); //field separator
-	  }
+	  //if (i_sep<L){
+	  //  g_free(fs);
+	  //  fs=g_strndup(&s[i_sep],1); //field separator
+	  //}
 	  printf("[parse_sb_tab] separator: «%s».\n",fs);
 	  if (regexec(&RE_TableName,s,2,match,0)==0){
 	    TableName=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
