@@ -1,6 +1,7 @@
-\documentclass[utf8,english]{scrartcl}
-\usepackage{lmodern}
-\usepackage[sc]{mathpazo}
+\documentclass[utf8,english,DIV=12,12pt]{scrartcl}
+\usepackage{AnonymousPro}
+\usepackage{FiraSans}
+\usepackage[osf]{mathpazo}
 \usepackage[T1]{fontenc}
 \usepackage{inputenc}
 \usepackage{babel}
@@ -8,218 +9,522 @@
 \usepackage{microtype}
 \usepackage{tikz}
 \usepackage{booktabs}
-\newcommand{\noise}{\ensuremath{\varkappa}}
+\usepackage{ifthen}
+\colorlet{lcolor}{blue!20!black}
+\colorlet{ucolor}{magenta!20!black}
+\colorlet{ccolor}{green!20!black}
+%\usepackage{url}
+% \usepackage[language=english,%
+%              backend=biber,%
+% %            maxnames=3,%
+% %            minnames=2,%
+% %          firstinits=true,%
+%             bibstyle=authoryear,%
+%            citestyle=authoryear-comp,%
+%                  url=false,%
+%               eprint=false,%
+%               dashed=false]{biblatex} % authoryear-comp
 
+\usepackage{varioref} 
+\usepackage[colorlinks=true,%
+            linkcolor=lcolor,%
+            urlcolor=ucolor,%
+            citecolor=ccolor]{hyperref} % makes references clickable
+            % links will be in specified colors. You may set them to
+            % black for final printing.
+
+
+
+
+\newcommand{\noise}{\ensuremath{\varkappa}}
 \newcommand{\ode}{\textsc{ode}}
-\addtokomafont{title}{\rmfamily}
-\addtokomafont{section}{\rmfamily}
+\newcommand{\sens}[5][j]{\ensuremath{S_{#2}(t_{#1};\rho,u_{#5})_{#3}^{~#4}}}
+\newcommand{\software}[1]{\textsc{#1}}
+\newcommand{\standard}[1]{\textsf{#1}}
+\newcommand{\stdv}[1]{\ensuremath{\ifthenelse{\equal{#1}{g}}{\varsigma}{\sigma}}}
+\newcommand{\data}[1]{\ensuremath{\ifthenelse{\equal{#1}{g}}{y}{z}}}
+
 \frenchspacing
 \setcapindent{0em}
 \addtokomafont{captionlabel}{\bfseries}
 \addtokomafont{pagenumber}{\sffamily}
 \pagestyle{headings}
 
-
-\title{Documentation for the RMHMC Source}
+\subject{\texttt{MCMC\_CLIB}}
+\title{Documentation}
 \author{Andrei Kramer}
 \date{\today}
 
 \begin{document}
 \maketitle
-\begin{abstract}
-  This text provides illuminates the mathematical considerations and
-  definitions for the implementation of the Riemannian Manifold
-  Hamiltonian Monte Carlo (RMHMC) algorithm in the software package.
+\begin{abstract}\noindent
+  Here, we explain the model structure assumed by \texttt{mcmc\_clib}.
+  In Section~\ref{sec:model} we define the \ode{} model, its
+  input/output structure and its parameter sensitivity. We describe
+  how the model is passed to the sampling software in
+  Section~\ref{sec:software} and how to build a model as a shared
+  library. All data sets have to be loaded in \standard{hdf5} form, with
+  specific naming conventions. This is described in
+  Section~\ref{sec:data}. Some of the symbols have shorthands defined
+  in the text and the meaning of any variable can be overloaded by
+  such a shorthand symbol.
 \end{abstract}
 
 \section{Model Specifications}
-\label{sec:odeModel}
+\label{sec:model}
 
 We consider a deterministic \ode{} model and a stochastic measurement
 model. System states are captured by the state variables
-$x(t)\in\mathbb{R}^n$. The model parameters $\theta\in\mathbb{R}^m$
+$x(t;\rho,u)\in\mathbb{R}^n$. The model parameters
+$\rho = \exp(\theta) \in\mathbb{R}_{++}^m$ are for the most part reaction
+rate coefficients and equilibrium parameters in systems biology; they
 describe interactions between the model state variables and are
-unknown. A second set of parameters $u\in\mathbb{R}^l$ describes the
-conditions of an experimental setup. These parameters are considered
-inputs and we assume that they can be set by the experimenter. They
-can be external parameters, e.g. the temperature, or describe
-modifications to the system, e.g. inhibitions to some of the
-interactions. The known time derivative of $x(t)$ defines the model:
+\emph{unknown}. If any coefficients are exactly known, they should be defined
+as known constants in the model rather than parameters perhaps.
+
+A second set of parameters $u\in\mathbb{R}^\upsilon$ describes the conditions
+of an experimental setup. These parameters are considered inputs and
+we assume that they can be set by the experimenter (and therefor
+\emph{known}). They can be external parameters, e.g. the temperature,
+or describe modifications to the system, e.g. inhibitions to some of
+the interactions. A special kind of inputs are measured data sets of
+compounds that the model lacks a mechanism for, so their state has to
+be replayed, perhaps using interpolation, during simulations. Such an
+interpolation has to be implemented by the user, in the model; the
+software has no automated interpolation of input signals by itself.
+
+Any experiment observes data $y$ that is analogous\footnote{up to
+  measurement device specific scalings, offsets or other arbitrary
+  constants} to the model's output function $g(x)\in\mathbb{R}^r$. The
+modeling assumption is that the data can be explained by the model
+output aside from measurement noise:
 \begin{align}
-  \dot x &= f(t,x;\theta,u)\,,\\
-  y(t_j;\theta,u)&=C x(t_j;\theta,u) + \noise(t_j)\,,
+ \data{g}_{ijk} - c_k g_i(x(t_j;\rho,u_k)) &\sim \mathcal{N}(0,\stdv{g}_{ijk}^2)& x(0;\rho,u)&=x_0\,,\\
 \end{align}
-where $y(t;\theta,u)\in\mathbb{R}^k$ is the output of the measurement
-process, which is recorded at $T$ time points. The linear output
-function, characterised by the real matrix $C\in\mathbb{R}^{k\times
-  n}$, models the capabilities of the measurement setup. The elements
-of this matrix are typically unknown. The measurements are obscured by
-the noise process $\noise_i(t_j)\sim\mathcal{N}(0,\sigma^2_{ij})$
-($i=1,\dots,n; j=1,\dots,T$). In addition, the observations might be
-done in unknown units, such that a reference Experiment might be
-needed to interpret any numerical values of $y(t_j)$. A typical
-example of $C$ is:
+where $c_k$ is a possibly unknown scaling constant that accounts for
+experiments with \emph{arbitrary units}. Data from such an experiment
+is called \emph{relative data}. In any case, the data is obtained at
+measurement time-points $t_{jk}$ ($j=1,\dots,\nu_k$); these can be
+different in each experiment, and $t_{jk} \neq t_{jk'}$ is
+allowed. But we'll omit this from the notation and just use $t_j$.
+
+There are several ways to deal with relative data. Our choice was to
+consider a second level of output function $h$:
+\begin{align}
+  h_i(g_{ijk},g_{ij'0})&=\frac{g_i(x(t_j;\rho,u_k))}{g_i(x(t_{j'};\rho,u_0))}\,,& g_{ijk}:&=g_i(x(t_j;\rho,u_k))\,,\\
+  \data{h}_{ijk} - h_i(x(t_j;\rho,u_k)) &\sim \mathcal{N}(0,\stdv{h}_{ijk}^2)& \data{h}_{ijk}&=\frac{y_{ijk}}{y_{ij'0}}\,,
+\end{align}
+such that scale constants $c$ always cancel; and we define the
+shorthand $g_{ijk}:=g_i(x(t_j;\rho,u_k))$. Here we assume that $u_0$
+determines the so called \emph{control} experiment. It is the
+reference experiment that experiment $k$ is \emph{relative to}. But,
+it can be any $k'$ in principle; this notation choice neatly implies
+that if $k=0,\dots,n_{\text{E}}$ the \emph{number of experiments} is
+still effectively $n_{\text{E}}$ (not $n_{\text{E}}+1$) as one of them
+is merely a \emph{normalization} (control). The difference between $g$
+and $h$ is that $g$ corresponds to exactly one model simulation, while
+$h$ processes several simulations. The output $g$  is defined within the model, while $h$ is specified through data annotation.
+
+A data set can contain several (unrelated) \emph{controls} if needed.
+Experiments have an annotation to express the relationship between
+them. The \emph{reference time} $\hat t=t_{j'}$ does not have to be
+the same as $t_j$ and can also be defined through annotation of data
+sets. In principle $h$ can also mix output functions and devide
+$g_{i\cdot\cdot}$ by $g_{i'\cdot\cdot}$.
+
+We consider \emph{different experiments} to be distinguished in
+\emph{input parameters}, \emph{initial conditions}, or \emph{output
+  function} (at least one of these). All applicable inputs are
+enumerated as $u_k\in\mathbb{R}^\upsilon$ ($k=0,\dots,n_{\text{E}}$).
+
+\subsection{The Mechanistic Model}
+\label{sec:ODE}
+
+The model class the software can deal with is an ordinary differential
+equation (\ode) model:
+\begin{align}
+  \dot x &= f(t,x;\theta,u)\,,& x(t_0)&=x_0\\
+\end{align}
+The initial conditions $x_0$ can be part of an experiment description,
+but most commonly they are not known for biological models and are
+assumed to be one of the steady states of the model. A common setup is:
+\begin{align}
+  t_0&=-T&f(t,x(0;\rho,u);\rho,u)\overset{!}{=}0\,,
+\end{align}
+with $T$ being a large enough time to reach steady state and $x_0$
+chosen suitably to hit the right steady state by whatever means.
+
+\subsection{Stochastic Measurement Model}
+\label{sec:out}
+
+Since the measurements are noisy the model's output is compared to the
+data using a statistical model. The right model is often unknown, in
+fact it is a typical case that no uncertainty analysis has been
+performed on the data at all and no repeated measurements have been
+made to estimate the parameters of an error model hypothesis.
+
+Until data sets come with carefully justified error models and
+distribution parameters, we assume the error to be \emph{Gaussian}.
+
+Since the software calculates gradients, with hard coded partial
+derivatives, this choice is fairly static and cannot be changed
+easily. A different error model requires the implementation of an
+additional log-likelihood function and its partial derivatives. The
+currently used functions are \emph{not supplied by the user}.
+
+Similarly, since the Gaussian error model is merely an educated guess
+that performs well numerically, we don't transform the distribution
+into a possibly \emph{heavy tail}ed \emph{ratio distribution}.
+
+We make the choice\footnote{rather than exactly transforming the
+  distribution from $g$ to $h$ we match them by appropriate $\stdv{g}$
+  transformation, but not in shape.} that the error is modeled as a
+\emph{Gaussian} distribution at the highest level output function $h$
+as well and we match that to the raw-distribution by appropriate
+choice of $\stdv{h}$:
 \begin{equation}
-  C=
-  \begin{pmatrix}
-    c_1&2c_1&0\\
-    0&c_2&c_2\\
-  \end{pmatrix}\,.
+  \label{eq:error}
+  \data{h}_{ijk} - h_i(t_j;\rho,u_k)\overset{!}{\sim}\mathcal{N}(0,\stdv{h}^2)\,,
 \end{equation}
-Assuming that $C$ is always scaled equally per row (in this way),
- with unknown row coefficients $c_i$, we can eliminate these unknown
-(but uninteresting) elements by taking row wise ratios between experiments:
+where $\stdv{h}$ denotes the possible transformation of $\stdv{g}$
+if the standard deviation of the raw data\footnote{$\stdv{g}$ applies
+  to the level-1 output $g_i(\cdot)$, $\stdv{h}$ applies to $h$.} $\stdv{g}$ has
+  actually been estimated. The error propagation is calculated in the
+  following way:
 \begin{align}
-  \tilde y_i(t_j;\theta,u_b) &=
-  \frac{y_i(t_j,\theta,u_b)}{y_i(t_j;\theta,u_0)}\,,
-\end{align}
-where $u_b\in\mathbb{R}^l (b=1,\dots,n_{\text{E}})$ is any particular
-experimental setup ($n_{\text{E}}$ is the number of experiments) and
-$u_0$ characterises the \emph{reference} experiment setup.  In
-consequence we have to recalculate the standard deviation of $\tilde
-y_i(t_j;\theta,u_b)$ from the standard deviations\footnote{we append
-  the input indeces $b,0$ to the standard deviation symbol for
-  distinction} of ${y_i(t_j,\theta,u_b)}$ and ${y_i(t_j;\theta,u_0)}$:
-\begin{align}
-  \label{eq:std_y}
-  \tilde\sigma_{i,j}\approx&\left|\frac{\partial\tilde
-      y_i(t_j;\theta,u_b)}{\partial
-      y_i(t_j;\theta,u_b)}\right|\sigma_{ij,b} +
-  \left|\frac{\partial\tilde y_i(t_j;\theta,u_b)}{\partial
-      y_i(t_j;\theta,u_0)}\right|\sigma_{ij,0}\,,
+  \label{eq:stdv_partial}
+  \stdv{h}_{ijk}\approx&\left|\frac{\partial
+      h_i(g_{ijk},g_{ij'0})}{\partial
+      g_{ijk}}\right|\stdv{g}_{ijk} +
+  \left|\frac{\partial h_i(g_{ijk},g_{ij'0})}{\partial
+      g_{ij'0}}\right|\stdv{g}_{ij'0}\,,
 \end{align}
 and in this case:
 \begin{align}
-  \label{eq:std_yy}
-  \tilde\sigma_{i,j}\approx&\left|\frac{\tilde
-      y_i(t_j;\theta,u_b)}{y_i(t_j;\theta,u_b)}\right|\sigma_{ij,b} +
-  \left|\frac{\tilde
-      y_i(t_j;\theta,u_b)}{y_i(t_j;\theta,u_0)}\right|\sigma_{ij,0}\,.
+  \label{eq:stdv_ratio}
+    \stdv{h}_{ijk}\approx&\left|\frac{h_i(g_{ijk},g_{ij'0})}{g_{ijk}}\right|\stdv{g}_{ijk} + \left|\frac{h_i(g_{ijk},g_{ij'0})}{g_{ij'0}}\right|\stdv{g}_{ij'0}\,.
 \end{align}
-Alternatively, a time series measurement can be normalised at one of
-the points:
-\begin{equation}
-  \label{eq:norm_t}
-  \tilde y_i(t_j;\theta,u_b):=\frac{y_i(t_j;\theta,u_b)}{y_i(t_{k(b)};\theta,u_b)}\,,
-\end{equation}
-where $k$ is the given normalisation time index for each experiment
-$b$. In this method, there is no control $u_0$. An example with $k=3$ is listed in Table~\ref{tab:norm_t}. Similar consequences apply here with regard to measurement error. Even more generally, each $y_i$ can be normalised by another state variable, e.g.:
-\begin{equation}
-  \label{eq:norm_ft}
-  \tilde y_i(t_j;\theta,u_b):=\frac{y_i(t_j;\theta,u_b)}{y_{l(i,b)}(t_{k(i,b)};\theta,u_b)}\,.
-\end{equation}
-Both $k$ and $l$ must be specified, for each output $i$ and each
-experiment $b$.
-\begin{table}
-  \centering\ttfamily
-  \begin{tabular}{crcc}
-    \toprule
-    $k$&$t/$h&$y$&$\tilde y$\\
-    \midrule
-    0&0&20(4)&0.5(2)\\
-    1&4&30(5)&0.8(3)\\
-    2&9&35(6)&0.9(3)\\
-   3&12&37(6)&1.00\\
-    \bottomrule
-  \end{tabular}
-  \caption{Example data table for time-point normalisation, where the last measurement was used to define $100\%$. Here, $y$ has never been fully quantified, but the ratios $\tilde y$ between the measurements $j=0,\dots,2$ and $k=3$ are reproducible by a replicated experiment.}
-  \label{tab:norm_t}
-\end{table}
+Our goal is to provide an estimate\footnote{or perhaps even an upper
+  bound} of uncertainty in the data and propagate this uncertainty to
+the model's parameters. We consider these decisions to be a middle
+ground between simplicity, numerical stability and accurate treatment
+of measurements. The statistical model is probably not quite right,
+but as it is almost always unknown we have nothing to replace it with.
 
-\section{Sensitivities}
+Other sensible choices are to log-transform the data, such that an
+assumption of log-normal errors is made. But in practice, the above
+choices seem to be best compatible with biological data and
+numerically stable whenever no error bounds have been reported.
+
+The first layer output is defined as part of the model, inside the
+model file. The characteristic of it is that one simulation at input
+$u_k$ results in exactly one output $g_{ijk}$ ($n×\nu_k$ matrix). The
+second layer, the normalisation of primary outputs:
+$g_{ijk}/g_{i'j'k'}$ is to some extent fixed and only the indexing
+rules (which $i',j',k'$) can be supplied via the annotation of the
+data. The operation \texttt{ratio of g} is predefined and cannot be
+changed easily (only turned off).
+
+Log-transformations inside of $g$ are allowed already as that is
+defined in the model itself. Log-transformations on the level of $h$
+are not supported yet:
+\begin{align}
+  h_{ijk}&\overset{\texttt{OK}}{=} \log(x_i(t_j;\rho,u_k))/\log(x_i(t_{j'};\rho,u_0))\,,& g_{ijk}&=\log(x_i(t_j;\rho,u_k))\\
+  h_{ijk}&\overset{\texttt{NO}}{=} \log(x_i(t_j;\rho,u_k)/x_i(t_{j'};\rho,u_0)))\,,&g_{ijk}&=x_i(t_j;\rho,u_k)\,.
+\end{align}
+This has to do with analytical, hard coded expressions during the
+calculations of gradients and the Fisher information; not a principal
+limitation.
+
+\subsection{Sensitivities}
 \label{sec:sens}
 
-Given reference experiment normalisation method, the sensitivity of
-$\tilde y(t)$ in terms of the (known) $y(t;\theta,u)$ sensitivities
-$S(t;\theta,u)$ is:
+The model has sensitivities of $x$ with respect to $\rho$ and derived
+from that also sensitivities of $g$ and $h$, with repsect to changes
+in the parameters $\rho$ and on the log-scale: $\theta=\log(\rho)$.
+
+The \software{cvodes} solver will return both the state sensitivities
+$\sens{x}{i}{l}{k}$ and the output sensitivities
+$\sens{g}{i}{l}{k}$. So, we will use these as given.
+
+With a known normalisation indexing: $i',j',k'$ for each $i,j,k$, the
+sensitivity of $h(\cdot)$ in terms of the (known) $g(\cdot)$
+sensitivities $\sens{g}{i}{j}{k}$ is:
 \begin{align}
-  \partial_{\theta_j} \tilde y_i(t;\theta,u_b) 
-  &= \frac{S_i^{~j}(t;\theta,u_b)y_i(t;\theta,u_0)
-    -y_i(t;\theta,u_b)S_i^{~j}(t;\theta,u_0)}{y_i(t;\theta,u_0)^2}\nonumber\\
-  &= \frac{S_i^{~j}(t;\theta,u_b) 
-    - \tilde y_i(t;\theta,u_b)S_i^{~j}(t;\theta,u_0)}{y_i(t;\theta,u_0)}\,.  \label{eq:fyS}
+    g_{ijk}(\rho):&=g_i(x(t_j;\rho,u_k))\,,\\
+    h_{ijk}(\rho):&=\frac{g_{ijk}(\rho))}{g_{i'j'k'}(\rho)}\,,\\
+  \frac{d h_i(g_{ijk}(\rho)),g_{i'j'k'}(\rho))}{d \rho_l}
+  &= \frac{\sens{g}{i}{l}{k} g_{i'j'k'}(\rho) -g_{ijk}(\rho) \sens[j']{g}{i'}{l}{k'}}{g_{i'j'k'}(\rho)^2}\nonumber\\
+  \sens{h}{i}{l}{k}&= \frac{\sens{g}{i}{l}{k} 
+    - h_{ijk}(\rho)\sens[j']{g}{i'}{l}{k'}}{g_{i'j'k'}(\rho)}\,.\label{eq:fyS}
 \end{align}
+The code for this
+operation is located in the function \texttt{LogLikelihood}.
 
-The code for this operation is located in the function
-\texttt{Likelihood} and is organized such, that if the data is
-absolute and does not require normalization, then
-$S_i^{~j}(t;\theta,u_0)$ is set to $0$ for all $i,j$ and the reference
-$y_i(t;\theta,u_0)=1$ for all $i$.
-Similar calculations apply for the other two methods.
-
-\section{Sensitivity Gradient}
-\label{sec:dS}
-
-We take the derivative of~\eqref{eq:fyS} for any $u_b\in\{u_1,\dots,u_{n_{\text{E}}}\}$:
-\begin{multline}
-%  \label{eq:dfyS}
-  \partial_{\theta_k} \tilde S_i^{~j}(t;\theta,u_b)
-  % &=\frac{\left(\frac{\partial S_i^{~j}(t;\theta,u_b)}{\partial
-  %   \theta_k} - \left(\tilde
-  %     S_i^{~j}(t;\theta,u_b)S_i^{~j}(t;\theta,u_0) + \tilde
-  %     y_i(t;\theta,u_b)\frac{\partial
-  %     S_i^{~j}(t;\theta,u_0)}{\partial
-  %     \theta_k}\right)\right)y_i(t;\theta,u_0) -
-  % \left(S_i^{~j}(t;\theta,u_b) - \tilde
-  %   y_i(t;\theta,u_b)S_i^{~j}(t;\theta,u_0)\right)S_i^{~k}(t;\theta,u_0)}{(y_i(t;\theta,u_0))^2}\\[2mm]
-  =\left(\frac{\partial S_i^{~j}(t;\theta,u_b)}{\partial\theta_k} -\right.
-    \tilde S_i^{~k}(t;\theta,u_b)S_i^{~j}(t;\theta,u_0) -\\ 
-    \left.\tilde y_i(t;\theta,u_b)\frac{\partial S_i^{~j}(t;\theta,u_0)}{\partial
-      \theta_k}\right) \frac{1}{y_i(t;\theta,u_0)}\\
-  +\left(\tilde y_i(t;\theta,u_b) S_i^{~j}(t;\theta,u_0) - S_i^{~j}(t;\theta,u_b)\right)\frac{S_i^{~k}(t;\theta,u_0)}{(y_i(t;\theta,u_0))^2}\label{eq:dfyS}\,.
-\end{multline}
-
-\section{Sampling in logarithmic Space}
+\subsection{Sampling in Logarithmic Space}
 \label{sec:rho}
 
-Ode models typically have a stable sign structure and so parameters
-usually must retain a fixed sign. In some cases the model becomes
-unstable after certain sign flips, which is definitely the case for
-biological models. But even if not some models will lose their
-validity when the sign structure changes. For this reason we require
-the sign structure to be given explicitely in the model definition and
-pass only positive values as parameters to the model.
+In this type of \ode{} model, the parameters are positive. In some
+cases the model becomes unstable after sign flips, so non-negativity
+has to be enforced. Additionally, bio-chemical parameters are often
+unknown even in their magnitude. So, sampling $\theta$ will result in
+only positive values $\rho=\exp(\theta)$ to be passed to the model as
+parameters.
 
-Sampling in logarithmic space $\theta$ and passing $\rho=\exp(\theta)$
-to the ode system has the additional benefit of covering several
-orders of magnitude more efficiently. Unfortunately, this choice
-implies that we have to modify the expressions for the model
-sensitivities. \textsc{vfgen} and \textsc{cvodes} provide
-sensitivity analysis with respect to the nominal model parameters
-$\rho$:
-\begin{align}
-  \dot x&=f(t,x;\rho,w)\,,& \rho_j&=\exp(\theta_j)\,,\nonumber\\
-  y(t;\rho,w)&=C x(t;\rho,w)\,,\nonumber\\
-  \tilde y_i(t;\rho,w)&=\frac{y_i(t;\rho,w)}{y_i(t,\rho,u_0)}\,,\label{eq:ode_rho}\\
-  \tilde S_i^{~j}(t;\rho,w)&=\partial_{\rho_j} \tilde y_i(t;\rho,w)\,,\nonumber\\
-  \partial_{\theta_j}\tilde y(t;\rho,w)&=\frac{\partial\tilde y_i(t;\rho,w)}{\partial\rho_j}\frac{\partial \rho_j}{\partial\theta_j}\nonumber\\
-  &=\tilde S_i^{~j}(t;\rho,w)\rho_j\,.\nonumber
-\end{align}
-for any input $w$ and consequently:
-\begin{align}
-  \partial_{\theta_j}\tilde y_i(t;\rho,w)&=\tilde S_i^{~j}(t;\rho,w)\rho_j\,,\nonumber\\
-  \partial_{\theta_k}\tilde S_i^{~j}(t;\rho,w)\rho_j&=\frac{\partial
-    \tilde
-    S_i^{~j}(t;\rho,w)}{\partial\rho_l}\overbrace{\frac{\partial\rho_l}{\partial\theta_k}}^{\rho_l\delta_{lk}}\rho_j
-  + \tilde
-  S_i^{~j}(t;\rho,w)\frac{\partial\rho_j}{\partial\theta_k}\label{eq:dfyS_rho}\\
-  &=\frac{\partial \tilde
-    S_i^{~j}(t;\rho,w)}{\partial\rho_k}\rho_k\rho_j + \tilde
-  S_i^{~j}(t;\rho,w)\rho_k\delta_{jk}\,.\nonumber
-\end{align}
-Note that it is possible to use \texttt{Expression}s such as this in
-\textsc{vfgen} models:
+This has the additional benefit of covering several orders of
+magnitude more efficiently. Unfortunately, this choice implies that we
+have to modify the expressions for the model sensitivities. The model
+handling tool \software{vfgen} and solver \software{cvodes} provide
+functions for sensitivity analysis with respect to the nominal model
+parameters $\rho$:
+\begin{equation}
+  \label{eq:hsens_theta}
+  \begin{split}
+    \dot x&=f(t,x;\rho,u)\,,\\
+    g_{ijk}(\rho):&=g_i(x(t_j;\rho,u_k))\,,\\
+    h_{ijk}(\rho):&=\frac{g_i(x(t_j;\rho,u_k))}{g_{i'}(x(t_{j'};\rho,u_{k'}))}\,,\\
+    \sens{h}{i}{l}{k}:&=\frac{d h_i(g_i(x(t_j;\rho,u_k)),g_{i'}(x(t_{j'},\rho,u_{k'})))}{d\rho_l}\,,\\
+    \frac{dh_{ijk}(\rho(\theta))}{d\theta_l}&=\frac{\partial h_{ijk}(\rho(\theta))}{\partial\rho_l}\frac{\partial \rho_l}{\partial\theta_l}\\
+    &=\sens{h}{i}{l}{k}\rho_l\,,
+  \end{split}  
+\end{equation}
+for any input $u_k$ (no summation implied).
+
+\section{Software Usage}
+\label{sec:software}
+
+The software has two major inputs: (i) the \ode{} model as a shared
+library, and (ii) all data sets (annotated) as an \standard{hdf5} file.
+
+\subsection{Model\hfill\texttt{.so}}
+\label{sec:soModel}
+
+If the user has a way to generate \software{cvodes} compatible model
+source and header files (\texttt{C}) from some modeling language like
+\standard{sbml} then nothing else is required. We provide no
+\standard{sbml} to \texttt{C}/\software{cvodes} conversion scripts (currently).
+
+One of the reasons is that to our knowledge the \standard{sbml}
+standard does not provide any way to define model input parameters. In
+addition, no standard software tools are known to us to process
+\standard{sbml} into \texttt{C} sources automatically, and certainly
+not including symbolically calculated Jacobians. Custom conventions
+for the definition of inputs and outputs can be made, yet
+\standard{sbml} is quite difficult to parse, while tabular formats are
+easy to parse using line oriented tools. For all of these reasons we
+have decided to use \standard{SBtab} for the editing and storage of
+the model and all data sets (if small enough) for our projects.
+
+The model can be converted from \standard{SBtab} using an \software{r}
+script we provide:
 \begin{center}
-\begin{verbatim}
-<Parameter Name="\theta_1" DefaultValue="0">
-<Expression Name="rho_1" Formula="exp(theta_1)"/>
-\end{verbatim}
+\texttt{sbtab\_to\_vfgen.R}\,,
 \end{center}
-They can be used to convert the parameters from logspace, then use
-these expressions to define fluxes. But, since \texttt{Expression}s
-need to be recalculated at every step this is very wasteful. On the
-other hand, \textsc{vfgen} will then compute correct sensitivities
-($dx_i/d\theta_j$). To save calls to the exp function, the software
-does this conversion before calling the solver and transforms the
-sensitivities as described here.
+as further explained in Section~\ref{sec:tools}.
+It reads the \standard{SBtab} file in \emph{Open Document Spreadsheet}
+(\texttt{.ods}) format and converts the biologically motivated model
+into an ordinary dufferential equation model. This process strips
+biological meaning somewhat (species,compartment,etc.) and uses only
+general terms such as \emph{Expression} and \emph{State Variable}.
+
+The result is a \software{vfgen} (\texttt{.vf/.xml}) file that can be
+parsed by the
+\software{vfgen}\footnote{\url{github.com/WarrenWeckesser/vfgen}}
+software; \software{vfgen} in turn uses \software{ginac} to calculate
+the \emph{Jacobian} and \emph{sensitivity} terms symbolically (for
+this model). It outputs the model into a language of choice
+(e.g. \textsc{matlab}, \textsc{R}) one of which is
+\textsc{C/\{cvodes,gsl\}}.
+
+The relevant commands are:
+\begin{center}
+\begin{tabular}{rl}
+  \textbf{meaning}&\textbf{command in \texttt{bash}}\\
+  vfgen to cvodes&\texttt{vfgen cvodes:sens=yes,func=yes ./C/Model\_cvs.c}\\
+  make shared library&\texttt{gcc -shared -fPIC -o Model.so Model\_cvs.c}
+\end{tabular}
+\end{center}
+
+The shared library is loaded by the sampler \texttt{ode\_smmala} and
+can be produced in any other way as long as it follows the interface
+requirements of \texttt{cvodes}.
+
+As a workaround regarding solver failures on high dimensional problems
+with forward sensitivity analysis there is a sensitivity approximation
+routine that requires a \emph{parameter} Jacobian
+$df(t,x;\rho,u)/d\rho$ to be available in the model \texttt{struct}.
+
+\section{Data Storage\hfill\texttt{.h5}}
+\label{sec:data}
+
+The problem set up is given as an \standard{hdf5} \texttt{.h5} file. The
+file shall contain annotated data sets, and prior probability density
+parameters. The prior parameters can be $\mu_i,\stdv{g}_i$ for
+independent Guassian distributions for each model parameter, or
+$\mu,\stdv{g}$ for a multivariate Gaussian.
+
+\subsection{Experiments}
+\label{sec:exp}
+
+It is not immediately clear what aggregate of information can be said
+to belong to one \emph{experiment}. We have so far identified two
+major types:
+\begin{description}
+\item[Dose Response] this experiment type consists of model responses
+  to varying \emph{doses} of input. The data table consists of one or
+  more columns of input and one or more columns of corresponding
+  outputs. Each line of such a table requires a simulation of the
+  model to opbtain the input/output relationship for a given
+  parametrization. In such cases there can be only one measurement
+  time to record an output. If more than one time was recorded, then
+  we must treat the case as many\footnote{possibly very short} time
+  series experiments.
+\item[Time Series] here, a data table describes one simulation of the
+  model and gives a record of an output measured at discrete
+  timepoints. 
+\end{description}
+
+Both types of experiment have mandatory components aside from data
+points: an estimate of standard deviations\footnote{for output
+  function $i$, time point $j$, and input vector $k$} $\stdv{g}_{ijk}$,
+which input to apply, time(s) to record outputs. As described in
+earlier sections, the sampler will always assume a normal distribution
+for output noise. While reading this file, \texttt{ode\_smmala} will transform $\stdv{g}$ into $\stdv{h}$, as described in Section~\ref{sec:out}.
+
+The two types of experiment can be defined in the \standard{SBtab}
+file if that is used. But, once the data is processed, it is stored in
+blocks that represent a \emph{simultion unit}. So, time series data
+remains unchanged, while dose responses are converted into one
+\emph{data block} per line. The \standard{SBtab} file allows omission
+of many values, especially data points. The \texttt{sbtab\_import}
+processing of the spreadsheet will replace missing values with
+defaults, the replacement can be inspected using standard
+\standard{hdf5} tools like
+\begin{center}
+\texttt{h5dump -d /data/data\_block\_0 \emph{DataFile.h5}}\,.
+\end{center}
+The \texttt{h5} file may not omit columns or
+rows\footnote{It is entirely untested what happens when NA or NaN
+  values are passed to the sampler.}.
+
+\subsection{Data File Structure}
+\label{sec:h5structure}
+
+The terminology of \standard{hdf5} files can be understood as somewhat
+analogous to a zip archive with folders and files. In an \standard{hdf5}
+file, the folders are called \emph{groups} and the files are
+\emph{dataset}s. The datasets can have attributes. This is the
+structure the sampler expects to find:
+\begin{description}
+\item[data~\texttt{GROUP}] a group that contains measured data. All
+  \texttt{DATASET}s inside this group are considered data matrices.
+  \begin{description}
+  \item[data\_block\_\%i~\texttt{DATASET}] Consequtively numbered data
+    sets with attributes. A matrix of size $n_\texttt{t}\times r$
+    (\texttt{(size(t)*size(h))}). One line per measurement time point
+    and one column per defined output. Missing values can be indicated
+    by infinite standard deviations. The name \textsf{data\_block\_*}
+    is not enforced or checked; the \textsf{index} attribute is used
+    to order the data sets.
+    \begin{description}
+    \item[input~\texttt{ATTRIBUTE}] the input parameter vector for this data block
+      (simulation unit).
+    \item[time~\texttt{ATTRIBUTE}] the measurement times for this data
+      block, one per row in the data matrix.
+    \item[LikelihoodFlag~\texttt{ATTRIBUTE}] if this is $1$, the
+      experiment will contribute to the likelihood function. If it is
+      $0$, then it is assumed to be needed for the normalisation of
+      another experiment. It will be simulated, can participate in
+      normalisation operations but skipped during the calculations of:
+      log-likelihood, its gradient and Fisher information.
+    \item[NormaliseByExperiment~\texttt{ATTRIBUTE}] \emph{optional}
+      Exactly one index that identifies which \texttt{dataset} this
+      one is relative to. If this is missing or negative then the
+      experiment is not relative to another. This corresponds to $k'$
+      from Section~\ref{sec:out}.
+    \item[NormaliseByOutput~\texttt{ATTRIBUTE}] \emph{optional} a vector of indices,
+      one per output, to indicate which output to devide by. This
+      corresponds to $i'$. If negative, then the output is absolute,
+      the normalising value is set to $1\pm 0$.
+    \item[NormaliseByTimePoint~\texttt{ATTRIBUTE}] \emph{optional} if present, then
+      each line of this data block will be devided by exactly on line
+      from the reference experiment. This corresponds to $j'$. This
+      cannot be a vector. If this is missing, but
+      \textsf{NormaliseByExperiment} is present, then the two must
+      have the same number of lines. No check is performed whether the
+      lines represent the same time points.
+    \item[index~\texttt{ATTRIBUTE}] a running index, numbering the
+      data blocks, starting at $0$. This index is used to find
+      corresponding data blocks and standard deviation blocks (same
+      index). There are two additional index numbers, major and
+      minor. These can be used to check the correspondence between
+      data blocks and \standard{SBtab} sheets, where \emph{dose
+        response} sheets can contain several data blocks(simulation
+      units).
+    \item[major~\texttt{ATTRIBUTE}] an index that corresponds to data
+      sheets, so all data blocks that come from the same \emph{dose
+        response} experiment will share the same major index.
+    \item[minor~\texttt{ATTRIBUTE}] an index that numbers the data entry lines
+      from a \emph{dose reponse} experiment.
+    \end{description}
+  \end{description}
+\item[stdv~\texttt{GROUP}] the group that contains the standard deviation estimates for the data points.
+  \begin{description}
+  \item[stdv\_block\_\%i~\texttt{DATASET}] a matrix of the same
+    size as \textsf{data\_block\_\%i} (these are matched by the
+    \textsf{index} attribute). Infinite standard deviations indicate a
+    missing value. These are omitted from calculations such as
+    $\prod_{ijk} \sqrt{2\pi}\stdv{g}_{ijk}$. The standard deviations
+    don't repeat the required annotation of the data matrices,
+    they only contain the running index and possibly major \& minor
+    attribute.
+    \begin{description}
+        \item[index~\texttt{ATTRIBUTE}] a running index, numbering the
+      data blocks, starting at $0$. This index is used to find
+      corresponding data blocks and standard deviation blocks (same
+      index).
+    \item[major~\texttt{ATTRIBUTE}] an index that corresponds to data
+      sheets, so all data blocks that come from the same \emph{dose
+        response} experiment will share the same major index.
+    \item[minor~\texttt{ATTRIBUTE}] an index that numbers the data entry lines
+      from a \emph{dose reponse} experiment.
+    \end{description}
+  \end{description}
+\item[prior~\texttt{GROUP}] Prior parameter group. The prior is
+  either\footnote{not implemented yet: generalised Gaussian} a product
+  of univariate \emph{Guassians} or one multivariate Gaussian. These
+  two cases are distinguished by name: \textsf{sigma} refers to
+  $\stdv{g}$, while \textsf{Sigma} refers to the multivariate case
+  $\Sigma$ (a symmetric matrix). Select one of the optional items.
+  \begin{description}
+  \item[mu~\texttt{DATASET}] a vector of one $\mu$ per paramete
+    $\theta$ (size $m$), in logarithmic space (natural logarithm).
+  \item[sigma~\texttt{DATASET}] \emph{optional} prior parameter for
+    \emph{width} (standard deviation), same size as \textsf{mu}.
+  \item[Sigma~\texttt{DATASET}] \emph{optional} a matrix of size $m\times m$. The covariance matrix $\stdv{g}$ of the multivariate prior.
+    \item[Precision~\texttt{DATASET}] \emph{optional} Same as $\Sigma^{-1}$.
+  \end{description}
+\end{description}
+
+\subsection{Tools}
+\label{sec:tools}
+
+If the \standard{SBtab} method is used, then the \texttt{.ods} file can
+be converted into a series of \texttt{.tsv} files and then converted
+into an \standard{hdf5} file using the \texttt{sbtab\_import} program:
+\begin{center}
+  \begin{tabular}{rl}
+    \standard{SBtab} to \standard{hdf5}&\texttt{sbtab\_import *.tsv DataSet.h5} 
+  \end{tabular}
+\end{center}
+The git repository \url{github.com/a-kramer/SBtabVFGEN} contains
+scripts for conversion of \standard{SBtab} files between the
+\texttt{.tsv} and \texttt{.ods} formats and an
+\software{r}\footnote{\href{https://www.r-project.org/}{r-project}}
+script \texttt{sbtab\_to\_vfgen.R} that converts such a model into a \software{vfgen}
+readable\footnote{also fairly human readable} \texttt{.xml} file.
+
+An example model in the \standard{SBtab} form is provided here:
+\url{github.com/a-kramer/DemoModel}.
+\software{vfgen} can output the same model into many other languages for post processing of sampling results.
 \end{document}

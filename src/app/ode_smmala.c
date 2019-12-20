@@ -48,28 +48,14 @@
 #include "diagnosis_output.h"
 #include "hdf5.h"
 #include "hdf5_hl.h"
-
+#include "omp.h"
 #include "../mcmc/model_parameters_smmala.h"
 // define target block types
 #define INTEGER_BLOCK 1
 #define DOUBLE_BLOCK 2
 
-// data field ids, should be consecutive atm., because they are sometimes looped over.
-#define i_time 0
-#define i_reference_input 1
-#define i_reference_data 2
-#define i_sd_reference_data 3
-#define i_input 4
-#define i_data 5
-#define i_sd_data 6
-#define i_prior_mu 7
-#define i_prior_icov 8
-#define i_initial_conditions 9
-#define i_ref_initial_conditions 10
-#define i_norm_f 11
-#define i_norm_t 12
-#define NumberOfFields 13
-
+#define yes 1
+#define no 0
 #define CHUNK 100
 // sampling actions 
 #define SMPL_RESUME 1
@@ -82,16 +68,32 @@
 //#define BETA(rank,R) gsl_sf_exp(-gamma*((double) rank))
 
 
-
+/* collects most of the options that have defaults, values from
+   possible configuration files and values from command line
+   arguments.
+ */
 typedef struct {
-  char *library_file;
-  char *output_file;
-  double target_acceptance;
-  double initial_stepsize;
-  long sample_size;
-  double t0;
+  char *library_file; /*@code .so@ file*/
+  char *output_file; /*name suffix of the result file*/
+  char *resume_file; /*name prefix of the sesume file*/
+  double target_acceptance; /*taget acceptance of the mcmc algorithm, Metropolis works well with 24%, smmala probably at 50%*/
+  double initial_stepsize; /*mcmc step size before tuning*/
+  double initial_stepsize_rank_factor; /* the initial size can be
+					  adjusted depending on
+					  temperature by setting thos
+					  to a value larger than 1:
+					  @code step_size =
+					  pow(rank_factor,rank) *
+					  initial_step_size;@*/
+  long sample_size; /*target recorded sample size*/
+  double abs_tol; /* ode solver parameter*/
+  double rel_tol; /* ode solver parameter*/
+  double t0; /* global initial time for integration (ivp)*/
 } main_options;  // these are user supplied options to the program
 
+
+/* collects all parameters and size arrays needed for hdf5 functions
+ */
 typedef struct {  
   hid_t file_id;
   hid_t para_property_id;
@@ -110,7 +112,9 @@ typedef struct {
   hsize_t *block;
 } hdf5block_t;
 
-int h5block_close(hdf5block_t *h5block){
+/* closes all hdf5 id's and frees h5block
+ */
+int /*always returns success*/ h5block_close(hdf5block_t *h5block){
   H5Dclose(h5block->posterior_set_id);
   H5Dclose(h5block->parameter_set_id);
   H5Sclose(h5block->para_dataspace_id);
@@ -128,7 +132,16 @@ int h5block_close(hdf5block_t *h5block){
   return EXIT_SUCCESS;
 }
 
-hdf5block_t* h5block_init(char *output_file, ode_model_parameters *omp, size_t Samples, const char **x_name, const char **p_name, const char **f_name){
+/* initializes hdf5 struct and writes some of the initially known
+   problem properties such as state variable names into hdf5 file*/
+hdf5block_t* /*freshly allocated struct with ids and size parameters*/
+h5block_init(char *output_file, /*will create this file for writing*/
+	     ode_model_parameters *omp, /*contains MCMC problem description*/
+	     size_t Samples, /* MCMC sample size*/
+	     const char **x_name, /*ODE model State Variable names, array of strings*/
+	     const char **p_name, /*ODE model parameter names, array of strings*/
+	     const char **f_name)/*ODE model output function names, array of strings*/
+{
   hsize_t *size=malloc(sizeof(hsize_t)*2);
   hsize_t *chunk_size=malloc(sizeof(hsize_t)*2);
   hid_t file_id = H5Fcreate(output_file, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
@@ -217,19 +230,8 @@ hdf5block_t* h5block_init(char *output_file, ode_model_parameters *omp, size_t S
   return h5block;
 }
 
-/* Auxiliary structure with working storage and aditional parameters for
- * a multivariate normal model with known covariance matrix and zero mean.
- *
-typedef struct {
-	int D
-	double* Variance;
-	double* Precision;
-	double* tmpVec;
-	char init;
-} mvNormParams;
- */
-
-double assign_beta(int rank, int R, int gamma){
+/*assigns a temperature @code beta@ to an MPI rank*/
+double /*beta*/ assign_beta(int rank,/*MPI rank*/ int R, /*MPI Comm size*/ int gamma)/*exponent: @code beta=(1-rank/R)^gamma@*/{
   double x=(double)(R-rank)/(double) R;
   double b=-1;
   assert(gamma>=1);
@@ -238,6 +240,7 @@ double assign_beta(int rank, int R, int gamma){
   return b;
 }
 
+/*output of @code ./ode_smmala --help@*/
 void print_help(){
   printf("Usage ($SOMETHING are values you choose, written as bash variables):\n");
   printf("-a $ACCEPTANCE_RATE\n");
@@ -247,9 +250,11 @@ void print_help(){
   printf("-g $G\n");
   printf("\t\t\tThis will define how the inverse MCMC temperatures β are chosen: β = (1-rank/R)^G, where R is MPI_Comm_Size.\n\n");
   printf("-i $STEP_SIZE\n");
-  printf("\t\t\tThe initial step size of each markov chain, this will usually be tuned to get the desired acceptance rate $A (-a $A).\n\n");
+  printf("\t\t\tThe initial step size of each markov chain, this will usually be tuned later to get the desired acceptance rate $A (-a $A).\n\n");
   printf("-l ./ode_model.so\n");
   printf("\t\t\tode_model.so is a shared library containing the CVODE functions of the model.\n\n");
+  printf("-m $M\n");
+  printf("\t\t\tIf this number is larger than 1.0, each MPI rank will get a different initial step size s: step_size(rank)=STEP_SIZE*M^(rank).\n\n");
   printf("-o ./output_file.h5\n");
   printf("\t\t\tFilename for hdf5 output. This file will contain the log-parameter sample and log-posterior values. The samples will have attributes that reflect the markov chain setup.\n\n");
   printf("-p, --prior-start\n");
@@ -265,7 +270,10 @@ void print_help(){
   exit(EXIT_SUCCESS);
 }
 
-void print_chunk_graph(gsl_matrix *X, gsl_vector *lP){
+/* pseudo graphical display of sample chunk statistical properties,
+   only useful with one MPI worker as it prints to terminal.
+ */
+void print_chunk_graph(gsl_matrix *X,/*sub-sample of CHUNK rows*/ gsl_vector *lP)/*log-Posterior values, unnormalized*/{
   int width=100; // we assume that the display can show $width characters
   int i,j,k,n,nc;
   int tmp;
@@ -317,7 +325,8 @@ void print_chunk_graph(gsl_matrix *X, gsl_vector *lP){
   printf("%+4.4g\n",max);  
 }
 
-void display_chunk_properties(hdf5block_t *h5block){
+/*debug function: shows whether the size, offset, count and stride have been set to sensible values*/
+void display_chunk_properties(hdf5block_t *h5block)/*structure holding the hdf5 parameters*/{
   hsize_t *offset=h5block->offset;
   hsize_t *block=h5block->block;
   hsize_t *count=h5block->count;
@@ -329,7 +338,8 @@ void display_chunk_properties(hdf5block_t *h5block){
   printf("#  count: %lli×%lli.\n",count[0],count[1]);
 }
 
-herr_t h5write_current_chunk(hdf5block_t *h5block, gsl_matrix *log_para_chunk, gsl_vector *log_post_chunk){
+/*writes a sampled chunk into the appropriate hyperslab of hdf5 file*/
+herr_t /*hdf5 error type*/ h5write_current_chunk(hdf5block_t *h5block,/*holds hdf5 properties and ids*/ gsl_matrix *log_para_chunk, /*log-parameter chunk*/ gsl_vector *log_post_chunk)/*log-posterior value chunk*/{
   herr_t status;
   assert(log_para_chunk);
   assert(log_post_chunk);
@@ -345,8 +355,14 @@ herr_t h5write_current_chunk(hdf5block_t *h5block, gsl_matrix *log_para_chunk, g
   H5Dwrite(h5block->posterior_set_id, H5T_NATIVE_DOUBLE, h5block->post_chunk_id, h5block->post_dataspace_id, H5P_DEFAULT, log_post_chunk->data);
   return status;
 }
-
-int burn_in_foreach(int rank, int R, size_t BurnInSampleSize, ode_model_parameters *omp, mcmc_kernel *kernel, void *buffer){
+/*this executes a sampling loop, without recording the values, it adapts step size to get target acceptance*/
+int /*always returns success*/
+burn_in_foreach(int rank, /*MPI rank*/
+		int R, /*MPI Comm size*/
+		size_t BurnInSampleSize, /*number of iterations for tuning*/
+		ode_model_parameters *omp, /*ODE problem definition, allocated space*/
+		mcmc_kernel *kernel, /*MCMC kernel struct*/
+		void *buffer)/*MPI communication buffer, a deep copy of @code kernel@*/{
   int master=0;
   int swaps=0;
   int acc=0, acc_c=0;
@@ -384,7 +400,16 @@ int burn_in_foreach(int rank, int R, size_t BurnInSampleSize, ode_model_paramete
   return EXIT_SUCCESS;
 }
 
-int mcmc_foreach(int rank, int R, size_t SampleSize, ode_model_parameters *omp, mcmc_kernel *kernel, hdf5block_t *h5block, void *buffer){
+/*main mcmc loop, records sampled values, performs no tuning of the step size.*/
+int /*always returns success*/
+mcmc_foreach(int rank, /*MPI rank*/
+	     int R, /*MPI Comm size*/
+	     size_t SampleSize, /*number of iterations of MCMC*/
+	     ode_model_parameters *omp, /*ODE problem cpecification and pre-allocated space*/
+	     mcmc_kernel *kernel, /* MCMC kernel sturct, holds MCMC-algorithm's parameters*/
+	     hdf5block_t *h5block, /*defines the hdf5 file to write into, holds ids and sizes*/
+	     void *buffer, /* for MPI communication, similar to kernel*/
+	     main_options *option)/*options from defaults, files and command line*/{
   clock_t ct=clock();
   gsl_matrix *log_para_chunk;
   gsl_vector *log_post_chunk;
@@ -393,17 +418,27 @@ int mcmc_foreach(int rank, int R, size_t SampleSize, ode_model_parameters *omp, 
   log_post_chunk=gsl_vector_alloc(CHUNK);
   gsl_vector_view current;
   gsl_vector_view x_state;
-  int swaps = 0;
-  int acc=0, acc_c = 0;
+  int swaps = 0; // swap success counter
+  int acc=no;    // acceptance flag
+  int acc_c=0;   // acceptance counter
   double acc_rate=0.0;
   size_t it;
-  int master=0;
+  int master=no;
   int DEST;
   double beta=mcmc_get_beta(kernel);
   herr_t status;
-  
+  int resume_EC;
+  int last_chunk=no, not_written_yet=yes;
+  double mpi_t_start = MPI_Wtime();
   for (it = 0; it < SampleSize; it++) {
     mcmc_sample(kernel, &acc);
+    last_chunk=SampleSize-it<CHUNK;
+    if (acc && last_chunk && not_written_yet){
+      resume_EC=write_resume_state(option->resume_file, rank, R, kernel);
+      if (resume_EC==EXIT_SUCCESS){
+	not_written_yet=no;
+      }
+    }
     acc_c += acc;
     master=(it%2==rank%2);
     if (master){
@@ -466,22 +501,37 @@ int mcmc_foreach(int rank, int R, size_t SampleSize, ode_model_parameters *omp, 
   // annotate written sample with all necessary information
   //printf("[main] writing some annotation about the sampled points as hdf5 attributes.\n");
   status&=H5LTset_attribute_int(h5block->file_id, "LogParameters", "MPI_RANK", &rank, 1);
+  status&=H5LTset_attribute_int(h5block->file_id, "LogParameters", "MPI_COMM_SIZE", &R, 1);
   status&=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "SampleSize", &SampleSize, 1);
   status&=H5LTset_attribute_double(h5block->file_id, "LogParameters", "InverseTemperature_Beta", &beta, 1);
+
+  double mpi_t_end = MPI_Wtime();
   
   ct=clock()-ct;
   double sampling_time=((double) ct)/((double) CLOCKS_PER_SEC);
+  double wall_time=mpi_t_end-mpi_t_start;
+  int wt=round(wall_time);
+  int mpi_wt_hms[3];
   int ts=round(sampling_time);
   int hms[3]; // hours, minutes, seconds
   hms[0]=ts/3600;
   hms[1]=(ts%3600)/60;
   hms[2]=(ts%60);
-  printf("# computation time spend sampling: %i:%i:%i\n",hms[0],hms[1],hms[2]);
-  
+
+  mpi_wt_hms[0]=wt/3600;
+  mpi_wt_hms[1]=(wt%3600)/60;
+  mpi_wt_hms[2]=(wt%60);
+
+
+  printf("# MPI Wall Time time spend sampling: %i:%i:%i\n",mpi_wt_hms[0],mpi_wt_hms[1],mpi_wt_hms[2]);
   h5block->size[0]=1;
-  status&=H5LTmake_dataset_double (h5block->file_id, "SamplingTime_s", 1, h5block->size, &sampling_time);
+  status&=H5LTmake_dataset_double (h5block->file_id, "MPI_WallTime_s", 1, h5block->size, &wall_time);
   h5block->size[0]=3;
-  status&=H5LTmake_dataset_int(h5block->file_id, "SamplingTime_hms", 1, h5block->size, hms);
+  status&=H5LTmake_dataset_int(h5block->file_id, "MPI_WallTime_hms", 1, h5block->size, mpi_wt_hms);
+  h5block->size[0]=1;
+  status&=H5LTmake_dataset_double (h5block->file_id, "CpuTime_s", 1, h5block->size, &sampling_time);
+  h5block->size[0]=3;
+  status&=H5LTmake_dataset_int(h5block->file_id, "CpuTime_hms", 1, h5block->size, hms);
   
   if(status){
     printf("[rank %i] statistics written to file.\n",rank);
@@ -489,17 +539,41 @@ int mcmc_foreach(int rank, int R, size_t SampleSize, ode_model_parameters *omp, 
   return EXIT_SUCCESS;
 }
 
-herr_t append_meta_properties(hdf5block_t *h5block, double *seed, size_t *BurnInSampleSize, char *h5file, char *lib_base){
+/*writes properties of the current run related to implementation and command line choices*/
+herr_t /*hdf5 error*/
+append_meta_properties(hdf5block_t *h5block,/*hdf5 file ids*/
+		       double *seed,/*random number seed*/
+		       size_t *BurnInSampleSize, /*tuning iterations*/
+		       char *h5file, /*name of hdf5 file containing the experimental data and prior set-up*/
+		       char *lib_base)/*basename of the library file @code .so@ file*/{
   herr_t status;
-  status=H5LTset_attribute_string(h5block->file_id, "LogParameters", "ModelLibrary", lib_base);
-
+  int omp_n=0,omp_np=0,i=0;
   status&=H5LTset_attribute_double(h5block->file_id, "LogParameters", "seed", seed, 1);
   status&=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "BurnIn", BurnInSampleSize, 1);
-  status&=H5LTset_attribute_string(h5block->file_id, "LogParameters", "DataFrom", h5file);  
+  status&=H5LTset_attribute_string(h5block->file_id, "LogParameters", "DataFrom", h5file);
+  status&=H5LTmake_dataset_string(h5block->file_id,"Model",lib_base);
+  // here we make a short test to see what the automatic choice of the
+  // number of threads turns out to be.
+#pragma omp parallel reduction(+:i)
+  {
+    i=1;
+    omp_n=omp_get_num_threads();
+    omp_np=omp_get_num_procs();
+  }
+  if (i!=omp_n){
+    fprintf(stderr,"[append_meta_properties] warning: finding out number of threads possibly failed reduction of (n×1: %i) != get_num_threads():%i.\n",i,omp_n);
+  } 
+  h5block->size[0]=1;
+  h5block->size[1]=1;
+  status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_THREADS",1,h5block->size,&omp_n);
+  status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_PROCS",1,h5block->size,&omp_np);
+  
   return status;
 }
 
-void print_experiment_information(int rank, int R, ode_model_parameters *omp, gsl_vector *y0){
+/*prints how many experiments are normalization experiments and sets
+  each experiment's initial conditions if not previously set*/
+void print_experiment_information(int rank,/*MPI rank*/ int R, /*MPI Comm size*/ ode_model_parameters *omp, /*ODE model parameters*/ gsl_vector *y0)/*globally set initial conditions*/{
   int i;
   int C=omp->size->C;
   int N=omp->size->N;
@@ -528,7 +602,8 @@ void print_experiment_information(int rank, int R, ode_model_parameters *omp, gs
   }
 }
 
-void display_test_evaluation_results(mcmc_kernel *kernel){
+/*Kernel init makes a test evakuation of log-posterior pdf; this function prints the results (uses a couple of unicode characters)*/
+void display_test_evaluation_results(mcmc_kernel *kernel)/*MCMC kernel struct*/{
   int i;
   assert(kernel);
   int D=MCMC_DIM(kernel);
@@ -542,7 +617,67 @@ void display_test_evaluation_results(mcmc_kernel *kernel){
   printf("%+g\tLogPrior(θ)=%+g.\n",log_p[1],log_p[2]);
 }
 
-int main (int argc, char* argv[]) {
+/*this is where the hard coded defaults are set. All options are
+  scalars (or pointers to elsewhere allocated memory) so the result is
+  not a reference*/
+main_options /*a struct with default values*/
+get_default_options(char *global_sample_filename_stem,/*for mcmc result files*/ char *lib_name)/*Model library name*/{
+  main_options option;
+  option.initial_stepsize_rank_factor=1.0;
+  option.output_file=global_sample_filename_stem;
+  option.library_file=lib_name;
+  option.target_acceptance=-0.25;
+  option.initial_stepsize =-0.1;
+  option.sample_size=-100;
+  option.abs_tol=ODE_SOLVER_ABS_ERR;
+  option.rel_tol=ODE_SOLVER_REL_ERR;
+  return option;
+}
+
+/* Calculates the normalisation constant of the likelihood function:
+ * 1/sqrt(2*pi*sigma²)^beta for all data points (product).
+ * This is done in log-space
+ */
+int /*error flag*/
+pdf_normalisation_constant(ode_model_parameters *omp)/*pre-allocated storage for simulation results, used in LogLikelihood calculations*/{
+  assert(omp && omp->size);
+  int c,C=get_number_of_experimental_conditions(omp);
+  int i,F=get_number_of_model_outputs(omp);
+  int t,T;
+  double E_lN,lN=0; // log normalisation constant;
+  double stdv;
+  for (c=0;c<C;c++){
+    T=omp->E[c]->t->size;
+    E_lN=-0.5*(M_LN2+M_LNPI);
+    for (t=0;t<T;t++){
+      for (i=0;i<F;i++){
+	stdv=gsl_vector_get(omp->E[c]->sd_data[t],i);
+	if (gsl_finite(stdv)){
+	  E_lN-=gsl_sf_log(stdv);
+	}
+      }
+    }
+    omp->E[c]->pdf_lognorm=E_lN;
+    lN+=E_lN;
+  }
+  omp->pdf_lognorm=lN;
+  return EXIT_SUCCESS;
+}
+
+
+/* Initializes MPI,
+ * loads defaults, 
+ *       command line arguments,
+ *       hdf5 data,
+ *       ode model from shared library @code dlopen@
+ * allocates kernel, 
+ *           ode model parameters
+ *           MPI communivcation buffers
+ * calls MCMC routines
+ * finalizes and frees (most) structs
+ */
+int/*always returns success*/
+main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   int i=0;
   int warm_up=0; // sets the number of burn in points at command line
   char lib_name[BUFSZ];
@@ -551,21 +686,17 @@ int main (int argc, char* argv[]) {
 
   char global_sample_filename_stem[BUFSZ]="Sample.h5"; // filename basis
   char rank_sample_file[BUFSZ]; // filename for sample output
-  char resume_filename[BUFSZ]="resume.double";
+  char resume_filename[BUFSZ]="resume.h5";
   double seed = 1;
   double gamma= 2;
   double t0=-1;
   int sampling_action=SMPL_FRESH;
   
-  int start_from_prior=0;
-  int sensitivity_approximation=0;
+  int start_from_prior=no;
+  int sensitivity_approximation=no;
 
-  main_options cnf_options;
-  cnf_options.output_file=global_sample_filename_stem;
-  cnf_options.library_file=lib_name;
-  cnf_options.target_acceptance=-0.25;
-  cnf_options.initial_stepsize =-0.1; // not used here in smmala
-  cnf_options.sample_size=-10;
+  main_options cnf_options=get_default_options(global_sample_filename_stem, lib_name);
+  
   MPI_Init(&argc,&argv);
   int rank,R;
   MPI_Comm_size(MPI_COMM_WORLD,&R);
@@ -592,9 +723,12 @@ int main (int argc, char* argv[]) {
     else if (strcmp(argv[i],"-s")==0) cnf_options.sample_size=strtol(argv[i+1],NULL,0);
     else if (strcmp(argv[i],"-o")==0) strncpy(cnf_options.output_file,argv[i+1],BUFSZ);
     else if (strcmp(argv[i],"-a")==0) cnf_options.target_acceptance=strtod(argv[i+1],NULL);
-    else if (strcmp(argv[i],"-i")==0) cnf_options.initial_stepsize=strtod(argv[i+1],NULL);
+    else if (strcmp(argv[i],"-i")==0 || strcmp(argv[i],"--initial-step-size")==0) cnf_options.initial_stepsize=strtod(argv[i+1],NULL);
+    else if (strcmp(argv[i],"-m")==0 || strcmp(argv[i],"--initial-step-size-rank-multiplier")==0) cnf_options.initial_stepsize_rank_factor=strtod(argv[i+1],NULL);
+
     else if (strcmp(argv[i],"-g")==0) gamma=strtod(argv[i+1],NULL);
-    
+    else if (strcmp(argv[i],"--abs-tol")==0) cnf_options.abs_tol=strtod(argv[i+1],NULL);
+    else if (strcmp(argv[i],"--rel-tol")==0) cnf_options.rel_tol=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"--seed")==0) seed=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"-h")==0 || strcmp(argv[i],"--help")==0) {
       print_help();
@@ -606,21 +740,20 @@ int main (int argc, char* argv[]) {
 
   /* load Data from hdf5 file
    */
-  if (h5file!=NULL){
-    printf("# [main] (rank %i) reading hdf5 file, loading data...",rank);
+  if (h5file){
+    printf("# [main] (rank %i) reading hdf5 file, loading data.\n",rank);
     fflush(stdout);
     read_data(h5file,omp);
-    printf("done.\n"); fflush(stdout);
+    fflush(stdout);
   } else {
     fprintf(stderr,"# [main] (rank %i) no data provided (-d option), exiting.\n",rank);
     MPI_Abort(MPI_COMM_WORLD,-1);
   }
-
-  
+    
   /* load model from shared library
    */
   ode_model *odeModel = ode_model_loadFromFile(lib_name);  /* alloc */
-  if (odeModel == NULL) {
+  if (!odeModel) {
     fprintf(stderr, "# [main] (rank %i) Library %s could not be loaded.\n",rank,lib_name);
     exit(1);
   } else printf( "# [main] (rank %i) Library %s loaded.\n",rank, lib_name);
@@ -636,6 +769,7 @@ int main (int argc, char* argv[]) {
   sprintf(resume_filename,"%s_resume_%02i.h5",lib_base,rank);
   sprintf(rank_sample_file,"mcmc_rank_%02i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options.output_file));
   cnf_options.output_file=rank_sample_file;
+  cnf_options.resume_file=resume_filename;
   
   /* allocate a solver for each experiment for possible parallelization
    */
@@ -669,21 +803,26 @@ int main (int argc, char* argv[]) {
   
   /* init solver 
    */
-  realtype solver_param[3] = {ODE_SOLVER_ABS_ERR, ODE_SOLVER_REL_ERR, 0};
+  realtype solver_param[3] = {cnf_options.abs_tol, cnf_options.rel_tol, 0};
 
   const char **x_name=ode_model_get_var_names(odeModel);
   const char **p_name=ode_model_get_param_names(odeModel);
   const char **f_name=ode_model_get_func_names(odeModel);
   
-  /* define local variables for parameters and inital conditions */
+  /* local variables for parameters and inital conditions as presented
+     in ode model lib: */
   int N = ode_model_getN(odeModel);
   int P = ode_model_getP(odeModel);
   int F = ode_model_getF(odeModel);
-  
-  omp->size->N=N;
-  omp->size->P=P;
-  omp->size->F=F;
+
+  /* save in ode model parameter struct: */
+  set_number_of_state_variables(omp,N);
+  set_number_of_model_parameters(omp,P);
+  set_number_of_model_outputs(omp,F);
+
   omp->t0=t0;
+  /* ode model parameter struct has pointers for sim results that need
+     memory allocation: */
   ode_model_parameters_alloc(omp);
   ode_model_parameters_link(omp);
   fflush(stdout);
@@ -742,7 +881,7 @@ int main (int argc, char* argv[]) {
     MPI_Abort(MPI_COMM_WORLD,-1);
   }
   
-  /* initial parameter values after allocating an mcmc_kernel of the
+  /* initial parameter values; after allocating an mcmc_kernel of the
    * right dimensions we set the initial Markov chain state from
    * either the model's default parametrization p, the prior's μ, or the
    * state of a previously completed mcmc run (resume).
@@ -750,11 +889,14 @@ int main (int argc, char* argv[]) {
   int D=omp->size->D;
   double init_x[D];
   double beta=assign_beta(rank,R,round(gamma));
-  mcmc_kernel* kernel = smmala_kernel_alloc(beta,D,
-					    cnf_options.initial_stepsize,
-					    model,
-					    seed,
-					    cnf_options.target_acceptance);
+  double tgac=cnf_options.target_acceptance;
+  double m=cnf_options.initial_stepsize_rank_factor;
+  double step=cnf_options.initial_stepsize;
+  if (m>1.0 && rank>0) step*=gsl_pow_int(m,rank);
+  pdf_normalisation_constant(omp);
+  printf("[main] (rank %i) likelihood log(normalisation constant): %g\n",rank,omp->pdf_lognorm);
+  mcmc_kernel* kernel = smmala_kernel_alloc(beta,D,step,model,seed,tgac);
+  
   int resume_load_status;
   if (sampling_action==SMPL_RESUME){
     resume_load_status=load_resume_state(resume_filename, rank, R, kernel);
@@ -767,7 +909,7 @@ int main (int argc, char* argv[]) {
     if (rank==0) printf("# [main] setting mcmc initial value to log(default parameters)\n");
     for (i=0;i<D;i++) init_x[i]=gsl_sf_log(p[i]);
   }
-  
+  fflush(stdout);
   //display_prior_information(omp->prior);
   
   /* here we initialize the mcmc_kernel; this makes one test
@@ -788,7 +930,7 @@ int main (int argc, char* argv[]) {
    *
    */
   if (rank==0){
-    printf("# [main] init complete .\n",rank);
+    printf("# [main] rank %i init complete .\n",rank);
     display_test_evaluation_results(kernel);
     ode_solver_print_stats(solver[0], stdout);
     fflush(stdout);
@@ -796,7 +938,6 @@ int main (int argc, char* argv[]) {
   }
   
   size_t SampleSize = cnf_options.sample_size;  
-
   
   /* in parallel tempering th echains can swap their positions;
    * this buffers the communication between chains.
@@ -835,13 +976,13 @@ int main (int argc, char* argv[]) {
    * these iterations are recorded and saved to an hdf5 file
    * the file is set up and identified via the h5block variable.
    */  
-  mcmc_error=mcmc_foreach(rank, R, SampleSize, omp, kernel, h5block, buffer);
+  mcmc_error=mcmc_foreach(rank, R, SampleSize, omp, kernel, h5block, buffer, &cnf_options);
   assert(mcmc_error==EXIT_SUCCESS);
+
+  // Do something here
+
   append_meta_properties(h5block,&seed,&BurnInSampleSize, h5file, lib_base);
   h5block_close(h5block);
-
-  int resume_EC=write_resume_state(resume_filename, rank, R, kernel);
-  assert(resume_EC==EXIT_SUCCESS);
 
   /* clear memory */
   smmala_model_free(model);

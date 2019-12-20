@@ -492,7 +492,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
     // save_simulation_results(mp); fflush(stdout);
     //initialise all return values
     // log-likelihood
-    l[0]=0;    
+    l[0]=mp->pdf_lognorm;    
     // gradient of the log-likelihood
     gsl_vector_set_zero(grad_l);
     gsl_matrix_set_zero(fisher_information);  
@@ -506,7 +506,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 	   */      
 	  gsl_vector_sub(mp->E[c]->fy[j],mp->E[c]->data[j]);
 	  gsl_vector_div(mp->E[c]->fy[j],mp->E[c]->sd_data[j]); // (fy-data)/sd_data
-	  l_t_j=0;
+	  l_t_j=0; // l_t_j =?= mp->E[c]->fy[j]->size * (0.5*log(2*M_PI) + gsl_vector_prod(mp->E[c]->sd_data[j]));
 	  if (gsl_blas_ddot(mp->E[c]->fy[j],mp->E[c]->fy[j], &l_t_j)!=GSL_SUCCESS){
 	    printf("ddot was unsuccessful\n");
 	    exit(-1);
@@ -606,6 +606,11 @@ int LogPrior(const prior_t *prior, const gsl_vector *x, double *prior_value, gsl
   gsl_matrix_set_zero(fi);
   gsl_vector_set_zero(dprior); // prior gradient
   gsl_vector_view fi_diag;
+
+  // useful function to incorporate later on:
+  // include "gsl/gsl_randist.h"
+  // double gsl_ran_gaussian_pdf(double x, double sigma);
+  //
   
   if (PTYPE(opt,PRIOR_IS_GAUSSIAN)){
     if (PTYPE(opt,PRIOR_IS_MULTIVARIATE)){

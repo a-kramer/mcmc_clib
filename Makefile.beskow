@@ -1,16 +1,18 @@
 MPICC=cc
 CC=cc
 
+export CRAYPE_LINK_TYPE=dynamic
+
 CPPFLAGS = -O2
-CFLAGS = -O2 -std=gnu11 -D_GNU_SOURCE -Wall
+CFLAGS = -O2 -std=gnu11 -D_GNU_SOURCE -Wall -fopenmp
 
 FLAGS = `pkg-config --libs --cflags gsl` -lhdf5 -lhdf5_hl
 
 MALA_SRC=./src/mcmc/smmala.c ./src/mcmc/mcmc_kernel.c			\
-./src/ode/ode_model.c ./src/app/read_cnf.c ./src/mcmc/mv_norm.c		\
+./src/ode/ode_model.c ./src/mcmc/mv_norm.c		\
 ./src/mcmc/model_parameters_smmala.c ./src/app/normalisation_sd.c	\
 ./src/app/dynamic_array.c ./src/mcmc/smmala_posterior.c ./src/app/diagnosis_output.c \
-./src/app/read_data_hdf5.c
+./src/app/read_data_hdf5.c ./src/app/flatten.c
 
 BIN=./bin
 .PHONY: all
