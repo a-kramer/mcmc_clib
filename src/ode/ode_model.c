@@ -223,11 +223,11 @@ void ode_solver_init(ode_solver* solver, const double t0,  double* y0, int lenY,
   }
   /* initialise */
   flag = CVodeInit(solver->cvode_mem, solver->odeModel->vf_eval, t0, solver->y);
-  flag &= CVodeSetUserData(solver->cvode_mem, solver->params);
-  flag &= CVDense(solver->cvode_mem, solver->odeModel->N);
-  flag &= CVDlsSetDenseJacFn(solver->cvode_mem, solver->odeModel->vf_jac);
-  flag &= CVodeSStolerances(solver->cvode_mem, ODE_SOLVER_REL_ERR, ODE_SOLVER_ABS_ERR);
-  flag &= CVodeSetMaxNumSteps(solver->cvode_mem, ODE_SOLVER_MX_STEPS);
+  flag |= CVodeSetUserData(solver->cvode_mem, solver->params);
+  flag |= CVDense(solver->cvode_mem, solver->odeModel->N);
+  flag |= CVDlsSetDenseJacFn(solver->cvode_mem, solver->odeModel->vf_jac);
+  //flag |= CVodeSStolerances(solver->cvode_mem, ODE_SOLVER_REL_ERR, ODE_SOLVER_ABS_ERR);
+  //flag |= CVodeSetMaxNumSteps(solver->cvode_mem, ODE_SOLVER_MX_STEPS);
   if (flag!=CV_SUCCESS) {
     fprintf(stderr,"[CV] ode_solver_init failed, flag=%i\n",flag);
     exit(flag);
