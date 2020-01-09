@@ -31,7 +31,7 @@ static char* get_vf_name(const char* filename){
   n-=strlen(dot);
   size_t new_size = n + strlen(_post) + 2;
   char* ret = (char*) calloc( new_size , sizeof(char) );
-  strncat(ret, lib_name, n);
+  strncat(ret, lib_name, n<new_size?n:new_size);
   strcat(ret, _post);
   //printf("[get_vf_name] vf_name: %s\n",ret);
   return ret;
@@ -195,6 +195,7 @@ void ode_solver_setErrTol(ode_solver* solver, const double rel_tol,  double* abs
     CVodeSVtolerances(solver->cvode_mem, rel_tol, abs_tol_vec);
     N_VDestroy_Serial(abs_tol_vec);									/* free */
   }
+  fprintf(stderr,"[%s] max steps is set to %i.\n",__func__,mxstep);
   CVodeSetMaxNumSteps(solver->cvode_mem, mxstep);
 }
 
@@ -303,8 +304,8 @@ void ode_solver_init_sens(ode_solver* solver,  double* yS0, int lenP, int lenY){
   }
   
   flag = CVodeSensInit1(solver->cvode_mem, lenP, CV_STAGGERED1, solver->odeModel->vf_sens, solver->yS);
-  flag &= CVodeSetSensErrCon(solver->cvode_mem, TRUE);	
-  flag &= CVodeSensEEtolerances(solver->cvode_mem);
+  flag |= CVodeSetSensErrCon(solver->cvode_mem, TRUE);	
+  flag |= CVodeSensEEtolerances(solver->cvode_mem);
   
   /* set parameters scale for error corection */
   double scale_p[lenP];

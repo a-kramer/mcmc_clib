@@ -333,7 +333,7 @@ void display_chunk_properties(hdf5block_t *h5block)/*structure holding the hdf5 
   hsize_t *block=h5block->block;
   hsize_t *count=h5block->count;
   hsize_t *stride=h5block->stride;
-  printf("#[main]");
+  printf("#[%s]",__func__);
   printf("# offset: %lli×%lli;\n",offset[0],offset[1]);
   printf("#  block: %lli×%lli;\n",block[0],block[1]);
   printf("#  stride: %lli×%lli;\n",stride[0],stride[1]);
@@ -616,11 +616,11 @@ void display_test_evaluation_results(mcmc_kernel *kernel)/*MCMC kernel struct*/{
   int D=MCMC_DIM(kernel);
   double *x=MCMC_STATE(kernel);
   double *log_p=MCMC_POSTERIOR(kernel);
-  printf("# [main] test evaluation of Posterior function done:\n");
+  printf("# [%s] test evaluation of Posterior function done:\n",__func__);
   printf("# \tθ=θ₀; LogPosterior(θ|D)=%+g;\n# where θ₀:",log_p[0]); 
   for (i=0;i<D;i++) printf(" %+g ",x[i]);
   printf("\n");
-  printf("# [main] LogLikelihood(D|θ):");
+  printf("# [%s] LogLikelihood(D|θ):",__func__);
   printf("%+g\tLogPrior(θ)=%+g.\n",log_p[1],log_p[2]);
 }
 
@@ -737,7 +737,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
     else if (strcmp(argv[i],"-g")==0) gamma=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"--abs-tol")==0) cnf_options.abs_tol=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"--rel-tol")==0) cnf_options.rel_tol=strtod(argv[i+1],NULL);
-    else if (strcmp(argv[i],"--max-step")==0) cnf_options.mxstep=strtod(argv[i+1],NULL);
+    else if (strncmp(argv[i],"--max-step",10)==0) cnf_options.mxstep=strtol(argv[i+1],NULL,10);
     else if (strcmp(argv[i],"--seed")==0) seed=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"-h")==0 || strcmp(argv[i],"--help")==0) {
       print_help();
