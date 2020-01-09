@@ -88,6 +88,7 @@ typedef struct {
   long sample_size; /*target recorded sample size*/
   double abs_tol; /* ode solver parameter*/
   double rel_tol; /* ode solver parameter*/
+  int mxstep; /* solver maximum number of steps */
   double t0; /* global initial time for integration (ivp)*/
 } main_options;  // these are user supplied options to the program
 
@@ -156,9 +157,10 @@ h5block_init(char *output_file, /*will create this file for writing*/
   char *f_names=flatten(f_name, (size_t) F, "; ");
 
   herr_t NameWriteError=0;
-  NameWriteError&=H5LTmake_dataset_string(file_id,"StateVariableNames",x_names);
-  NameWriteError&=H5LTmake_dataset_string(file_id,"ParameterNames",p_names);
-  NameWriteError&=H5LTmake_dataset_string(file_id,"OutputFunctionNames",f_names);
+  NameWriteError =H5LTmake_dataset_string(file_id,"StateVariableNames",x_names);
+  NameWriteError|=H5LTmake_dataset_string(file_id,"ParameterNames",p_names);
+  NameWriteError|=H5LTmake_dataset_string(file_id,"OutputFunctionNames",f_names);
+  assert(NameWriteError>=0);
   if (NameWriteError){
     fprintf(stderr,"[h5block_init] writing (x,p,f)-names into hdf5 file failed.");
   }/* else {
@@ -339,7 +341,12 @@ void display_chunk_properties(hdf5block_t *h5block)/*structure holding the hdf5 
 }
 
 /*writes a sampled chunk into the appropriate hyperslab of hdf5 file*/
-herr_t /*hdf5 error type*/ h5write_current_chunk(hdf5block_t *h5block,/*holds hdf5 properties and ids*/ gsl_matrix *log_para_chunk, /*log-parameter chunk*/ gsl_vector *log_post_chunk)/*log-posterior value chunk*/{
+herr_t /*hdf5 error type*/
+h5write_current_chunk(
+  hdf5block_t *h5block,/*holds hdf5 properties and ids*/
+  gsl_matrix *log_para_chunk, /*log-parameter chunk*/
+  gsl_vector *log_post_chunk)/*log-posterior value chunk*/
+{
   herr_t status;
   assert(log_para_chunk);
   assert(log_post_chunk);
@@ -426,7 +433,7 @@ mcmc_foreach(int rank, /*MPI rank*/
   int master=no;
   int DEST;
   double beta=mcmc_get_beta(kernel);
-  herr_t status;
+  herr_t status=0;
   int resume_EC;
   int last_chunk=no, not_written_yet=yes;
   double mpi_t_start = MPI_Wtime();
@@ -493,18 +500,18 @@ mcmc_foreach(int rank, /*MPI rank*/
     printf("[main] writing their %i log-posterior values to file.\n",Rest);
     display_chunk_properties(h5block);
 
-    status &= H5Sselect_hyperslab(h5block->post_dataspace_id, H5S_SELECT_SET, h5block->offset, h5block->stride, h5block->count, h5block->block);
+    status |= H5Sselect_hyperslab(h5block->post_dataspace_id, H5S_SELECT_SET, h5block->offset, h5block->stride, h5block->count, h5block->block);
     H5Dwrite(h5block->posterior_set_id, H5T_NATIVE_DOUBLE, h5block->post_chunk_id, h5block->post_dataspace_id, H5P_DEFAULT, log_post_chunk->data);
     assert(status>=0);
   }
 
   // annotate written sample with all necessary information
   //printf("[main] writing some annotation about the sampled points as hdf5 attributes.\n");
-  status&=H5LTset_attribute_int(h5block->file_id, "LogParameters", "MPI_RANK", &rank, 1);
-  status&=H5LTset_attribute_int(h5block->file_id, "LogParameters", "MPI_COMM_SIZE", &R, 1);
-  status&=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "SampleSize", &SampleSize, 1);
-  status&=H5LTset_attribute_double(h5block->file_id, "LogParameters", "InverseTemperature_Beta", &beta, 1);
-
+  status =H5LTset_attribute_int(h5block->file_id, "LogParameters", "MPI_RANK", &rank, 1);
+  status|=H5LTset_attribute_int(h5block->file_id, "LogParameters", "MPI_COMM_SIZE", &R, 1);
+  status|=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "SampleSize", &SampleSize, 1);
+  status|=H5LTset_attribute_double(h5block->file_id, "LogParameters", "InverseTemperature_Beta", &beta, 1);
+  assert(status>=0);
   double mpi_t_end = MPI_Wtime();
   
   ct=clock()-ct;
@@ -525,13 +532,13 @@ mcmc_foreach(int rank, /*MPI rank*/
 
   printf("# MPI Wall Time time spend sampling: %i:%i:%i\n",mpi_wt_hms[0],mpi_wt_hms[1],mpi_wt_hms[2]);
   h5block->size[0]=1;
-  status&=H5LTmake_dataset_double (h5block->file_id, "MPI_WallTime_s", 1, h5block->size, &wall_time);
+  status =H5LTmake_dataset_double (h5block->file_id, "MPI_WallTime_s", 1, h5block->size, &wall_time);
   h5block->size[0]=3;
-  status&=H5LTmake_dataset_int(h5block->file_id, "MPI_WallTime_hms", 1, h5block->size, mpi_wt_hms);
+  status|=H5LTmake_dataset_int(h5block->file_id, "MPI_WallTime_hms", 1, h5block->size, mpi_wt_hms);
   h5block->size[0]=1;
-  status&=H5LTmake_dataset_double (h5block->file_id, "CpuTime_s", 1, h5block->size, &sampling_time);
+  status|=H5LTmake_dataset_double (h5block->file_id, "CpuTime_s", 1, h5block->size, &sampling_time);
   h5block->size[0]=3;
-  status&=H5LTmake_dataset_int(h5block->file_id, "CpuTime_hms", 1, h5block->size, hms);
+  status|=H5LTmake_dataset_int(h5block->file_id, "CpuTime_hms", 1, h5block->size, hms);
   
   if(status){
     printf("[rank %i] statistics written to file.\n",rank);
@@ -548,10 +555,10 @@ append_meta_properties(hdf5block_t *h5block,/*hdf5 file ids*/
 		       char *lib_base)/*basename of the library file @code .so@ file*/{
   herr_t status;
   int omp_n=0,omp_np=0,i=0;
-  status&=H5LTset_attribute_double(h5block->file_id, "LogParameters", "seed", seed, 1);
-  status&=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "BurnIn", BurnInSampleSize, 1);
-  status&=H5LTset_attribute_string(h5block->file_id, "LogParameters", "DataFrom", h5file);
-  status&=H5LTmake_dataset_string(h5block->file_id,"Model",lib_base);
+  status =H5LTset_attribute_double(h5block->file_id, "LogParameters", "seed", seed, 1);
+  status|=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "BurnIn", BurnInSampleSize, 1);
+  status|=H5LTset_attribute_string(h5block->file_id, "LogParameters", "DataFrom", h5file);
+  status|=H5LTmake_dataset_string(h5block->file_id,"Model",lib_base);
   // here we make a short test to see what the automatic choice of the
   // number of threads turns out to be.
 #pragma omp parallel reduction(+:i)
@@ -631,6 +638,7 @@ get_default_options(char *global_sample_filename_stem,/*for mcmc result files*/ 
   option.sample_size=-100;
   option.abs_tol=ODE_SOLVER_ABS_ERR;
   option.rel_tol=ODE_SOLVER_REL_ERR;
+  option.mxstep=ODE_SOLVER_MX_STEPS;
   return option;
 }
 
@@ -729,6 +737,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
     else if (strcmp(argv[i],"-g")==0) gamma=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"--abs-tol")==0) cnf_options.abs_tol=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"--rel-tol")==0) cnf_options.rel_tol=strtod(argv[i+1],NULL);
+    else if (strcmp(argv[i],"--max-step")==0) cnf_options.mxstep=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"--seed")==0) seed=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"-h")==0 || strcmp(argv[i],"--help")==0) {
       print_help();
@@ -803,7 +812,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   
   /* init solver 
    */
-  realtype solver_param[3] = {cnf_options.abs_tol, cnf_options.rel_tol, 0};
+  //  realtype solver_param[3] = {cnf_options.abs_tol, cnf_options.rel_tol, cnf_options.mxstep};
 
   const char **x_name=ode_model_get_var_names(odeModel);
   const char **p_name=ode_model_get_param_names(odeModel);
@@ -864,7 +873,10 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   for (c=0;c<C;c++){
     ode_solver_init(solver[c], omp->t0, omp->E[c]->init_y->data, N, p, P);
     //printf("# [main] solver initialised.\n");    
-    ode_solver_setErrTol(solver[c], solver_param[1], &solver_param[0], 1);
+    ode_solver_setErrTol(solver[c],
+			 cnf_options.rel_tol,
+			 &(cnf_options.abs_tol), 1,
+			 cnf_options.mxstep);
     if (ode_model_has_sens(odeModel)) {
       ode_solver_init_sens(solver[c], omp->E[0]->yS0->data, P, N);
     }

@@ -156,7 +156,7 @@ void		ode_solver_init_sens(ode_solver* solver,  double* yS0, int lenP, int lenY)
 
 /* Sets error tollerances, NOTE this function should be called only after an ode_solver_init or ode_solver_reinit.
 */
-void		ode_solver_setErrTol(ode_solver* solver, const double rel_tol, double* abs_tol, const int abs_tol_len);
+  void		ode_solver_setErrTol(ode_solver* solver, const double rel_tol, double* abs_tol, const int abs_tol_len, const int mxstep);
 	
 /* Re-initialises the ode solver. y0, yS0 and p can be NULL in which case the default values are used.
  */	

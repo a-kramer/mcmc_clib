@@ -179,7 +179,7 @@ ode_solver* ode_solver_alloc(ode_model* model){
   return solver;
 }
 
-void ode_solver_setErrTol(ode_solver* solver, const double rel_tol,  double* abs_tol, const int abs_tol_len){
+void ode_solver_setErrTol(ode_solver* solver, const double rel_tol,  double* abs_tol, const int abs_tol_len, const int mxstep){
   
   if( (abs_tol_len != 1) && (abs_tol_len != solver->odeModel->N)){
     fprintf(stderr,"ode_solver_setErrTol: length of abs_tol must be 1 or equal to the number of variables in the ode model.\n");
@@ -195,6 +195,7 @@ void ode_solver_setErrTol(ode_solver* solver, const double rel_tol,  double* abs
     CVodeSVtolerances(solver->cvode_mem, rel_tol, abs_tol_vec);
     N_VDestroy_Serial(abs_tol_vec);									/* free */
   }
+  CVodeSetMaxNumSteps(solver->cvode_mem, mxstep);
 }
 
 
