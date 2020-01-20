@@ -919,7 +919,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
     if (rank==0) printf("# [main] setting initial mcmc vector to prior mean.\n");
     for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp->prior->mu,i);
   } else {
-    if (rank==0) printf("# [main] setting mcmc initial value to log(default parameters)\n");
+    if (rank==0) printf("# [%s] setting mcmc initial value to log(default parameters)\n",__func__);
     for (i=0;i<D;i++) init_x[i]=gsl_sf_log(p[i]);
   }
   fflush(stdout);
@@ -928,22 +928,16 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   /* here we initialize the mcmc_kernel; this makes one test
    * evaluation of the log-posterior density function. 
    */
-  
-  /*
-  if (rank==0){
-    printf("# [main] initializing MCMC.\n");
-    printf("# [main] init_x:");
-    for (i=0;i<D;i++) printf(" %g ",init_x[i]);
-    printf("\n");
-  }
-  */
-  
+  clock_t test_start, test_end;
+  test_start = clock();
   mcmc_init(kernel, init_x);
+  test_end = clock();
   /* display the results of that test evaluation
    *
    */
   if (rank==0){
-    printf("# [main] rank %i init complete .\n",rank);
+    double test_t=(double)(test_end - test_start)/CLOCKS_PER_SEC;
+    printf("# [%s] rank %i reporting: init complete in %li clocks (%g s).\n",__func__,rank,test_end-test_start,test_t);
     display_test_evaluation_results(kernel);
     ode_solver_print_stats(solver[0], stdout);
     fflush(stdout);
