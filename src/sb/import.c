@@ -771,18 +771,21 @@ void load_event(gpointer one_event, gpointer buffer){
     new_event->time=time;
     new_event->type=gsl_vector_int_alloc(L);
     new_event->value=gsl_matrix_alloc(N,L);
-    SBEE->event_type=g_array_sized_new(FALSE,
-				       FALSE,
-				       sizeof(int),
-				       L);
-    SBEE->event_target=g_array_sized_new(FALSE,
-					 FALSE,
-					 sizeof(int),
-					 L);    
-    SBEE->event_value=g_array_sized_new(FALSE,
-				       FALSE,
-				       sizeof(double),
-				       N*L);
+    SBEE->event_type=g_array_sized_new
+      (FALSE,
+       FALSE,
+       sizeof(int),
+       L);
+    SBEE->event_target=g_array_sized_new
+      (FALSE,
+       FALSE,
+       sizeof(int),
+       L);    
+    SBEE->event_value=g_array_sized_new
+      (FALSE,
+       FALSE,
+       sizeof(double),
+       N*L);
     
     g_hash_table_foreach(sb_event->col,determine_target_and_operation,SBEE);
     assert(SBEE->event_target->len == SBEE->event_type->len);
@@ -818,7 +821,7 @@ void get_events(gpointer PtrArrayElement, gpointer buffer){
 /**/
 void write_events_per_experiment(sbtab_t *E_table,
 				 gsl_vector **E_default_input,
-				 sbtab *Input,
+				 sbtab_t *Input,
 				 GHashTable *sbtab_hash){
   GPtrArray *EventColumn=sbtab_get_column(E_table,"!Event");
   gchar *e_str;
@@ -1516,20 +1519,20 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
 	    TableName=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
 	    printf("TableName: «%s»\n",TableName); fflush(stdout);
 	  } else {
-	    fprintf(stderr,"error: TableName is missing.\n");
+	    fprintf(stderr,"[%s] error: TableName is missing.\n",__func__);
 	    exit(-1);
 	  }
 	  if (regexec(&RE_TableType,s,2,match,0)==0){
 	    TableType=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
 	    printf("TableType: «%s»\n",TableType); fflush(stdout);
 	  }else {
-	    fprintf(stderr,"warning: TableType is missing.\n");
+	    fprintf(stderr,"[%s] warning: TableType is missing.\n",__func__);
 	  }
 	  if (regexec(&RE_TableTitle,s,2,match,0)==0){
 	    TableTitle=g_strndup(s+match[1].rm_so,match[1].rm_eo-match[1].rm_so);
 	    printf("TableTitle: «%s»\n",TableTitle); fflush(stdout);
 	  }else {
-	    fprintf(stderr,"warning: TableTitle is missing.\n");
+	    fprintf(stderr,"[%s] warning: TableTitle is missing.\n",__func__);
 	  }	
 	} else if (regexec(&SBkeys,s,2,match,0)==0){
 	  keys=g_strsplit_set(s,fs,-1);
@@ -1554,15 +1557,15 @@ sbtab_t* parse_sb_tab(char *sb_tab_file){
 	      stem=get_reference(keys[i], &match[1]);
 	      leaf=get_reference(keys[i], &match[2]);
 	      if (leaf){
-		printf("\t[keys] link to table «%s», ID=«%s» found. I will use ID in hash table.\n",stem,leaf);
+		printf("\t[keys] link to table «%s», ID=«%s».\n",stem,leaf);
 		g_free(keys[i]);
 		keys[i]=leaf;
 	      } else {
 		fprintf(stderr,"[%s] could not dereference link. Will use the string as is.\n",__func__);
 	      }
-	    }else{
+	    }//else{
 	      //printf("key[%i] is not linked.\n",i);
-	    }	  
+	    //}	  
 	  }
 	  sbtab=sbtab_alloc(keys);
 	} else if (regexec(&EmptyLine,s,0,NULL,0)==0){
