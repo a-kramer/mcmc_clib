@@ -32,5 +32,5 @@ bin/ode_smmala: ./src/app/ode_smmala.c $(MALA_SRC)
 bin/sbtab_import: ./src/sb/import.c $(SB_SRC)
 	$(CC) $(CFLAGS) $(SB_SRC) -o $(BIN)/sbtab_import ./src/sb/import.c -lm $(FLAGS)
 
-vfgen: 
+vfgen: src/vfgen/*.cpp
 	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread
