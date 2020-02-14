@@ -651,6 +651,16 @@ void write_data_according_to_type(hid_t file_id, /* hdf5 file id*/
 
 }
 
+typedef enum effect {event_affects_input, event_affects_state} effect_t;
+
+typedef struct {
+  GArray *target;
+  GArray *type;
+  GArray *value;
+  GArray *table;
+  GPtrArray *gp_target_name;
+} g_event_t;
+
 typedef struct {
   GHashTable *sbtab_hash;
   GHashTable *Operation;
@@ -659,17 +669,44 @@ typedef struct {
   gchar *ExperimentID;
   gchar *ExperimentName;
   int ExperimentIndex;
+  g_event_t event;
   gsl_vector *Input;
   gsl_vector *event_time;
-  GArray *event_target;
-  GArray *event_type;
-  GArray *event_value;
-  GPtrArray *gp_target_name;
   GPtrArray *event_tab;
   h5block_t *h5;
 } EventEnvironment
 
+g_event_t* g_event_alloc(guint n,guint m){
+  g_event_t *g_event;
+  g_event->type=g_array_sized_new
+    (FALSE,
+     FALSE,
+     sizeof(int), m);
+  g_event->target=g_array_sized_new
+    (FALSE,
+     FALSE,
+     sizeof(int), m);    
+  g_event->value=g_array_sized_new
+    (FALSE,
+     FALSE,
+     sizeof(double), n*m);
+  g_event->gp_target_name=g_ptr_array_sized_new(m);
+  g_event->target_table=g_array_sized_new
+    (FALSE,
+     FALSE,
+     sizeof(effect_t),L);
+  return g_event;
+}
 
+void g_event_free(g_event_t *g_event){
+  g_event_t *g_event;
+  g_array_free(g_event->type,TRUE);
+  g_array_free(g_event->target,TRUE);
+  g_array_free(g_event->value,TRUE);
+  g_ptr_array_free(gp_target_name);
+  g_array_free(event->target_table);
+  return g_event;
+}
 
 
 void determine_target_and_operation(gpointer key, gpointer value, gpointer buffer){
@@ -682,7 +719,7 @@ void determine_target_and_operation(gpointer key, gpointer value, gpointer buffe
   int EC;
   EventEnvironment *SBEE=buffer;
   sbtab_t *Compound=sbtab_find(SBEE->sbtab_hash,"Compound");
-  sbtab_t *ActualTarget;
+  sbtab_t *Input=sbtab_find(SBEE->sbtab_hash,"Input");
   regex_t OP_Target_RE;
   regmatch_t m[3];
   gchar *OP,*Target;
@@ -692,43 +729,44 @@ void determine_target_and_operation(gpointer key, gpointer value, gpointer buffe
   int value_type;
   int type=0;
   if (N>0){
-    EC=regcomp(&OP_Target_RE,">([[:alpha:]]):([[:alnum:]])",REG_EXTENDED);
+    EC=regcomp(&OP_Target_RE,">([[:alpha:]]+):([[:alnum:]]+)",REG_EXTENDED);
     if (regexec(&OP_Target_RE, Key,3,m,0)==0){
       OP=dup_match(m[1],Key);
       Target=dup_match(m[2],Key);
       r=sbtab_get_row_index(Compound,Target);
-
+      SBEE->target_table=event_affects_state;
       if (r<0){
-	printf("[%s] event target with ID «%s» not found in Compund table.",Target);
-      } else {
-	TargetName=sbtab_get_column(Compound,"!Name");
-	Name=g_ptr_array_index(TargetName,r);
-	if (Name){
-	  g_ptr_array_add(SBEE->gp_target_name,Name);
-	}
-	op=g_hash_table_lookup(SBEE->Operation,OP);
-	type=op[0];
-	g_array_append_val(SBEE->event_target,r);
-	g_array_append_val(SBEE->event_type,type);
-	for (i=0;i<N;i++){
-	  c=g_ptr_array_index(C,i);
-	  if (c[0] == '>'){
-	    /* a link */
-	    k=sbtab_get_row_index(Input,&c[1]);
-	    if (k<0){
-	      fprintf(stderr,"[%s] event handling: could not find ID «%s» in Input table. A reference «>ID» must refer to an input.\n",__func__,&c[1]);
-	      abort();
-	    } else {
-	      fprintf(stdout,"[%s] event handling: found ID «%s» in Input table (row %i).\n",__func__,&c[1],k);
-	    }
-	    assert(k>=0 && k<SBEE->Input->size);
-	    value=gsl_vector_get(SBEE->Input,k);
+	r=sbtab_get_row_index(Input,Target);
+	assert(r>=0);
+	SBEE->target_table=event_affects_input;
+      }
+      TargetName=sbtab_get_column(Compound,"!Name");
+      Name=g_ptr_array_index(TargetName,r);
+      if (Name){
+	g_ptr_array_add(SBEE->gp_target_name,Name);
+      }
+      op=g_hash_table_lookup(SBEE->Operation,OP);
+      type=op[0];
+      g_array_append_val(SBEE->event_target,r);
+      g_array_append_val(SBEE->event_type,type);
+      for (i=0;i<N;i++){
+	c=g_ptr_array_index(C,i);
+	if (c[0] == '>'){
+	  /* a link */
+	  k=sbtab_get_row_index(Input,&c[1]);
+	  if (k<0){
+	    fprintf(stderr,"[%s] event handling: could not find ID «%s» in Input table. A reference «>ID» must refer to an input.\n",__func__,&c[1]);
+	    abort();
 	  } else {
-	    /* it's just a number then */
-	    value=strtod(c,NULL);
+	    fprintf(stdout,"[%s] event handling: found ID «%s» in Input table (row %i).\n",__func__,&c[1],k);
 	  }
-	  g_array_append_val(SBEE->event_value,value);
+	  assert(k>=0 && k<SBEE->Input->size);
+	  value=gsl_vector_get(SBEE->Input,k);
+	} else {
+	  /* it's just a number then */
+	  value=strtod(c,NULL);
 	}
+	g_array_append_val(SBEE->event_value,value);
       }
       g_free(OP);
       g_free(Target);
@@ -736,48 +774,29 @@ void determine_target_and_operation(gpointer key, gpointer value, gpointer buffe
     regfree(&OP_Target_RE);
   }
 }
-
+/* TODO rewrite the SBEE structure to contain substructures that can be allocated together consistently. a row can be represented well by glib structures, a numerical column also works well as a gsl object */
 void event_interpret(gpointer event, gpointer buffer){
   EventEnvironment *SBEE=buffer;
   sbtab_t *sb_event=event;
-  event_t *event=malloc(sizeof(event_t));
-  gsl_vector *time;
-  gsl_matrix *value;
   GPtrArray *c;
   gunit M=g_hash_table_size(sb_event->col);
   guint N=sb_event->column[0]->len;
-  guint L=M;
+  guint L=M-1;
   event_t *new_event=malloc(sizeof(event_t));
   guint i;
+  guint k;
   GPtrArray *TimePoint=sbtab_get_column(sb_event,"!TimePoint");
-  gsl_vector *time=sbtab_column_to_gsl_vector(sb_event,"!Time");
-  assert(time);
   if (TimePoint) L--;
-  if (time) L--;
+  
   if (N>0 && L>0){  
-    new_event->time=time;
+    new_event->time=sbtab_column_to_gsl_vector(sb_event,"!Time");
+    assert(new_event->time);
     new_event->type=gsl_vector_int_alloc(L);
     new_event->value=gsl_matrix_alloc(N,L);
-    SBEE->event_type=g_array_sized_new
-      (FALSE,
-       FALSE,
-       sizeof(int),
-       L);
-    SBEE->event_target=g_array_sized_new
-      (FALSE,
-       FALSE,
-       sizeof(int),
-       L);    
-    SBEE->event_value=g_array_sized_new
-      (FALSE,
-       FALSE,
-       sizeof(double),
-       N*L);
-    SBEE->gp_target_name=g_ptr_array_sized_new(L);
-					       
+    SBEE->event=g_event_alloc(N,L);
     g_hash_table_foreach(sb_event->col,determine_target_and_operation,SBEE);
-    assert(SBEE->event_target->len == SBEE->event_type->len);
-    assert(SBEE->gp_target_name->len == SBEE->event_target->len);
+    assert(SBEE->event->target->len == SBEE->event_type->len);
+    assert(SBEE->event->gp_target_name->len == SBEE->event->target->len);
     /* some output to check how the table was read:
      */
     printf("[%s] in (%s) «%s» the targets are: ",__func__,SBEE->ExperimentName,SBEE->ExperimentID);
@@ -786,15 +805,13 @@ void event_interpret(gpointer event, gpointer buffer){
     for (i=0; i<n; i++){
       printf("\t«%s» (probably compound %i)\n",
 	     g_ptr_array_index(SBEE->gp_target_name,i),
-	     g_array_index(SBEE->event_target,i),
+	     g_array_index(SBEE->event_target,int,i),
 	     );
     }
-
-    value=gsl_matrix_alloc(value,m,n);
     // (1) make the values a gsl_matrix
     gsl_matrix_const_view g_mv_value=gsl_matrix_const_view_array((double*)(SBEE->event_value->data),n,m);
     // (2) transpose event matrix
-    assert(gsl_matrix_transpose_memcpy(value,&(g_mv_value.matrix))==GSL_SUCCESS);
+    assert(gsl_matrix_transpose_memcpy(new_event->value,&(g_mv_value.matrix))==GSL_SUCCESS);
     // (3) write matrix to file
     SBEE->h5->size[0]=m;
     SBEE->h5->size[1]=n;
@@ -813,7 +830,7 @@ void event_interpret(gpointer event, gpointer buffer){
     H5LTset_attribute_int
       (SBEE->h5->group_id,
        SBEE->EventName,
-       "AffectsMajorIndex",
+       "AffectsMinorIndex",
        &SBEE->ExperimentMinorIndex,1);
     H5LTset_attribute_int
       (SBEE->h5->group_id,
@@ -833,7 +850,7 @@ void event_interpret(gpointer event, gpointer buffer){
     H5LTset_attribute_int
       (SBEE->h5->group_id,
        SBEE->EventName,
-       "LikelyTargetCompoundIndex",
+       "LikelyTargetIndex",
        (int*) SBEE->event_target->data,SBEE->event_target->len);
     H5LTset_attribute_int
       (SBEE->h5->group_id,
@@ -843,25 +860,47 @@ void event_interpret(gpointer event, gpointer buffer){
     GString *TargetCompounds = g_string_sized_new (20*n);
     for (i=0;i<n;i++) {
       g_string_append(TargetCompounds,g_ptr_array_index(SBEE->gp_target_name,i));
-      g_string_append_c(TargetCompounds,' ');
+      if (i<n-1) g_string_append_c(TargetCompounds,' ');
     }
     H5LTset_attribute_string
       (SBEE->h5->group_id,
        SBEE->EventName,
        "TargetCompound",
-       TargetCompounds->str,TargetCompounds->len);
-    g_string_free (TargetCompound,TRUE);
+       TargetCompounds->str);
+    g_string_free(TargetCompound,TRUE);
+
     GString *OP = g_string_sized_new(4*n);
     for (i=0;i<n;i++) {
-      g_string_append(OP,g_ptr_array_index(SBEE->gp_target_name,i));
-      g_string_append_c(TargetCompounds,' ');
+      k=g_array_index(SBEE->event_type,guint,i)
+      g_string_append(OP,OP_LABEL[k]);
+      if (i<n-1) g_string_append_c(TargetCompounds,' ');
     }
     H5LTset_attribute_string
       (SBEE->h5->group_id,
        SBEE->EventName,
-       "TargetCompound",
-       TargetCompounds->str,TargetCompounds->len);
-    g_string_free (OP,TRUE);
+       "Operation",
+       OP->str);
+    g_string_free(OP,TRUE);
+
+    GString *affected_table = g_string_sized_new(10*n);
+    for (i=0;i<n;i++) {
+      k=g_array_index(SBEE->target_table,guint,i);
+      if (k==event_affects_input){
+	g_string_append(affected_table,"input");
+      } else if (k==event_affects_state){
+	g_string_append(affected_table,"state");
+      }
+      if (i<n-1) g_string_append_c(TargetCompounds,' ');
+    }
+    H5LTset_attribute_string
+      (SBEE->h5->group_id,
+       SBEE->EventName,
+       "affects",
+       affected_table->str);
+    g_string_free(affected_table,TRUE);
+
+
+
     
   } else {
     fprintf(stderr,"[%s] warning: empty event «%s»?\n",__func__,sb_event->TableTitle);
@@ -894,9 +933,9 @@ void event_foreach_experiment(sbtab_t *E_table,
   sbtab_t *Parameter=sbtab_find(sbtab_hash,"Parameter");
   GPtrArray *ID,*Name;
   EventEnvironment SBEE;
-  guint OP[]={EVENT_SET,
-	      EVENT_ADD,EVENT_SUB,
-	      EVENT_MUL,EVENT_DIV};
+  event_t OP[]={event_set,
+	      event_add,event_sub,
+	      event_mul,event_div};
   gchar **OP_LABEL=g_strsplit("SET ADD SUB MUL DIV"," ",-1);
   guint nE;
   guint i,j;
