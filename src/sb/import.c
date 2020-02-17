@@ -653,12 +653,14 @@ void write_data_according_to_type(hid_t file_id, /* hdf5 file id*/
 
 typedef enum effect {event_affects_input, event_affects_state} effect_t;
 
+/* this structure holds the properties of an event, which are known once an avent table is opened;*/
 typedef struct {
   GArray *target;
   GArray *type;
   GArray *value;
   GArray *table;
   GPtrArray *gp_target_name;
+  gsl_vector *time;
 } g_event_t;
 
 typedef struct {
@@ -669,15 +671,20 @@ typedef struct {
   gchar *ExperimentID;
   gchar *ExperimentName;
   int ExperimentIndex;
+  int ExperimentMajorIndex;
+  int ExperimentMinorIndex;
   g_event_t event;
   gsl_vector *Input;
-  gsl_vector *event_time;
-  GPtrArray *event_tab;
+
+  //  GPtrArray *event_tab;
   h5block_t *h5;
 } EventEnvironment
 
-g_event_t* g_event_alloc(guint n,guint m){
-  g_event_t *g_event;
+  /**/
+g_event_t* g_event_alloc(gsl_vector *t,guint m){
+  assert(t);
+  guint n=t->size;
+  g_event_t *g_event=malloc(sizeof(event_t));
   g_event->type=g_array_sized_new
     (FALSE,
      FALSE,
@@ -699,15 +706,13 @@ g_event_t* g_event_alloc(guint n,guint m){
 }
 
 void g_event_free(g_event_t *g_event){
-  g_event_t *g_event;
   g_array_free(g_event->type,TRUE);
   g_array_free(g_event->target,TRUE);
   g_array_free(g_event->value,TRUE);
   g_ptr_array_free(gp_target_name);
   g_array_free(event->target_table);
-  return g_event;
+  gsl_vector_free(g_event->time);
 }
-
 
 void determine_target_and_operation(gpointer key, gpointer value, gpointer buffer){
   gchar *Key=key;
@@ -782,36 +787,31 @@ void event_interpret(gpointer event, gpointer buffer){
   gunit M=g_hash_table_size(sb_event->col);
   guint N=sb_event->column[0]->len;
   guint L=M-1;
-  event_t *new_event=malloc(sizeof(event_t));
   guint i;
   guint k;
   GPtrArray *TimePoint=sbtab_get_column(sb_event,"!TimePoint");
   if (TimePoint) L--;
   
-  if (N>0 && L>0){  
-    new_event->time=sbtab_column_to_gsl_vector(sb_event,"!Time");
-    assert(new_event->time);
-    new_event->type=gsl_vector_int_alloc(L);
-    new_event->value=gsl_matrix_alloc(N,L);
-    SBEE->event=g_event_alloc(N,L);
+  if (N>0 && L>0){
+    SBEE->event=event_alloc(sbtab_column_to_gsl_vector(sb_event,"!Time"),M);
     g_hash_table_foreach(sb_event->col,determine_target_and_operation,SBEE);
-    assert(SBEE->event->target->len == SBEE->event_type->len);
+    assert(SBEE->event->target->len == SBEE->event->type->len);
     assert(SBEE->event->gp_target_name->len == SBEE->event->target->len);
     /* some output to check how the table was read:
      */
     printf("[%s] in (%s) «%s» the targets are: ",__func__,SBEE->ExperimentName,SBEE->ExperimentID);
-    size_t n=SBEE->event_target->len;
-    size_t m=time->size;
+    size_t n=SBEE->event->target->len;
+    size_t m=SBEE->event->time->size;
     for (i=0; i<n; i++){
       printf("\t«%s» (probably compound %i)\n",
-	     g_ptr_array_index(SBEE->gp_target_name,i),
-	     g_array_index(SBEE->event_target,int,i),
+	     g_ptr_array_index(SBEE->event->gp_target_name,i),
+	     g_array_index(SBEE->event->target,int,i),
 	     );
     }
     // (1) make the values a gsl_matrix
-    gsl_matrix_const_view g_mv_value=gsl_matrix_const_view_array((double*)(SBEE->event_value->data),n,m);
+    gsl_matrix_const_view g_mv_value=gsl_matrix_const_view_array((double*)(SBEE->event->value->data),n,m);
     // (2) transpose event matrix
-    assert(gsl_matrix_transpose_memcpy(new_event->value,&(g_mv_value.matrix))==GSL_SUCCESS);
+    assert(gsl_matrix_transpose_memcpy(SBEE->event->value,&(g_mv_value.matrix))==GSL_SUCCESS);
     // (3) write matrix to file
     SBEE->h5->size[0]=m;
     SBEE->h5->size[1]=n;
