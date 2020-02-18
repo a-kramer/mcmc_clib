@@ -37,7 +37,7 @@ sbtab_t* sbtab_alloc(gchar **keys){
 int sbtab_get_row_index(const sbtab_t* sbtab, const gchar *ID){
   assert(sbtab);
   GHashTable *row=sbtab->row;
-  guint r[1];
+  guint *r;
   int i=-1;
   r=g_hash_table_lookup(row,ID);
   if (r){
@@ -53,6 +53,7 @@ char* sbtab_get_field_by_rowID(const sbtab_t* sbtab, const gchar *ID, const gcha
   GPtrArray *C;
   C=sbtab_get_column(sbtab,ID);
   char *c=sbtab_get(sbtab,ID,r);
+  return c;
 }
 
 typedef struct {

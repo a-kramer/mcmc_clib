@@ -3,6 +3,8 @@
 
 
 /* event types are one of these */
+typedef enum effect {event_affects_input, event_affects_state} effect_t;
+typedef enum operator {event_set, event_add, event_sub, event_mul, event_div} op_t;
 #define EVENT_NIL 0
 #define EVENT_SET 1
 #define EVENT_ADD 2

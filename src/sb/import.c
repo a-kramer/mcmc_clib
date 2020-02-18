@@ -242,7 +242,7 @@ void override_default_input(gpointer data, gpointer user_data){
   sbtab_t *InputSet=data;
   GPtrArray *id=input->id;
   guint n=id->len;
-  gunit i,j;
+  guint i,j;
   guint *ri;
   gchar *ID;
   double value;
@@ -651,14 +651,14 @@ void write_data_according_to_type(hid_t file_id, /* hdf5 file id*/
 
 }
 
-typedef enum effect {event_affects_input, event_affects_state} effect_t;
+
 
 /* this structure holds the properties of an event, which are known once an avent table is opened;*/
 typedef struct {
   GArray *target;
-  GArray *type;
+  GArray *Op;
+  GArray *effect;
   GArray *value;
-  GArray *table;
   GPtrArray *gp_target_name;
   gsl_vector *time;
 } g_event_t;
@@ -673,7 +673,7 @@ typedef struct {
   int ExperimentIndex;
   int ExperimentMajorIndex;
   int ExperimentMinorIndex;
-  g_event_t event;
+  g_event_t *event;
   gsl_vector *Input;
 
   //  GPtrArray *event_tab;
@@ -685,10 +685,15 @@ g_event_t* g_event_alloc(gsl_vector *t,guint m){
   assert(t);
   guint n=t->size;
   g_event_t *g_event=malloc(sizeof(event_t));
-  g_event->type=g_array_sized_new
+  g_event->time=t;
+  g_event->effect=g_array_sized_new
     (FALSE,
      FALSE,
-     sizeof(int), m);
+     sizeof(effect_t), m);
+  g_event->Op=g_array_sized_new
+    (FALSE,
+     FALSE,
+     sizeof(op_t), m);
   g_event->target=g_array_sized_new
     (FALSE,
      FALSE,
@@ -698,19 +703,15 @@ g_event_t* g_event_alloc(gsl_vector *t,guint m){
      FALSE,
      sizeof(double), n*m);
   g_event->gp_target_name=g_ptr_array_sized_new(m);
-  g_event->target_table=g_array_sized_new
-    (FALSE,
-     FALSE,
-     sizeof(effect_t),L);
   return g_event;
 }
 
 void g_event_free(g_event_t *g_event){
-  g_array_free(g_event->type,TRUE);
+  g_array_free(g_event->effect,TRUE);
+  g_array_free(g_event->Op,TRUE);  
   g_array_free(g_event->target,TRUE);
   g_array_free(g_event->value,TRUE);
-  g_ptr_array_free(gp_target_name);
-  g_array_free(event->target_table);
+  g_ptr_array_free(g_event->gp_target_name);
   gsl_vector_free(g_event->time);
 }
 
@@ -728,22 +729,22 @@ void determine_target_and_operation(gpointer key, gpointer value, gpointer buffe
   regex_t OP_Target_RE;
   regmatch_t m[3];
   gchar *OP,*Target;
-  guint *op;
+  gint *op;
   double value;
   int r=-1,j=0,k;
   int value_type;
-  int type=0;
+  op_t type=event_set; /* default action*/
   if (N>0){
     EC=regcomp(&OP_Target_RE,">([[:alpha:]]+):([[:alnum:]]+)",REG_EXTENDED);
     if (regexec(&OP_Target_RE, Key,3,m,0)==0){
       OP=dup_match(m[1],Key);
       Target=dup_match(m[2],Key);
       r=sbtab_get_row_index(Compound,Target);
-      SBEE->target_table=event_affects_state;
+      SBEE->event->effect=event_affects_state;
       if (r<0){
 	r=sbtab_get_row_index(Input,Target);
 	assert(r>=0);
-	SBEE->target_table=event_affects_input;
+	SBEE->event->effect=event_affects_input;
       }
       TargetName=sbtab_get_column(Compound,"!Name");
       Name=g_ptr_array_index(TargetName,r);
@@ -753,14 +754,14 @@ void determine_target_and_operation(gpointer key, gpointer value, gpointer buffe
       op=g_hash_table_lookup(SBEE->Operation,OP);
       type=op[0];
       g_array_append_val(SBEE->event_target,r);
-      g_array_append_val(SBEE->event_type,type);
+      g_array_append_val(SBEE->event->Op,type);
       for (i=0;i<N;i++){
 	c=g_ptr_array_index(C,i);
 	if (c[0] == '>'){
 	  /* a link */
 	  k=sbtab_get_row_index(Input,&c[1]);
 	  if (k<0){
-	    fprintf(stderr,"[%s] event handling: could not find ID «%s» in Input table. A reference «>ID» must refer to an input.\n",__func__,&c[1]);
+	    fprintf(stderr,"[%s] event handling: could not find ID «%s» in Input table. A reference in that location «>ID» must refer to an input.\n",__func__,&c[1]);
 	    abort();
 	  } else {
 	    fprintf(stdout,"[%s] event handling: found ID «%s» in Input table (row %i).\n",__func__,&c[1],k);
@@ -771,7 +772,7 @@ void determine_target_and_operation(gpointer key, gpointer value, gpointer buffe
 	  /* it's just a number then */
 	  value=strtod(c,NULL);
 	}
-	g_array_append_val(SBEE->event_value,value);
+	g_array_append_val(SBEE->event->value,value);
       }
       g_free(OP);
       g_free(Target);
@@ -850,30 +851,35 @@ void event_interpret(gpointer event, gpointer buffer){
     H5LTset_attribute_int
       (SBEE->h5->group_id,
        SBEE->EventName,
-       "LikelyTargetIndex",
-       (int*) SBEE->event_target->data,SBEE->event_target->len);
+       "Operation",
+       (int*) SBEE->event->Op->data,SBEE->event->Op->len);
+    
     H5LTset_attribute_int
       (SBEE->h5->group_id,
        SBEE->EventName,
-       "TYPE",
-       (int*) SBEE->event_type->data,SBEE->event_type->len);
-    GString *TargetCompounds = g_string_sized_new (20*n);
+       "Effect",
+       (int*) SBEE->event->effect->data, SBEE->effect->Op->len);
+
+    /* Number of species can be different from SBtab, so matching by
+       name is required */
+    GString *TargetName = g_string_sized_new (20*n);
     for (i=0;i<n;i++) {
-      g_string_append(TargetCompounds,g_ptr_array_index(SBEE->gp_target_name,i));
-      if (i<n-1) g_string_append_c(TargetCompounds,' ');
+      g_string_append(TargetName,g_ptr_array_index(SBEE->gp_target_name,i));
+      if (i<n-1) g_string_append_c(TargetName,' ');
     }
     H5LTset_attribute_string
       (SBEE->h5->group_id,
        SBEE->EventName,
-       "TargetCompound",
-       TargetCompounds->str);
-    g_string_free(TargetCompound,TRUE);
+       "TargetName",
+       TargetName->str);
+    
+    g_string_free(TargetName,TRUE);
 
     GString *OP = g_string_sized_new(4*n);
     for (i=0;i<n;i++) {
-      k=g_array_index(SBEE->event_type,guint,i)
+      k=g_array_index(SBEE->event->Op,gint,i);
       g_string_append(OP,OP_LABEL[k]);
-      if (i<n-1) g_string_append_c(TargetCompounds,' ');
+      if (i<n-1) g_string_append_c(OP,' ');
     }
     H5LTset_attribute_string
       (SBEE->h5->group_id,
@@ -884,24 +890,20 @@ void event_interpret(gpointer event, gpointer buffer){
 
     GString *affected_table = g_string_sized_new(10*n);
     for (i=0;i<n;i++) {
-      k=g_array_index(SBEE->target_table,guint,i);
+      k=g_array_index(SBEE->event->effect,gint,i);
       if (k==event_affects_input){
 	g_string_append(affected_table,"input");
       } else if (k==event_affects_state){
 	g_string_append(affected_table,"state");
       }
-      if (i<n-1) g_string_append_c(TargetCompounds,' ');
+      if (i<n-1) g_string_append_c(affected_table,' ');
     }
     H5LTset_attribute_string
       (SBEE->h5->group_id,
        SBEE->EventName,
        "affects",
        affected_table->str);
-    g_string_free(affected_table,TRUE);
-
-
-
-    
+    g_string_free(affected_table,TRUE);    
   } else {
     fprintf(stderr,"[%s] warning: empty event «%s»?\n",__func__,sb_event->TableTitle);
   }
@@ -926,7 +928,7 @@ void event_foreach_reference(gpointer PtrArrayElement, gpointer buffer){
 void event_foreach_experiment(sbtab_t *E_table,
 			      gsl_vector **E_default_input,
 			      sbtab_t *Input,
-			      GArray **SU_Index;
+			      GArray **SU_Index,
 			      GHashTable *sbtab_hash){
   GPtrArray *EventColumn=sbtab_get_column(E_table,"!Event");
   gchar *e_str;
@@ -962,7 +964,7 @@ void event_foreach_experiment(sbtab_t *E_table,
 	  (EName,
 	   "%s[%i]",g_ptr_array_index(Name,i),j);
 	SBEE.ExperimentMinorIndex=j;
-	SBEE.ExperimentIndex=g_array_index(SU_Index,j);
+	SBEE.ExperimentIndex=g_array_index(SU_Index[i],j);
 	SBEE.ExperimentID=g_ptr_array_index(ID,i);
 	SBEE.ExperimentName=g_ptr_array_index(Name,i);
 	SBEE.EventName=EName->str;
@@ -971,8 +973,9 @@ void event_foreach_experiment(sbtab_t *E_table,
 	event_foreach_reference(e_str,&SBEE);
       }
     }
+    g_event_free(SBEE->event);
   } else {
-    printf("[%s] None of the experiments have events associated with them.\n",__func__)
+    printf("[%s] None of the experiments have events associated with them.\n",__func__);
   }
   g_string_free(EName,TRUE);
 }
@@ -1029,16 +1032,17 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   OutputTable = g_hash_table_lookup(sbtab_hash,"Output");
   GArray **Normalisation;
   Normalisation=get_normalisation(E_table, ExperimentType, OutputTable, DataTable, SU_index, MajorExpIdx, MinorExpIdx);
-  write_data_according_to_type(file_id, /* hdf5 file id*/
-			       nE,
-			       lflag,
-			       ExperimentType,
-			       E_default_input,
-			       default_time,
-			       Normalisation,
-			       DataTable,
-			       Input,
-			       L1_OUT)
+  write_data_according_to_type
+    (file_id, /* hdf5 file id*/
+     nE,
+     lflag,
+     ExperimentType,
+     E_default_input,
+     default_time,
+     Normalisation,
+     DataTable,
+     Input,
+     L1_OUT);
   status |= H5Gclose(data_group_id);
   status |= H5Gclose(sd_group_id);
   /* process event tables,because here we have access to E_default_input */
@@ -1048,7 +1052,7 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   hsize_t hsize[3];
   h5event->size=hsize;
   event_foreach_experiment(E_table, E_default_input, Input, SU_index, sbtab_hash);
-  status |= H5Gclose(event_group_id);
+  status |= H5Gclose(h5event.group_id);
   return status;
 }
 
