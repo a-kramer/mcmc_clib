@@ -23,11 +23,14 @@ typedef struct {
   GHashTable *col; //
 } sbtab_t;
 
+sbtab_t* sbtab_from_tsv(char *tsv_file);
 sbtab_t* sbtab_alloc(gchar **keys);
 int sbtab_append_row(const sbtab_t *sbtab, const gchar *data, const char *fs);
-GPtrArray* sbtab_get_column(const sbtab_t *sbtab, char *key);
+GPtrArray* sbtab_get_column(const sbtab_t *sbtab, const char *key);
 void sbtab_free(void *tab);
 sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names);
 GPtrArray* sbtab_get_tables(GHashTable *sbtab_hash, const gchar *TableNames);
 int sbtab_get_row_index(const sbtab_t* sbtab, const gchar *ID);
 char *sbtab_get_field_by_rowID(const sbtab_t* sbtab, const gchar *ID, const gchar *RequestedColumn);
+gchar* sbtab_get(const sbtab_t *sbtab, const char *key, const size_t i);
+sbtab_t *sbtab_find_table_with(GHashTable *sbtab_hash, gchar *rowID);

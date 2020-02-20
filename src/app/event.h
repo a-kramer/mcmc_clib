@@ -1,7 +1,7 @@
+#ifndef EVENT_H
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
-
-
+#define EVENT_H
 /* event types are one of these */
 typedef enum effect {event_affects_input, event_affects_state} effect_t;
 typedef enum operator {event_set, event_add, event_sub, event_mul, event_div} op_t;
@@ -73,3 +73,4 @@ single_event** single_event_list_alloc(int T);
 before_measurement** convert_to_array(size_t T, single_event **single);
 size_t get_list_length(single_event *s);
 void apply_event(single_event *e, gsl_vector *y, gsl_vector *p);
+#endif

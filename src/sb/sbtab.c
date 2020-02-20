@@ -1,5 +1,8 @@
 #include "sbtab.h"
 #include <assert.h>
+#include "re.h"
+/* initially, we pre-allocate this:*/
+#define DEFAULT_STR_LENGTH 128
 /* sbtab_t* sbtab_alloc(gchar **keys) 
  *
  * creates a new table given column keys. The columns are stored as
@@ -50,8 +53,8 @@ char* sbtab_get_field_by_rowID(const sbtab_t* sbtab, const gchar *ID, const gcha
   assert(sbtab);
   assert(ID);
   int r=sbtab_get_row_index(sbtab,ID);
-  GPtrArray *C;
-  C=sbtab_get_column(sbtab,ID);
+  //  GPtrArray *C;
+  //  C=sbtab_get_column(sbtab,ID);
   char *c=sbtab_get(sbtab,ID,r);
   return c;
 }
@@ -64,30 +67,30 @@ typedef struct {
 void sbtab_contains(gpointer key, gpointer value, gpointer data){
   sbtab_t *T=value;
   sbtab_and_row *D=data;
-  int r=sbtab_get_row_index(T,data->rowID);
+  int r=sbtab_get_row_index(T,D->rowID);
   if (r>=0){
     D->table=T;
   }
 }
 
-sbtab_t *sbtab_find_table_with(const GHashTable *sbtab_hash, const gchar *rowID){
+sbtab_t *sbtab_find_table_with(GHashTable *sbtab_hash, gchar *rowID){
   sbtab_t* table_has_rowID=NULL;
   sbtab_and_row data;
-  data->rowID=rowID;
+  data.rowID=rowID;
   g_hash_table_foreach(sbtab_hash, sbtab_contains,
 		       &data);
   table_has_rowID=data.table;
   if (table_has_rowID){
-    printf("[%s] found a table named «%s» that contains «%s».\n",
+    printf("[%s] found a table named «%s» that contains «%s».\n",__func__,
 	   table_has_rowID->TableName,
 	   rowID);
   }else{
-    fprintf(stderr,"[%s] warning, no table containing ID «%s» was found.\n",rowID);
+    fprintf(stderr,"[%s] warning, no table containing ID «%s» was found.\n",__func__,rowID);
   }
   return table_has_rowID;
 }
 
-sbtab_t* sbtab_find(const GHashTable *sbtab_hash, const gchar *Names){
+sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names){
   sbtab_t *table=NULL;
   gchar **Name;
   printf("[sbtab_find] Looking up any of: %s.\n",Names);
@@ -107,7 +110,7 @@ sbtab_t* sbtab_find(const GHashTable *sbtab_hash, const gchar *Names){
   return table;
 }
 
-GPtrArry* sbtab_get_tables(const GHashTable *sbtab_hash, const gchar *TableNames){
+GPtrArray* sbtab_get_tables(GHashTable *sbtab_hash, const gchar *TableNames){
   assert(TableNames);
   gchar **Name=g_strsplit(TableNames," ",-1);
   guint n=g_strv_length(Name);
@@ -175,7 +178,7 @@ int sbtab_append(const sbtab_t *sbtab, const char *key, char *data){
   }
 }
 
-gchar* sbtab_get(const sbtab_t *sbtab, char *key, size_t i){
+gchar* sbtab_get(const sbtab_t *sbtab, const char *key, const size_t i){
   gchar *d;
   GPtrArray *a=NULL;
   a=g_hash_table_lookup(sbtab->col,key);
@@ -195,7 +198,7 @@ GPtrArray* sbtab_get_column(const sbtab_t *sbtab, const char *key){
   if (a==NULL){
     fprintf(stderr,"[sbtab_get_column] warning: lookup of «%s» in Table «%s» failed.\n",key,sbtab->TableName);
   }
-  g_strv_free(Key);
+  g_strfreev(Key);
   return a;
 }
 
@@ -211,4 +214,95 @@ void sbtab_free(void *tab){
   g_free(sbtab->column);
   g_strfreev(sbtab->key);
   free(sbtab);
+}
+
+
+sbtab_t* sbtab_from_tsv(char *tsv_file){
+  FILE* fid;
+  int i;
+  char *s; // string to hold read in lines
+  size_t n_s=DEFAULT_STR_LENGTH;
+  ssize_t m_s;
+  regex_t SBtab;
+  regex_t RE_TableName, RE_TableTitle, RE_TableType, SBcomment, SBkeys, SBkey;
+  regex_t EmptyLine;
+  gchar *TableName, *TableTitle, *TableType;
+  regmatch_t match[4];
+  regoff_t a;
+  int r_status=0;
+  gchar **keys;
+  sbtab_t *sbtab=NULL;
+  
+  gchar fs[]="\t";
+  s=malloc(sizeof(char)*n_s); // a buffer to read strings from file via getline
+  r_status|=egrep(&EmptyLine,"^[[:blank:]]*$");
+  r_status|=egrep(&SBcomment,"[%#]");
+  r_status|=egrep(&SBtab,"!!SBtab");  
+  r_status|=egrep(&RE_TableName,"TableName[[:blank:]]*=[[:blank:]]*'([^']+)'");
+  r_status|=egrep(&RE_TableTitle,"TableTitle[[:blank:]]*=[[:blank:]]*'([^']+)'");
+  r_status|=egrep(&RE_TableType,"TableType[[:blank:]]*=[[:blank:]]*'([^']+)'");
+  r_status|=egrep(&SBkeys,"![^!][[:alpha:]]");
+  r_status|=egrep(&SBkey,"(![[:alpha:]][[:alnum:]]*|>([[:alpha:]][[:alnum:]_]*:)*([[:alpha:]][[:alnum:]_])*)");
+  assert(r_status==0);
+  fid=fopen(tsv_file,"r");
+  if (fid==NULL){
+    fprintf(stderr,"[%s] file not found «%s».\n",__func__,tsv_file);
+    abort();
+  }else{
+    while (!feof(fid)){
+      m_s = getline(&s,&n_s,fid);
+      //printf("[%s] %i characters read.\n",__func__,m_s);
+      if (m_s>0){
+	if (regexec(&SBcomment,s,1,match,0)==0){
+	  // remove comment from line
+	  a=match[0].rm_so;
+	  s[a]='\0';
+	}
+	if (regexec(&SBtab,s,0,NULL,0)==0){
+	  if (regexec(&RE_TableName,s,2,match,0)==0){
+	    TableName=dup_match(&match[1],s);
+	    printf("TableName: «%s»\n",TableName); fflush(stdout);
+	  } else {
+	    fprintf(stderr,"[%s] error: TableName is missing.\n",__func__);
+	    exit(-1);
+	  }
+	  if (regexec(&RE_TableType,s,2,match,0)==0){
+	    TableType=dup_match(&match[1],s);
+	    printf("TableType: «%s»\n",TableType); fflush(stdout);
+	  }else {
+	    fprintf(stderr,"[%s] warning: TableType is missing.\n",__func__);
+	  }
+	  if (regexec(&RE_TableTitle,s,2,match,0)==0){
+	    TableTitle=dup_match(&match[1],s);
+	    printf("TableTitle: «%s»\n",TableTitle); fflush(stdout);
+	  }else {
+	    fprintf(stderr,"[%s] warning: TableTitle is missing.\n",__func__);
+	  }	
+	} else if (regexec(&SBkeys,s,2,match,0)==0){
+	  keys=g_strsplit_set(s,fs,-1);
+	  int k=g_strv_length(keys);
+	  //print all headers
+	  printf("[%s] %i headers:",__func__,k); fflush(stdout);
+	  for (i=0;i<k;i++) {
+	    g_strstrip(keys[i]);
+	    if (keys[i]) printf("«%s» ",keys[i]);
+	    else fprintf(stderr,"key[%i/%i] is NULL. ",i,k); 
+	  }
+	  printf("done.\n");
+	  sbtab=sbtab_alloc(keys);
+	} else if (regexec(&EmptyLine,s,0,NULL,0)==0){
+	  printf("[%s] skipping empty line «%s».\n",__func__,s);
+	} else {
+	  assert(sbtab);
+	  sbtab_append_row(sbtab,s,fs);
+	}
+      }
+    }
+    if (sbtab){
+      sbtab->TableTitle=TableTitle;
+      sbtab->TableName=TableName;
+      sbtab->TableType=TableType;
+    }
+  }  
+  return sbtab;
 }
