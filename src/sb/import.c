@@ -769,9 +769,11 @@ void event_interpret(gpointer event, gpointer buffer){
     // (3) write matrix to file
     fprintf(stderr,"[%s] event «%s» value matrix: ",__func__,SBEE->EventName);
     gsl_matrix_fprintf(stderr,value_matrix,"%g,");
-    
+    assert(SBEE->h5);
     SBEE->h5->size[0]=m;
     SBEE->h5->size[1]=n;
+    printf("[%s] Experiment index: %i (%i.%i).\n",__func__,SBEE->ExperimentIndex,SBEE->ExperimentMajorIndex,SBEE->ExperimentMinorIndex); fflush(stdout);
+
     herr_t status;
     status=H5LTmake_dataset_double
       (SBEE->h5->group_id,
@@ -780,7 +782,6 @@ void event_interpret(gpointer event, gpointer buffer){
        value_matrix->data);
     gsl_matrix_free(value_matrix);
     assert(status==0);
-    printf("[%s] Experiment index: %i (%i.%i).\n",__func__,SBEE->ExperimentIndex,SBEE->ExperimentMajorIndex,SBEE->ExperimentMinorIndex);
     status=H5LTset_attribute_int
       (SBEE->h5->group_id,
        SBEE->EventName,
@@ -882,7 +883,7 @@ void event_interpret(gpointer event, gpointer buffer){
   } else {
     fprintf(stderr,"[%s] warning: empty event «%s»?\n",__func__,sb_event->TableTitle);
   }
-  printf("[%s] done.",__func__); fflush(stdout);
+  printf("[%s] done.\n",__func__); fflush(stdout);
 }
 
 
@@ -899,11 +900,14 @@ void event_foreach_reference(gpointer PtrArrayElement, gpointer buffer){
 }
 
 /**/
-void event_foreach_experiment(sbtab_t *E_table,
-			      gsl_vector **E_default_input,
-			      sbtab_t *Input,
-			      GArray **SU_Index,
-			      GHashTable *sbtab_hash){
+void event_foreach_experiment
+(sbtab_t *E_table,
+ h5block_t *h5,
+ gsl_vector **E_default_input,
+ sbtab_t *Input,
+ GArray **SU_Index,
+ GHashTable *sbtab_hash)
+{
   GPtrArray *EventColumn=sbtab_get_column(E_table,"!Event");
   gchar *e_str;
   sbtab_t *Parameter=sbtab_find(sbtab_hash,"Parameter");
@@ -919,6 +923,7 @@ void event_foreach_experiment(sbtab_t *E_table,
   GString *EName=g_string_sized_new(20);
   if (EventColumn){
     assert(Parameter);
+    SBEE.h5=h5;
     SBEE.sbtab_hash=sbtab_hash;
     ID=sbtab_get_column(E_table,"!ID");
     nE=ID->len;
@@ -1013,13 +1018,12 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   status |= H5Gclose(data_group_id);
   status |= H5Gclose(sd_group_id);
   /* process event tables,because here we have access to E_default_input */
-  h5block_t h5event;
-  h5event.file_id=file_id;
-  h5event.group_id = H5Gcreate2(file_id, "/event", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  hsize_t hsize[3];
-  h5event.size=hsize;
-  event_foreach_experiment(E_table, E_default_input, Input, SU_index, sbtab_hash);
-  status |= H5Gclose(h5event.group_id);
+  h5block_t *h5event=h5block_alloc(2);
+  h5event->file_id=file_id;
+  h5event->group_id = H5Gcreate2(file_id, "/event", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  event_foreach_experiment(E_table, h5event, E_default_input, Input, SU_index, sbtab_hash);
+  status |= H5Gclose(h5event->group_id);
+  h5block_free(h5event);
   return status;
 }
 
