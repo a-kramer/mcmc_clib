@@ -780,7 +780,7 @@ void event_interpret(gpointer event, gpointer buffer){
        value_matrix->data);
     gsl_matrix_free(value_matrix);
     assert(status==0);
-    
+    printf("[%s] Experiment index: %i (%i.%i).\n",__func__,SBEE->ExperimentIndex,SBEE->ExperimentMajorIndex,SBEE->ExperimentMinorIndex);
     status=H5LTset_attribute_int
       (SBEE->h5->group_id,
        SBEE->EventName,
