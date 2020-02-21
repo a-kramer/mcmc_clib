@@ -109,8 +109,8 @@ typedef struct {
   int NormaliseByExperiment;
   int NormaliseByTimePoint;
   gsl_vector_int *NormaliseByOutput;
-  event_table *event;
-  single_event **single; // array of linked lists
+  event_list_t *event_list;
+  //  event_row_t **single; // array of linked lists
   before_measurement **before_t; // array of pointers, converted from linked list
   int index[3];
 } experiment;

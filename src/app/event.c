@@ -11,8 +11,10 @@
  * before measurement_time[i] but after measurement_time[i-1].
  */
 int /* success/failure flag */
-make_sub_events(gsl_vector *t,/* the experiment's measurement times*/
-		event_t *event)/* create sub-vectors for this event*/{
+event_sub_list
+(gsl_vector *t,/* the experiment's measurement times*/
+ event_t *event)/* create sub-vectors for this event*/
+{
   size_t i,j;
   assert(t);
   size_t T=t->size;
@@ -31,14 +33,13 @@ make_sub_events(gsl_vector *t,/* the experiment's measurement times*/
     while (j<T && et>gsl_vector_get(t,j)) j++;
     first_TP_after[i]=(j<T?j:-1);
   }
-  event->value_sub=malloc(sizeof(gsl_matrix_view)*T);
-  event->val_before_t=malloc(sizeof(gsl_matrix*)*T);
-  event->time_sub=malloc(sizeof(gsl_vector_view)*T);
-  event->time_before_t=malloc(sizeof(gsl_vector*)*T);
-  
+  event->value_sub=calloc(T,sizeof(gsl_matrix_view));
+  event->val_before_t=calloc(T,sizeof(gsl_matrix*));
+  event->time_sub=calloc(T,sizeof(gsl_vector_view));
+  event->time_before_t=calloc(T,sizeof(gsl_vector*));
   for (j=0;j<T;j++){
+    K[j]=0;
     for (i=0;i<N;i++){
-      K[j]=0;
       /* count how many events occur right before time point j*/
       if (first_TP_after[i]==j) K[j]++;
     }
@@ -52,127 +53,155 @@ make_sub_events(gsl_vector *t,/* the experiment's measurement times*/
       event->val_before_t[j]=&(event->value_sub[j].matrix);
       event->time_sub[j]=gsl_vector_subvector(event->time,k,K[j]);
       event->time_before_t[j]=&(event->time_sub[j].vector);
-    }else{
-      event->val_before_t[j]=NULL;
-      event->time_before_t[j]=NULL;
     }
     k=K[j];
   }
   return EXIT_SUCCESS;
 }
- 
+
+/* event targets are specified by name, this function finds the index. If the `target_name` is found in `list_of_names`, this function returns the index, a negative value otherwise*/
+int /* the index of `target_name` (negative non failure to find)*/
+event_find_target
+(char *target_name, /*a \0 terminated string */
+ char **list_of_names, /*a list of strings*/
+ size_t num) /*the number of items in the `list_of_names`*/
+{
+  int i;
+  for (i=0;i<num;i++){
+    if (strcmp(target_name,list_of_names[i])==0){
+      return i;
+    }
+  }
+  return -1;
+}
+
+
 /* this adds an event to the event array, an event block can have
  * multiple times at which it happens, but, if an experiment is
  * subject to more than one kind of event (different targets, times,
  * etc.)  then the array is resized and another block is added
 */
 event_t* /*returns pointer to newly added event table */
-add_event(event_table *event,
-	  gsl_vector *measurement_time,
-	  gsl_vector *event_time, /*array of times (table rows)*/
-	  gsl_vector_int *event_type, /*array of operation types (table columns)*/
-	  gsl_vector_int *event_target, /*array of operation targets*/
-	  gsl_matrix *event_value)/*value subject to
-					     operation to be applied
-					     to target*/{
+event_add
+(event_list *event, /* the event list to modify*/
+ gsl_vector *measurement_time, /* for a given experiment*/
+ gsl_vector *event_time, /*array of times (table rows)*/
+ gsl_vector_int *event_type, /*array of operation types */
+ gsl_vector_int *effect, /* whether this affects input or states*/
+ char *event_target, /*string of space separated names (operation targets)*/
+ gsl_matrix *event_value) /*value subject to operation to be applied to target*/
+{
   size_t n=event->num;
   size_t max=event->max_num;
   size_t increment=2;
   if (n==max){
     event->max_num+=increment;
-    /* the following line re-allocates the event array and returns
-       event_t** pointers*/
     event->e = realloc(event->e,event->max_num);
   }
-  /* this allocates an actual event and returns an event_t* pointer*/
-  event->e[n]=malloc(sizeof(event_t));
   assert(event_time && event_type && event_target && event_value);
+  assert(event_type->size==effect->size && event_value->size2 == effect->size);
+  event->e[n]=malloc(sizeof(event_t));
   event->e[n]->time=event_time;
-  event->e[n]->type=event_type;
-  event->e[n]->target=event_target;
+  event->e[n]->type=(op_t*) event_type->data;
+  event->e[n]->effect=(effect_t*) effect->data;
+  event->e[n]->target_names=event_target;
   event->e[n]->value=event_value;
-  // make measurement time preceeding sub-vectors inside the events
-  make_sub_events(measurement_time,event->e[n]);
+  event_sub_list(measurement_time,event->e[n]);
   event->num++;
   return event->e[n];
 }
 
-event_table* event_alloc(size_t default_size){
+event_list_t* event_list_alloc(size_t default_size){
   size_t N=default_size>0?default_size:1;
   event_t **e=malloc(sizeof(event_t*)*N);
   assert(e);
-  event_table *et=malloc(sizeof(event_table));
-  et->num=0;
-  et->max_num=N;
-  et->e=e;
-  return et;
+  event_list *el=malloc(sizeof(event_list));
+  el->num=0;
+  el->max_num=N;
+  el->e=e;
+  return el;
 }
 
-void event_free(event_t *event){
-  if (event){
-    gsl_matrix_free(value);
-    gsl_vector_int_free(type);
-    gsl_vector_int_free(target);
-    gsl_vector_free(time);
+void event_list_free(event_list_t *el){
+  if (el){
+    for (i=0;i<el->num;i++){
+      event=el->e[i];
+      if(event){
+	if(event->value) gsl_matrix_free(event->value);
+	if(event->type) free(event->type);
+	if(event->effect) free(event->effect);
+	if(event->target_names) free(event->target_names);
+	if(event->target) gsl_vector_int_free(event->target);
+	if(event->time) gsl_vector_free(time);
+	if (event->val_before_t) free(val_before_t);
+	if (event->value_sub) free(value_sub);
+	if (event->time_sub) free(time_sub);
+	free(event);
+      }
+    }
+    free(el);
   }
 }
 
-void apply_event(single_event *e, gsl_vector *y, gsl_vector *p){
+/*this function applies the effect of event `e` to either the parameters `p` or the state variables `y` (and the state sensitivity S=dy/dp). The internal model parameters `k` themselves are not subject to change, but `p` contains the input `u`: `p=cat(exp(k),u)`, and `u` can be subject to events*/
+void
+event_apply
+(single_event *e, /* event to apply*/
+ gsl_vector *y, /* state to change, possibly*/
+ gsl_vector *p, /* parameter vector: [exp(k),u]*/
+ gsl_matrix *S) /* state sensitivity.*/
+{
   size_t m,M=e->value->size;
-  int type,target;
+  op_t op;
+  effect_t effect;
+  gsl_vector *yp; /* y or p, depending on effect*/
   double v;
   double V;
+  int i;
   for (m=0;m<M;m++){
     /* apply event*/
-    type=gsl_vector_int_get(e->type,m);
-    target=gsl_vector_int_get(e->target,m);
+    i=gsl_vector_get(e->target,m)
+    op=e->type[m];
+    effect=e->effect[m];
     v=gsl_vector_get(e->value,m);
-    if (EVENT_AFFECTS_SPC(type)){
-      assert(target<y->size);
-      V=gsl_vector_get(y,target);
-      switch(type){
-      case EVENT_SPC_SET: V=v; break;
-      case EVENT_SPC_ADD: V+=v; break;
-      case EVENT_SPC_SUB: V-=v; break;
-      case EVENT_SPC_MUL: V*=v; break;
-      case EVENT_SPC_DIV: V/=v; break;	
-      }      
-      gsl_vector_set(y,target,V);
-    } else if (EVENT_AFFECTS_PAR(type)){
-      assert(target<p->size);
-      V=gsl_vector_get(p,target);
-      switch(type){
-      case EVENT_PAR_SET: V=v; break;
-      case EVENT_PAR_ADD: V+=v; break;
-      case EVENT_PAR_SUB: V-=v; break;
-      case EVENT_PAR_MUL: V*=v; break;
-      case EVENT_PAR_DIV: V/=v; break;	
-      }      
-      gsl_vector_set(p,target,V);
+    switch(effect){
+    case event_affects_state:
+      assert(i<y->size);
+      V=gsl_vector_get(y,i);
+      yp=y;
+      break;
+    case event_affects_input:
+      assert(i<p->size);
+      V=gsl_vector_get(p,i);
+      yp=p;
+      break;
+    default: yp=NULL;
+    }
+    if (yp){
+      switch(op){
+      case event_set: V=v; break;
+      case event_add: V+=v; break;
+      case event_sub: V-=v; break;
+      case event_mul: V*=v; break;
+      case event_div: V/=v; break;	
+      }
+    gsl_vector_set(yp,i,V);
     }
   }
 }
 
-single_event** single_event_list_alloc(int T){
-  single_event **s;
-  s=malloc(sizeof(single_event*)*T);
-  size_t t;
-  for (t=0;t<T;t++) s[t]=NULL;
-  return s;
-}
-
 /*makes a new single event from a row within an event table*/
-single_event* /* allocated event */
-new_event(size_t point, /*consider event before this time point*/
-	  size_t row, /*row to use*/
-	  event_t *event_table)/*table to link event to*/{
-  single_event *e=malloc(sizeof(single_event));
-  e->t=gsl_vector_get(event_table->time_before_t[point],row);
-  e->target=event_table->target;
-  e->type=event_table->type;
+event_row_t* /* allocated event */
+event_row_link
+(size_t point,  /*consider event before this time point*/
+ size_t row,    /*row to use*/
+ event_t *event)/*table to link event to*/
+{
+  event_row_t *e=malloc(sizeof(event_row_t));
+  e->parent=event;
+  e->t=gsl_vector_get(event->time_before_t[point],row);
   e->value_row=gsl_matrix_row(event_table->val_before_t[point],row);
   e->value=&(e->value_row.vector);
-  e->next=NULL;
   return e;
 }
 
@@ -182,36 +211,29 @@ new_event(size_t point, /*consider event before this time point*/
  * different event types can coexist within them.
  * the lists store pointers to the real event table rows.
  */
-void insert_events(gsl_vector *time, /* measurement times (data) */
-		   single_event **single, /* array of linked lists */
-		   event_t *event_table)/*an event table to be inserted into a linked list*/{
-  size_t T=time->size;
+void events_push
+(gsl_vector *time, /* measurement times (data) */
+ event_row_t **single, /* array of linked list stacks */
+ event_t *event_table)/*an event table to be inserted into a linked list*/
+{
   size_t i,j,J;
   single_event *e; /* current event pointer */
   single_event *n; /* new event */
-  for (i=0;i<T;i++){
+  for (i=0;i<time->size;i++){
     J=event_table->time_before_t[i]->size;
-    e=single[i];
     for (j=0;j<J;j++){
-      n=new_event(i,j,event_table);
-      if (e){
-	if (e->t > n->t){
-	  n->next=single[i]; /* insert before root */
-	  single[i]=n; /* new root */
-	} else {
-	  while (e->next!=NULL && (e->next->t < n->t)) e=e->next;
-	  /* insert event before next event*/
-	  n->next=e->next;
-	  e->next=n;	  
-	}
-      } else { /* create root */
-	single[i]=n;
-      }
+      e=single[i];
+      n=event_row_link(i,j,event_table);
+      while (e && n->t < e->t) e=e->next;
+      n->next=e;
     }
   }
 }
 
-size_t get_list_length(single_event *s){
+/* event_row_links are linked lists*/
+size_t /* length of the list*/
+get_list_length(event_row_t *s) /* list of event table rows */
+{
   size_t l=0;
   while (s) {
     s=s->next;
@@ -223,27 +245,36 @@ size_t get_list_length(single_event *s){
 before_measurement* event_array_alloc(size_t L){
   before_measurement *bt=malloc(sizeof(before_measurement));
   bt->size=L;
-  bt->event=malloc(sizeof(single_event*)*L);
+  bt->event=malloc(sizeof(event_row_t*)*L);
   return bt;
 }
 
-before_measurement** convert_to_array(size_t T, single_event **single){
-  size_t i,j,L;
-  before_measurement **before_t=malloc(sizeof(before_measurement*)*T);
+/* this converts a stack of single row event links into a set of arrays for
+   quick access. The return value is a list of lists. `before_measurement[i]` refers to all events that happen before measurement time point t[i]. The input `single` is a similar list of stacks: `single[i]` contains event rows prior to t[i]. They are each mapped in reverse order (being stacks) to the return lists.*/
+before_measurement** /* a list of arrays `b` with `b[i]` containing
+			only events prior to `t[i]` */
+convert_to_arrays
+(size_t T, /* number of measurement time points */
+ event_row_t **single) /* a list of stacks (with length `T`) */
+{
+  size_t j,L;
+  int i;
+  before_measurement **b=malloc(sizeof(before_measurement*)*T);
   single_event *p;
   if (single){
     for (j=0;j<T;j++){
       L=get_list_length(single[j]);    
-      before_t[j]=event_array_alloc(L);
+      b[j]=event_array_alloc(L);
       p=single[j];
-      i=0;
-      while (p){
-	assert(i<L);
-	before_t[j]->event[i++]=p;
+      i=L;
+      while (p && i>=0){
+	b[j]->event[i--]=p;
+	p=p->next
       }
     }
   } else {
-    before_t=NULL;
+    free(b);
+    b=NULL;
   }
-  return before_t;
+  return b;
 }

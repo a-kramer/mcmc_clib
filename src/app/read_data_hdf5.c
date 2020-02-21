@@ -288,47 +288,45 @@ load_prior(hid_t g_id, void *op_data) /*ode model parameters, contains prior par
 /* loads events if present
 */
 herr_t /*hdf5 error type, undocumented*/
-load_event_block(hid_t g_id, /*group id (hdf5)*/
-		const char *name, /*dataset name*/
-		const H5L_info_t *info, /*info struct, as defined in hdf5 API*/
-		void *op_data)/*model parameter struct, contains experiment array*/{
+load_event_block
+(hid_t g_id, /*group id (hdf5)*/
+ const char *name, /*dataset name*/
+ const H5L_info_t *info, /*info struct, as defined in hdf5 API*/
+ void *op_data)/*model parameter struct, contains experiment array*/
+{
   ode_model_parameters *mp=op_data;
   int rank;
   herr_t status=H5LTget_dataset_ndims(g_id, name, &rank);
-  hsize_t size[2]; // rank is always 1 or 2 in all of our cases;
+  hsize_t size[2]; // rank is always 1 or 2 in all of our cases, so 2 always works;
   int index=-1;
-  //size=malloc(sizeof(size_t)*rank);
   status|=H5LTget_dataset_info(g_id,name,size,NULL,NULL);
   assert(status>=0); // I think that hdf5 functions return negative error codes
-  gsl_matrix *event_value=h5_to_gsl(g_id,name,NULL);
-  gsl_vector_int *event_target=h5_to_gsl_int(g_id,name,"Target");
-  gsl_vector *event_time=h5_to_gsl(g_id,name,"Time");
-  gsl_vector_int *event_type=h5_to_gsl(g_id,name,"Type");
+  gsl_matrix *value=h5_to_gsl(g_id,name,NULL);
+  gsl_vector_int *target=h5_to_gsl_int(g_id,name,"Target");
+  gsl_vector *time=h5_to_gsl(g_id,name,"Time");
+  gsl_vector_int *type=h5_to_gsl(g_id,name,"Type");
+  gsl_vector_int *effect=h5_to_gsl(g_id,name,"Effect");
   
   int major, minor;
   status|=H5LTget_attribute_int(g_id,name,"index",&index);
-  status|=H5LTget_attribute_int(g_id,name,"major",&major);
-  status|=H5LTget_attribute_int(g_id,name,"minor",&minor);
+  status|=H5LTget_attribute_int(g_id,name,"AffectsMajorIndex",&major);
+  status|=H5LTget_attribute_int(g_id,name,"AffectsMinorIndex",&minor);
   assert(status>=0);
   assert(index>=0);
   experiment *E;
   event_t *event;
   if (index < mp->size->C && index >= 0){
     E=mp->E[index];
-    event=add_event(E->event,E->t,event_time,event_type,event_target,event_value);
-    assert(E->single!=NULL);
+    event=event_add(E->event_list,E->t,time,type,target,value);
     /* insert events into global time line */
-    insert_events(E->t, E->single, event); 
+    events_insert(E->t, E->single, event); 
   }else{
-    fprintf(stderr,"[%s] error: experiment index is larger than number ofexperiments (simulation units).\n",__func__);
+    fprintf(stderr,"[%s] error: experiment index is larger than number of experiments (simulation units).\n",__func__);
     exit(-1);
   }
   //free(size);
   return status>=0?0:-1;  
 }
-
-
-
 
 /* loads the experimental data from an hdf5 file the
  * second argument is called model_parameters because it stores
@@ -337,10 +335,12 @@ load_event_block(hid_t g_id, /*group id (hdf5)*/
  * simulation results and much more.
  */
 int /*casts hdf5 error codes to int*/
-read_data(const char *file,
-	  void *model_parameters)/*a fairly big struct that contains
-	 data, prior parameters, and pre allocated space for
-	 simulation results and normalisation calculations*/{
+read_data
+(const char *file,
+ void *model_parameters)/*a fairly big struct that contains
+			  data, prior parameters, and pre allocated space for
+			  simulation results and normalisation calculations*/
+{
   ode_model_parameters *mp=model_parameters;
   herr_t status;
   hid_t file_id = H5Fopen(file,H5F_ACC_RDONLY,H5P_DEFAULT);
@@ -384,7 +384,7 @@ read_data(const char *file,
     assert(status>=0);
     for (i=0;i<mp->size->C;i++){
       if (mp->E[i]->event)
-	mp->E[i]->before_t=convert_to_array(mp->E[i]->t->size,mp->E[i]->single);
+	mp->E[i]->before_t=convert_to_arrays(mp->E[i]->t->size,mp->E[i]->single);
     }
   }
   hid_t prior_group_id=H5Gopen2(file_id,"/prior",H5P_DEFAULT);
