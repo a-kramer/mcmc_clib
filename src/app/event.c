@@ -213,19 +213,26 @@ event_row_link
  */
 void events_push
 (gsl_vector *time, /* measurement times (data) */
- event_row_t **single, /* array of linked list stacks */
- event_t *event_table)/*an event table to be inserted into a linked list*/
+ event_row_t **single, /* array of linked lists */
+ event_t *event_table)/* an event table to be inserted into a linked list*/
 {
   size_t i,j,J;
-  single_event *e; /* current event pointer */
-  single_event *n; /* new event */
+  event_row_t *e; /* current event pointer */
+  event_row_t *n; /* new event */
+  event_row_t **p; /* a pointer to the n's parent.next component */
+  
   for (i=0;i<time->size;i++){
     J=event_table->time_before_t[i]->size;
     for (j=0;j<J;j++){
-      e=single[i];
+      p=&(single[i]);
+      e=*p;
       n=event_row_link(i,j,event_table);
-      while (e && n->t < e->t) e=e->next;
+      while (e && n->t < e->t) {
+	p=&(e->next);
+	e=e->next;
+      }
       n->next=e;
+      *p=n;
     }
   }
 }
@@ -260,7 +267,7 @@ convert_to_arrays
   size_t j,L;
   int i;
   before_measurement **b=malloc(sizeof(before_measurement*)*T);
-  single_event *p;
+  event_row_t *p;
   if (single){
     for (j=0;j<T;j++){
       L=get_list_length(single[j]);    
