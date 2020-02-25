@@ -1,7 +1,9 @@
 #ifndef EVENT_H
+#define EVENT_H
+
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
-#define EVENT_H
+
 /* event types are one of these */
 typedef enum effect {event_affects_input, event_affects_state} effect_t;
 typedef enum operator {event_set, event_add, event_sub, event_mul, event_div} op_t;
@@ -17,10 +19,9 @@ typedef enum operator {event_set, event_add, event_sub, event_mul, event_div} op
  */
 typedef struct {
   gsl_vector *time;
-  op_t *type;   /* operation */
-  effect_t *effect; /* on p or y, effect_t*/
+  op_t *type;             /* operation */
+  effect_t *effect;       /* on p or y, effect_t*/
   gsl_vector_int *target; /* index in target vector */
-  char *target_names;
   gsl_matrix *value;
   gsl_matrix **val_before_t;  // subvectors of value
   gsl_vector **time_before_t; // sub_vectors of time
@@ -28,6 +29,9 @@ typedef struct {
   gsl_vector_view *time_sub;  //
 } event_t;
 
+/* this is an array of events that influence the same experiment, but
+   are different in structure (different number of columns, or
+   different column headers)*/
 typedef struct {
   size_t num;
   size_t max_num;
@@ -52,21 +56,29 @@ typedef struct {
   event_row_t **event;
 } before_measurement;
 
-void event_insert(gsl_vector *time, single_event **single, event_t *event_table);
-  
-event_t* event_add
-(event_table *event,
+void event_push(event_row_t **single, gsl_vector *time, event_t *event_table);
+
+event_t* event_append(event_list_t *event,
  gsl_vector *measurement_time,
  gsl_vector *event_time,
- gsl_vector_int *event_type, 
- gsl_vector_int *event_target, 
+ gsl_vector_int *event_type,
+ gsl_vector_int *effect,
+ gsl_vector_int *event_target,
  gsl_matrix *event_value);
-	
-event_table* event_list_alloc(size_t default_size);
+
+event_list_t* event_list_alloc(size_t default_size);
 void event_free(event_t *event);
-single_event** event_list_alloc(int T);
-before_measurement** event_convert_to_array(size_t T, single_event **single);
-size_t event_list_length(single_event *s);
-void event_apply(single_event *e, gsl_vector *y, gsl_vector *p);
+before_measurement** event_convert_to_arrays(size_t T, event_row_t **single);
+size_t list_length(event_row_t *s);
+void event_apply(event_row_t *e, gsl_vector *y, gsl_vector *p);
 int event_find_target(char *target_name, char **list_of_names,  size_t num);
+gsl_vector_int* /* the index set of `target_name` (negative non failure to find)*/
+event_find_targets
+(effect_t *effect, 
+ char *target_names, 
+ size_t num_targets, 
+ const char **list_of_p_names, 
+ size_t num_p,
+ const char **list_of_x_names,
+ size_t num_x);
 #endif

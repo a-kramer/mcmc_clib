@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
-
+#include <string.h>
 /* finds time range sub-vectos of a given event. Given a list of
  * event-times and measurement times, it selects all events that
  * happen before measurement time [0] and creates a sub-vector view
@@ -67,12 +67,46 @@ event_find_target
  size_t num) /*the number of items in the `list_of_names`*/
 {
   int i;
+  assert(target_name);
+  assert(list_of_names);
   for (i=0;i<num;i++){
+    assert(list_of_names[i]);
     if (strcmp(target_name,list_of_names[i])==0){
       return i;
     }
   }
   return -1;
+}
+
+gsl_vector_int* /* the index set of `target_name` (negative non failure to find)*/
+event_find_targets
+(effect_t *effect, /**/
+ char *target_names, /*a space separated string */
+ size_t num_targets, /* number of items in `target_names`*/
+ const char **list_of_p_names, /*a list of strings*/
+ size_t num_p,
+ const char **list_of_x_names,
+ size_t num_x) /*the number of items in the `list_of_names`*/
+{
+  gsl_vector_int *target=gsl_vector_int_alloc(num_targets);
+  int a;
+  char *token = strtok(target_names, " ");
+
+  int i;
+  for (i=0;i<num_targets;i++){
+    switch(effect[i]){
+    case event_affects_state:
+      a=event_find_target(token,list_of_x_names,num_x);
+      break;
+    case event_affects_input:
+      a=event_find_target(token,list_of_p_names,num_p);
+      break;
+    default: fprintf(stderr,"[%s] not handled case: %i.\n",__func__,effect[i]);
+    }
+    gsl_vector_int_set(target,i,a);
+    token=strtok(NULL, " ");
+  }
+  return target;
 }
 
 
@@ -82,13 +116,13 @@ event_find_target
  * etc.)  then the array is resized and another block is added
 */
 event_t* /*returns pointer to newly added event table */
-event_add
-(event_list *event, /* the event list to modify*/
+event_append
+(event_list_t *event, /* the event list to modify*/
  gsl_vector *measurement_time, /* for a given experiment*/
  gsl_vector *event_time, /*array of times (table rows)*/
  gsl_vector_int *event_type, /*array of operation types */
  gsl_vector_int *effect, /* whether this affects input or states*/
- char *event_target, /*string of space separated names (operation targets)*/
+ gsl_vector_int *event_target, /* an index set of targets*/
  gsl_matrix *event_value) /*value subject to operation to be applied to target*/
 {
   size_t n=event->num;
@@ -104,7 +138,7 @@ event_add
   event->e[n]->time=event_time;
   event->e[n]->type=(op_t*) event_type->data;
   event->e[n]->effect=(effect_t*) effect->data;
-  event->e[n]->target_names=event_target;
+  event->e[n]->target=event_target;
   event->e[n]->value=event_value;
   event_sub_list(measurement_time,event->e[n]);
   event->num++;
@@ -123,16 +157,17 @@ event_list_t* event_list_alloc(size_t default_size){
 }
 
 void event_list_free(event_list_t *el){
+  event_t *event;
   if (el){
     for (i=0;i<el->num;i++){
       event=el->e[i];
       if(event){
-	if(event->value) gsl_matrix_free(event->value);
-	if(event->type) free(event->type);
-	if(event->effect) free(event->effect);
-	if(event->target_names) free(event->target_names);
-	if(event->target) gsl_vector_int_free(event->target);
-	if(event->time) gsl_vector_free(time);
+	if (event->value) gsl_matrix_free(event->value);
+	if (event->type) free(event->type);
+	if (event->effect) free(event->effect);
+	if (event->target_names) free(event->target_names);
+	if (event->target) gsl_vector_int_free(event->target);
+	if (event->time) gsl_vector_free(time);
 	if (event->val_before_t) free(val_before_t);
 	if (event->value_sub) free(value_sub);
 	if (event->time_sub) free(time_sub);
@@ -146,7 +181,7 @@ void event_list_free(event_list_t *el){
 /*this function applies the effect of event `e` to either the parameters `p` or the state variables `y` (and the state sensitivity S=dy/dp). The internal model parameters `k` themselves are not subject to change, but `p` contains the input `u`: `p=cat(exp(k),u)`, and `u` can be subject to events*/
 void
 event_apply
-(single_event *e, /* event to apply*/
+(event_row_t *e, /* event to apply*/
  gsl_vector *y, /* state to change, possibly*/
  gsl_vector *p, /* parameter vector: [exp(k),u]*/
  gsl_matrix *S) /* state sensitivity.*/
@@ -160,24 +195,23 @@ event_apply
   int i;
   for (m=0;m<M;m++){
     /* apply event*/
-    i=gsl_vector_get(e->target,m)
-    op=e->type[m];
-    effect=e->effect[m];
+    i=gsl_vector_get(e->parent->target,m)
+    op=e->parent->type[m];
+    effect=e->parent->effect[m];
     v=gsl_vector_get(e->value,m);
     switch(effect){
     case event_affects_state:
       assert(i<y->size);
-      V=gsl_vector_get(y,i);
       yp=y;
       break;
     case event_affects_input:
       assert(i<p->size);
-      V=gsl_vector_get(p,i);
       yp=p;
       break;
     default: yp=NULL;
     }
     if (yp){
+      V=gsl_vector_get(yp,i);
       switch(op){
       case event_set: V=v; break;
       case event_add: V+=v; break;
@@ -185,7 +219,7 @@ event_apply
       case event_mul: V*=v; break;
       case event_div: V/=v; break;	
       }
-    gsl_vector_set(yp,i,V);
+      gsl_vector_set(yp,i,V);
     }
   }
 }
@@ -212,14 +246,14 @@ event_row_link
  * the lists store pointers to the real event table rows.
  */
 void events_push
-(gsl_vector *time, /* measurement times (data) */
- event_row_t **single, /* array of linked lists */
+(event_row_t **single, /* array of linked lists */
+ gsl_vector *time, /* measurement times (data) */
  event_t *event_table)/* an event table to be inserted into a linked list*/
 {
   size_t i,j,J;
   event_row_t *e; /* current event pointer */
   event_row_t *n; /* new event */
-  event_row_t **p; /* a pointer to the n's parent.next component */
+  event_row_t **p; /* a pointer to n's parent.next component */
   
   for (i=0;i<time->size;i++){
     J=event_table->time_before_t[i]->size;
@@ -239,7 +273,7 @@ void events_push
 
 /* event_row_links are linked lists*/
 size_t /* length of the list*/
-get_list_length(event_row_t *s) /* list of event table rows */
+list_length(event_row_t *s) /* list of event table rows */
 {
   size_t l=0;
   while (s) {
@@ -260,7 +294,7 @@ before_measurement* event_array_alloc(size_t L){
    quick access. The return value is a list of lists. `before_measurement[i]` refers to all events that happen before measurement time point t[i]. The input `single` is a similar list of stacks: `single[i]` contains event rows prior to t[i]. They are each mapped in reverse order (being stacks) to the return lists.*/
 before_measurement** /* a list of arrays `b` with `b[i]` containing
 			only events prior to `t[i]` */
-convert_to_arrays
+event_convert_to_arrays
 (size_t T, /* number of measurement time points */
  event_row_t **single) /* a list of stacks (with length `T`) */
 {
@@ -270,7 +304,7 @@ convert_to_arrays
   event_row_t *p;
   if (single){
     for (j=0;j<T;j++){
-      L=get_list_length(single[j]);    
+      L=list_length(single[j]);    
       b[j]=event_array_alloc(L);
       p=single[j];
       i=L;
@@ -284,4 +318,18 @@ convert_to_arrays
     b=NULL;
   }
   return b;
+}
+
+void events_are_time_ordered(size_t num, before_measurement **b){
+  assert(b);
+  int i,j;
+  double t;
+  for (i=0;i<num;i++){
+    assert(b[i]);
+    t=b[i]->event[0]->t;
+    for (j=1;j<b[i]->size;j++){
+      assert(b[i]->event[j]->t>=t);
+      t=b[i]->event[j]->t;
+    }
+  }
 }

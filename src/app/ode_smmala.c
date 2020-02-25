@@ -723,18 +723,6 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   
   seed=seed*137+13*rank;
 
-  /* load Data from hdf5 file
-   */
-  if (h5file){
-    printf("# [main] (rank %i) reading hdf5 file, loading data.\n",rank);
-    fflush(stdout);
-    read_data(h5file,omp);
-    fflush(stdout);
-  } else {
-    fprintf(stderr,"# [main] (rank %i) no data provided (-d option), exiting.\n",rank);
-    MPI_Abort(MPI_COMM_WORLD,-1);
-  }
-    
   /* load model from shared library
    */
   ode_model *odeModel = ode_model_loadFromFile(lib_name);  /* alloc */
@@ -750,13 +738,36 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   char *lib_base;
   lib_base=basename(lib_name);
   dot=strchr(lib_base,'.');
-  dot[0]='\0';
+  if (dot)  dot[0]='\0';
   sprintf(resume_filename,"%s_resume_%02i.h5",lib_base,rank);
   sprintf(rank_sample_file,"mcmc_rank_%02i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options.output_file));
   cnf_options.output_file=rank_sample_file;
   cnf_options.resume_file=resume_filename;
-  
-  /* allocate a solver for each experiment for possible parallelization
+
+  /* local variables for parameters and inital conditions as presented
+     in ode model lib: */
+  int N = ode_model_getN(odeModel);
+  int P = ode_model_getP(odeModel);
+  int F = ode_model_getF(odeModel);
+
+  const char **x_name=ode_model_get_var_names(odeModel);
+  const char **p_name=ode_model_get_param_names(odeModel);
+  const char **f_name=ode_model_get_func_names(odeModel);
+  omp->ode_x={x_name,N};
+  omp->ode_p={p_name,P};
+  omp->ode_f={f_name,F};
+  /* load Data from hdf5 file
+   */
+  if (h5file){
+    printf("# [main] (rank %i) reading hdf5 file, loading data.\n",rank);
+    fflush(stdout);
+    read_data(h5file,omp);
+    fflush(stdout);
+  } else {
+    fprintf(stderr,"# [main] (rank %i) no data provided (-d option), exiting.\n",rank);
+    MPI_Abort(MPI_COMM_WORLD,-1);
+  }
+  /* allocate a solver for each experiment for parallelization
    */
   ode_solver **solver;
   int c,C=omp->size->C;
@@ -789,31 +800,20 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   /* init solver 
    */
   realtype solver_param[3] = {cnf_options.abs_tol, cnf_options.rel_tol, 0};
-
-  const char **x_name=ode_model_get_var_names(odeModel);
-  const char **p_name=ode_model_get_param_names(odeModel);
-  const char **f_name=ode_model_get_func_names(odeModel);
   
-  /* local variables for parameters and inital conditions as presented
-     in ode model lib: */
-  int N = ode_model_getN(odeModel);
-  int P = ode_model_getP(odeModel);
-  int F = ode_model_getF(odeModel);
-
-  /* save in ode model parameter struct: */
-  set_number_of_state_variables(omp,N);
-  set_number_of_model_parameters(omp,P);
-  set_number_of_model_outputs(omp,F);
-
   omp->t0=t0;
   /* ode model parameter struct has pointers for sim results that need
      memory allocation: */
   ode_model_parameters_alloc(omp);
   /* data matrix row views are made */
   ode_model_parameters_link(omp);
-  /* necessoty of normalisation will be checked and noted for later: */
+  /* necessity of normalisation will be checked and noted for later: */
   data_normalisation(omp);
   fflush(stdout);
+  /* save in ode model parameter struct: */
+  set_number_of_state_variables(omp,N);
+  set_number_of_model_parameters(omp,P);
+  set_number_of_model_outputs(omp,F);
 
   /* get default parameters from the model file
    */

@@ -1,11 +1,10 @@
 #include "model_parameters_smmala.h"
 /* Data will always be stored in blocks (matrices), there will be
- * vector views to identify specific rows.  Whether Data or data_block
+ * vector views to identify specific rows.  Whether omp->Data or omp->data_block
  * is used in memory allocation is up to the data read functions.
  */
 int init_E(ode_model_parameters *omp){
   int i;
-  size_t MaxEvents=3; // is reallocated when needed
   int C=omp->size->C;
   omp->E=(experiment**) malloc(sizeof(experiment*)*C);
   for (i=0;i<C;i++) {
@@ -13,7 +12,6 @@ int init_E(ode_model_parameters *omp){
     omp->E[i]->t=NULL;
     omp->E[i]->init_y=NULL;
     omp->E[i]->input_u=NULL;
-    omp->E[i]->event=event_alloc(MaxEvents);
     omp->E[i]->single=NULL;
    }
   omp->Data=NULL;
@@ -101,7 +99,6 @@ int experiment_alloc(experiment *E, problem_size *size){
     E->normalise->data[j]=gsl_vector_alloc(F);
     E->normalise->stdv[j]=gsl_vector_alloc(F);
   }
-  E->single=single_event_list_alloc(T);
   return GSL_SUCCESS;
 }
 

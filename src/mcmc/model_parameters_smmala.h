@@ -1,3 +1,5 @@
+#ifndef MODEL_PARAMETERS_H
+#define MODEL_PARAMETERS_H
 #include <stdlib.h>
 #include <stdio.h>
 #include <gsl/gsl_matrix.h>
@@ -110,7 +112,7 @@ typedef struct {
   int NormaliseByTimePoint;
   gsl_vector_int *NormaliseByOutput;
   event_list_t *event_list;
-  //  event_row_t **single; // array of linked lists
+  event_row_t **single; // array of linked lists
   before_measurement **before_t; // array of pointers, converted from linked list
   int index[3];
 } experiment;
@@ -134,12 +136,20 @@ typedef struct {
 } prior_t;
 
 typedef struct {
+  const char **name;
+  size_t size;
+} name_t;
+
+typedef struct {
   double t0;
   problem_size *size;
   double pdf_lognorm;
   gsl_vector *p; // memory for the ODE's parameters (they are
 		 // exponential) and input parameters, appended: p=[exp(x),u];
   experiment **E; // an experiment (data, initial conditions, inputs, simulation results)
+  name_t model_x;
+  name_t model_p;
+  name_t model_f;
   int normalisation_type;
   gsl_matrix *Data; // this is a block of size C*T*F, contains all data, if data is read as one huge array; otherwise this is NULL and data is stored in the experiment structure directly.
   gsl_matrix *sdData; // standard deviation of the datapoints above, NULL if Data is NULL;
@@ -154,3 +164,4 @@ int ode_model_parameters_alloc(ode_model_parameters *omp);
 int ode_model_parameters_link(ode_model_parameters *omp);
 int ode_model_parameters_free(ode_model_parameters *omp);
 int init_E(ode_model_parameters *omp);
+#endif

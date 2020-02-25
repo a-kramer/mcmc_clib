@@ -295,17 +295,31 @@ load_event_block
  void *op_data)/*model parameter struct, contains experiment array*/
 {
   ode_model_parameters *mp=op_data;
+  assert(mp->model_p.name);
+  assert(mp->model_x.name);
+
   int rank;
   herr_t status=H5LTget_dataset_ndims(g_id, name, &rank);
   hsize_t size[2]; // rank is always 1 or 2 in all of our cases, so 2 always works;
   int index=-1;
   status|=H5LTget_dataset_info(g_id,name,size,NULL,NULL);
   assert(status>=0); // I think that hdf5 functions return negative error codes
+  size_t TargetNameSize;
+  status=H5LTget_attribute_info(g_id, name, "TargetName",NULL, NULL, &TargetNameSize);
+  assert(status>=0);
+  char TargetName[TargetNameSize];
+  status=H5LTget_attribute_string(g_id, name, "TargetName",TargetName);
   gsl_matrix *value=h5_to_gsl(g_id,name,NULL);
-  gsl_vector_int *target=h5_to_gsl_int(g_id,name,"Target");
   gsl_vector *time=h5_to_gsl(g_id,name,"Time");
   gsl_vector_int *type=h5_to_gsl(g_id,name,"Type");
   gsl_vector_int *effect=h5_to_gsl(g_id,name,"Effect");
+  
+  gsl_vector_int *target=event_find_targets
+    ((effect_t*) effect->data,
+     TargetName, effect->size,
+     mp->model_p.name,mp->model_p.size,
+     mp->model_x.name,mp->model_x.size
+     );
   
   int major, minor;
   status|=H5LTget_attribute_int(g_id,name,"index",&index);
@@ -316,13 +330,15 @@ load_event_block
   experiment *E;
   event_t *event;
   if (index < mp->size->C && index >= 0){
+    assert(mp->E[index]);
     E=mp->E[index];
-    event=event_add(E->event_list,E->t,time,type,target,value);
-    /* insert events into global time line */
-    events_insert(E->t, E->single, event); 
+    mp->E[index]->event_list=event_list_alloc(3);
+    event=event_append(E->event_list,E->t,time,type,effect,target,value);
+    /* insert events into global time line E->t */
+    events_push(E->single,E->t,event);
   }else{
-    fprintf(stderr,"[%s] error: experiment index is larger than number of experiments (simulation units).\n",__func__);
-    exit(-1);
+    fprintf(stderr,"[%s] error: experiment index out of bounds 0<=%i<%i.\n",__func__,index,mp->size->C);
+    abort();
   }
   //free(size);
   return status>=0?0:-1;  
@@ -352,7 +368,7 @@ read_data
   assert(file_id>0 && data_group_id>0 && stdv_group_id>0);
   hsize_t idx,nE;
   int gsl_err;
-  status|=H5Gget_num_objs(data_group_id, &nE); //number of experiments
+  status=H5Gget_num_objs(data_group_id, &nE); //number of experiments
   mp->size->C=(int) nE;
   mp->size->T=0;
   init_E(mp);
@@ -383,8 +399,9 @@ read_data
     status = H5Literate(event_group_id, H5_INDEX_NAME, H5_ITER_INC, &idx, load_event_block, mp);
     assert(status>=0);
     for (i=0;i<mp->size->C;i++){
-      if (mp->E[i]->event)
-	mp->E[i]->before_t=convert_to_arrays(mp->E[i]->t->size,mp->E[i]->single);
+      if (mp->E[i]->event_list)
+	mp->E[i]->before_t=event_convert_to_arrays(mp->E[i]->t->size,mp->E[i]->single);
+      events_are_time_ordered(E->t->size,E[i]->before_t);
     }
   }
   hid_t prior_group_id=H5Gopen2(file_id,"/prior",H5P_DEFAULT);

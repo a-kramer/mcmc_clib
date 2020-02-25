@@ -819,7 +819,7 @@ void event_interpret(gpointer event, gpointer buffer){
     status=H5LTset_attribute_int
       (SBEE->h5->group_id,
        SBEE->EventName,
-       "Operation",
+       "op",
        (int*) SBEE->event->Op->data,SBEE->event->Op->len);
     assert(status==0);
     
