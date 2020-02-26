@@ -63,7 +63,7 @@ event_sub_list
 int /* the index of `target_name` (negative non failure to find)*/
 event_find_target
 (char *target_name, /*a \0 terminated string */
- char **list_of_names, /*a list of strings*/
+ const char **list_of_names, /*a list of strings*/
  size_t num) /*the number of items in the `list_of_names`*/
 {
   int i;
@@ -78,7 +78,7 @@ event_find_target
   return -1;
 }
 
-gsl_vector_int* /* the index set of `target_name` (negative non failure to find)*/
+gsl_vector_int* /* the index set of `target_name` */
 event_find_targets
 (effect_t *effect, /**/
  char *target_names, /*a space separated string */
@@ -101,7 +101,9 @@ event_find_targets
     case event_affects_input:
       a=event_find_target(token,list_of_p_names,num_p);
       break;
-    default: fprintf(stderr,"[%s] not handled case: %i.\n",__func__,effect[i]);
+    default:
+      fprintf(stderr,"[%s] not handled case: %i.\n",__func__,effect[i]);
+      abort();
     }
     gsl_vector_int_set(target,i,a);
     token=strtok(NULL, " ");
@@ -149,7 +151,7 @@ event_list_t* event_list_alloc(size_t default_size){
   size_t N=default_size>0?default_size:1;
   event_t **e=malloc(sizeof(event_t*)*N);
   assert(e);
-  event_list *el=malloc(sizeof(event_list));
+  event_list_t *el=malloc(sizeof(event_list_t));
   el->num=0;
   el->max_num=N;
   el->e=e;
@@ -158,6 +160,7 @@ event_list_t* event_list_alloc(size_t default_size){
 
 void event_list_free(event_list_t *el){
   event_t *event;
+  int i;
   if (el){
     for (i=0;i<el->num;i++){
       event=el->e[i];
@@ -165,12 +168,11 @@ void event_list_free(event_list_t *el){
 	if (event->value) gsl_matrix_free(event->value);
 	if (event->type) free(event->type);
 	if (event->effect) free(event->effect);
-	if (event->target_names) free(event->target_names);
 	if (event->target) gsl_vector_int_free(event->target);
-	if (event->time) gsl_vector_free(time);
-	if (event->val_before_t) free(val_before_t);
-	if (event->value_sub) free(value_sub);
-	if (event->time_sub) free(time_sub);
+	if (event->time) gsl_vector_free(event->time);
+	if (event->val_before_t) free(event->val_before_t);
+	if (event->value_sub) free(event->value_sub);
+	if (event->time_sub) free(event->time_sub);
 	free(event);
       }
     }
@@ -195,7 +197,7 @@ event_apply
   int i;
   for (m=0;m<M;m++){
     /* apply event*/
-    i=gsl_vector_get(e->parent->target,m)
+    i=gsl_vector_int_get(e->parent->target,m);
     op=e->parent->type[m];
     effect=e->parent->effect[m];
     v=gsl_vector_get(e->value,m);
@@ -234,7 +236,7 @@ event_row_link
   event_row_t *e=malloc(sizeof(event_row_t));
   e->parent=event;
   e->t=gsl_vector_get(event->time_before_t[point],row);
-  e->value_row=gsl_matrix_row(event_table->val_before_t[point],row);
+  e->value_row=gsl_matrix_row(event->val_before_t[point],row);
   e->value=&(e->value_row.vector);
   return e;
 }
@@ -245,7 +247,7 @@ event_row_link
  * different event types can coexist within them.
  * the lists store pointers to the real event table rows.
  */
-void events_push
+void event_push
 (event_row_t **single, /* array of linked lists */
  gsl_vector *time, /* measurement times (data) */
  event_t *event_table)/* an event table to be inserted into a linked list*/
@@ -310,7 +312,7 @@ event_convert_to_arrays
       i=L;
       while (p && i>=0){
 	b[j]->event[i--]=p;
-	p=p->next
+	p=p->next;
       }
     }
   } else {

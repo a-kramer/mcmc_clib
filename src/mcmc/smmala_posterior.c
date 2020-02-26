@@ -479,7 +479,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 	for (k=0;k<K;k++){
 	  e_t=mp->E[c]->before_t[j]->event[k]->t;
 	  i_flag|=ode_solver_step(solver[c], e_t, y, fy, yS, fyS, a);
-	  event_apply(mp->E[c]->before_t[j]->event[k],y,mp->E[c]->p);
+	  event_apply(mp->E[c]->before_t[j]->event[k],y,mp->E[c]->p,yS);
 	}
       }
       /* 2. advance the state to the measurement time t(j) */

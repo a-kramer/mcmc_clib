@@ -66,12 +66,13 @@ event_t* event_append(event_list_t *event,
  gsl_vector_int *event_target,
  gsl_matrix *event_value);
 
+void events_are_time_ordered(size_t num, before_measurement **b);
 event_list_t* event_list_alloc(size_t default_size);
 void event_free(event_t *event);
 before_measurement** event_convert_to_arrays(size_t T, event_row_t **single);
 size_t list_length(event_row_t *s);
-void event_apply(event_row_t *e, gsl_vector *y, gsl_vector *p);
-int event_find_target(char *target_name, char **list_of_names,  size_t num);
+void event_apply(event_row_t *e, gsl_vector *y, gsl_vector *p, gsl_matrix *S);
+int event_find_target(char *target_name, const char **list_of_names,  size_t num);
 gsl_vector_int* /* the index set of `target_name` (negative non failure to find)*/
 event_find_targets
 (effect_t *effect, 

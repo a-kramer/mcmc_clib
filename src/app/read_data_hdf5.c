@@ -335,7 +335,7 @@ load_event_block
     mp->E[index]->event_list=event_list_alloc(3);
     event=event_append(E->event_list,E->t,time,type,effect,target,value);
     /* insert events into global time line E->t */
-    events_push(E->single,E->t,event);
+    event_push(E->single,E->t,event);
   }else{
     fprintf(stderr,"[%s] error: experiment index out of bounds 0<=%i<%i.\n",__func__,index,mp->size->C);
     abort();
@@ -401,7 +401,7 @@ read_data
     for (i=0;i<mp->size->C;i++){
       if (mp->E[i]->event_list)
 	mp->E[i]->before_t=event_convert_to_arrays(mp->E[i]->t->size,mp->E[i]->single);
-      events_are_time_ordered(E->t->size,E[i]->before_t);
+      events_are_time_ordered(mp->E[i]->t->size,mp->E[i]->before_t);
     }
   }
   hid_t prior_group_id=H5Gopen2(file_id,"/prior",H5P_DEFAULT);

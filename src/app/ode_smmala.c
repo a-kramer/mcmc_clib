@@ -753,9 +753,13 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   const char **x_name=ode_model_get_var_names(odeModel);
   const char **p_name=ode_model_get_param_names(odeModel);
   const char **f_name=ode_model_get_func_names(odeModel);
-  omp->ode_x={x_name,N};
-  omp->ode_p={p_name,P};
-  omp->ode_f={f_name,F};
+  omp->model_x.name=x_name;
+  omp->model_x.size=N;
+  omp->model_p.name=p_name;
+  omp->model_p.size=P;
+  omp->model_f.name=f_name;
+  omp->model_f.size=F;
+
   /* load Data from hdf5 file
    */
   if (h5file){
