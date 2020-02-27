@@ -452,7 +452,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
    * calculate.  This is the only bit of the code that needs to be
    * parallel apart from parallel tempering done by mpi.
    */
-    
+  //printf("[%s] P=%i, U=%i.\n",__func__,P,U);
 #pragma omp parallel for private(model,j,e_t,k,K,a,y,fy,yS,fyS,t,T,input_part) reduction(|:i_flag)
   for (c=0; c<C; c++){/* loop over different experimental conditions */
     model=solver[c]->odeModel;    
@@ -478,6 +478,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
       yS=mp->E[c]->yS[j]; //printf("yS: %i, %zi\n",mp->size->N*P,yS->size1*yS->size2);
       fyS=mp->E[c]->fyS[j]; //printf("fyS: %i, %zi\n",mp->size->F*P,fyS->size1*fyS->size2);
       /* 1. process all events that precede t(j) */
+      assert(y && fy && yS && fyS);
       if (mp->E[c]->event_list && mp->E[c]->before_t && mp->E[c]->before_t[j]){
 	K=mp->E[c]->before_t[j]->size; // number of events prior to t[j]
 	for (k=0;k<K;k++){

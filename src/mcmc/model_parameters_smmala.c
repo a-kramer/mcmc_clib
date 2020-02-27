@@ -75,7 +75,7 @@ int experiment_alloc(experiment *E, problem_size *size){
   int D=size->D;
   int P=size->P;
   int T=E->t->size;
-  printf("[%s] P=%i.\n",__func__,P); fflush(stdout);
+  //printf("[%s] P=%i.\n",__func__,P); fflush(stdout);
   assert(P>0);
   assert(N>0 && T>0);
   E->p=gsl_vector_alloc(P);

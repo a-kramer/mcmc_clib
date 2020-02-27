@@ -196,15 +196,18 @@ event_apply
 (event_row_t *e, /* event to apply*/
  gsl_vector *y, /* state to change, possibly*/
  gsl_vector *p, /* parameter vector: [exp(k),u]*/
- gsl_matrix *S) /* state sensitivity.*/
+ gsl_matrix *Sy) /* state sensitivity.*/
 {
   size_t m,M=e->value->size;
   op_t op;
   effect_t effect;
   gsl_vector *yp; /* y or p, depending on effect*/
+  gsl_vector_view Sy_column;
   double v;
   double V;
   int i;
+  // printf("[%s] (t=%g).\n",__func__,e->t);
+  //assert(Sy && Sy->size1>0 && Sy->size2>0 && Sy->data);
   for (m=0;m<M;m++){
     /* apply event*/
     i=gsl_vector_int_get(e->parent->target,m);
@@ -215,6 +218,7 @@ event_apply
     case event_affects_state:
       assert(i<y->size);
       yp=y;
+      Sy_column=gsl_matrix_column(Sy,i);
       break;
     case event_affects_input:
       assert(i<p->size);
@@ -225,15 +229,30 @@ event_apply
     if (yp){
       V=gsl_vector_get(yp,i);
       switch(op){
-      case event_set: V=v; break;
-      case event_add: V+=v; break;
-      case event_sub: V-=v; break;
-      case event_mul: V*=v; break;
-      case event_div: V/=v; break;	
+      case event_set:
+	V=v;
+	if (effect==event_affects_state) gsl_vector_set_all(&(Sy_column.vector),0.0);
+	break;
+      case event_add:
+	V+=v;
+	break;
+      case event_sub:
+	V-=v;
+	break;
+      case event_mul:
+	V*=v;
+	if (effect==event_affects_state) gsl_vector_scale(&(Sy_column.vector),v);
+	break;
+      case event_div:
+	V/=v;
+	if (effect==event_affects_state) gsl_vector_scale(&(Sy_column.vector),1.0/v);
+	break;
+      default: abort();
       }
       gsl_vector_set(yp,i,V);
     }
   }
+  //printf("[%s] done.\n",__func__);
 }
 
 /*makes a new single event from a row within an event table*/

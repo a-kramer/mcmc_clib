@@ -902,7 +902,6 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   /* here we initialize the mcmc_kernel; this makes one test
    * evaluation of the log-posterior density function. 
    */
-  printf("[%s] kernel->model_function->",__func__);
   mcmc_init(kernel, init_x);
   /* display the results of that test evaluation
    *
