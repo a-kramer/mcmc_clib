@@ -43,10 +43,19 @@ event_sub_list
       /* count how many events occur right before time point j*/
       if (first_TP_after[i]==j) K[j]++;
     }
-    printf("[%s] %li events occur before TimePoint %li (t=%g)\n",__func__,K[j],j,gsl_vector_get(t,j));
+    printf("[%s] %li event%c occur%c before TimePoint %li (t=%g)\n",
+	   __func__,K[j],
+	   K[j]>1?'s':' ',
+	   K[j]==1?'s':' ',
+	   j,gsl_vector_get(t,j));
     assert(K[j]<=N);
   }
   size_t k=0;
+  assert(event->value_sub);
+  assert(event->val_before_t);
+  assert(event->time_sub);
+  assert(event->time_before_t);
+  
   for (j=0;j<T;j++){
     if(K[j]>0){
       event->value_sub[j]=gsl_matrix_submatrix(event->value,k,0,K[j],M);
@@ -56,6 +65,7 @@ event_sub_list
     }
     k=K[j];
   }
+  printf("[%s] done.\n",__func__);
   return EXIT_SUCCESS;
 }
 
@@ -238,9 +248,17 @@ event_row_link
   e->t=gsl_vector_get(event->time_before_t[point],row);
   e->value_row=gsl_matrix_row(event->val_before_t[point],row);
   e->value=&(e->value_row.vector);
+  printf("[%s] linking t=%g (%li variable targets before time point %li).\n",__func__,e->t,e->value->size,point);
+  fflush(stdout);
   return e;
 }
 
+void list_print(event_row_t *r){
+  while(r){
+    printf("[%s] t=%g with %li effects.\n",__func__,r->t,r->value->size);
+    r=r->next;
+  }
+}
 
 /* this inserts an event table into linked lists the linked lists are
  * timeline global and time ordered; they mix event tables, so
@@ -256,8 +274,10 @@ void event_push
   event_row_t *e; /* current event pointer */
   event_row_t *n; /* new event */
   event_row_t **p; /* a pointer to n's parent.next component */
-  
+  printf("[%s] inserting %li events into linked list.\n",__func__,event_table->time->size);
+  assert(single);
   for (i=0;i<time->size;i++){
+    assert(event_table->time_before_t && event_table->time_before_t[i]);
     J=event_table->time_before_t[i]->size;
     for (j=0;j<J;j++){
       p=&(single[i]);
@@ -270,8 +290,12 @@ void event_push
       n->next=e;
       *p=n;
     }
+    list_print(single[i]);
   }
+  printf("[%s] done.\n",__func__);
 }
+
+
 
 /* event_row_links are linked lists*/
 size_t /* length of the list*/
@@ -302,14 +326,16 @@ event_convert_to_arrays
 {
   size_t j,L;
   int i;
-  before_measurement **b=malloc(sizeof(before_measurement*)*T);
+  printf("[%s] converting %li linked lists to arrays.\n",__func__,T); fflush(stdout);
+  before_measurement **b=calloc(T,sizeof(before_measurement*));
   event_row_t *p;
   if (single){
     for (j=0;j<T;j++){
-      L=list_length(single[j]);    
+      L=list_length(single[j]);
+      printf("[%s] list %li has length %li.\n",__func__,j,L); 
       b[j]=event_array_alloc(L);
       p=single[j];
-      i=L;
+      i=L-1;
       while (p && i>=0){
 	b[j]->event[i--]=p;
 	p=p->next;

@@ -19,67 +19,131 @@
 #include "read_data_hdf5.h"
 #include "normalisation_sd.h"
 
+int h5_check(hid_t g_id, const char *obj_name, const char *attr_name){
+  assert(obj_name);
+  printf("[%s] checking existence of «%s».\n",__func__,obj_name);
+  hid_t d_id=H5Dopen2(g_id, obj_name, H5P_DEFAULT);
+  assert(H5LTfind_dataset(g_id, obj_name));
+  if (attr_name){
+    printf("[%s] checking existence of «%s».\n",__func__,attr_name);
+    assert(H5LTfind_attribute(d_id, attr_name));
+  }
+  fflush(stdout);
+  return 1;
+}
+
+void h5_get_info
+(hid_t g_id,
+ const char *obj_name,
+ const char* attr_name,
+ int *rank, hsize_t *size,
+ H5T_class_t *type_class,
+ size_t *type_size)
+{
+  herr_t status;
+  assert(H5LTfind_dataset(g_id, obj_name));
+  if (attr_name){
+    rank[0]=1;
+    status=H5LTget_attribute_info(g_id,obj_name,attr_name,size,type_class,type_size);
+    assert(status>=0);
+    printf("[%s] attribute «%s» class %i, size %li rank %i (dims: %lli %lli).\n",
+	   __func__,attr_name,*type_class, *type_size,
+	   *rank,size[0],size[1]);
+  } else {
+    H5LTget_dataset_ndims(g_id, obj_name, rank);
+    H5LTget_dataset_info(g_id, obj_name, size, type_class, type_size);
+    printf("[%s] dataset «%s»: class %i, size %li rank %i (dims: %lli %lli).\n",
+	   __func__,obj_name,*type_class,*type_size,
+	   *rank,size[0],size[1]);
+
+  }
+  
+}
+
+char* h5_to_char(hid_t g_id, const char *obj_name, const char *attr_name){
+  int rank;
+  hsize_t size[2]={1};
+  herr_t status=0;
+  char *str;
+  H5T_class_t type_class;
+  size_t type_size;
+  /*attributes always have rank==1, at least when the H5LT API is used
+    to make them*/
+  h5_check(g_id,obj_name,attr_name);
+  h5_get_info(g_id, obj_name, attr_name, &rank, size, &type_class, &type_size);
+  if (attr_name){
+    str = calloc(type_size,sizeof(char));
+    status|=H5LTget_attribute_string(g_id,obj_name,attr_name,str);
+  } else {
+    str=calloc(type_size,sizeof(char));
+    H5LTread_dataset_string(g_id, obj_name, str);
+  }
+  return str;
+}
 
 void* h5_to_gsl_int(hid_t g_id, const char *obj_name, const char* attr_name){
-  int rank;
-  hsize_t size[2];
+  hsize_t size[2]={1};
   herr_t status=0;
   gsl_vector_int *v;
   gsl_matrix_int *m;
+  H5T_class_t type_class;
+  size_t type_size;
+  int rank;
   /*attributes always have rank==1, at least when the H5LT API is used
     to make them*/
+  h5_check(g_id,obj_name,attr_name);
+  h5_get_info(g_id, obj_name, attr_name, &rank, size, &type_class, &type_size);
   if (attr_name){
-    status|=H5LTget_attribute_info(g_id,obj_name,attr_name,size,NULL,NULL);
     v=gsl_vector_int_alloc(size[0]);
     status|=H5LTget_attribute_int(g_id,obj_name,attr_name,v->data);
+    return v;
   } else {
-    H5LTget_dataset_ndims(g_id, obj_name, &rank);
-    H5LTget_dataset_info(g_id, obj_name, size, NULL, NULL);
-    if (rank==1){
+    switch(rank){
+    case 1:
       v=gsl_vector_int_alloc(size[0]);
       H5LTread_dataset_int(g_id, obj_name, v->data);
       return v;
-    } else if (rank==2){
+    case 2:
       m=gsl_matrix_int_alloc(size[0],size[1]);
       H5LTread_dataset_int(g_id, obj_name, m->data);
       return m;
-    } else {
-      //error
+    default:
       fprintf(stderr,"[%s] hdf5 data object has an invalid number of dimensions: %i.\n",__func__,rank);
-      return NULL;
+      abort();      
     }
   }
-  return v;
 }
 
 
 void* h5_to_gsl(hid_t g_id, const char *obj_name, const char* attr_name){
   int rank;
-  hsize_t size[2];
+  hsize_t size[2]={1};
   herr_t status=0;
   gsl_vector *v;
   gsl_matrix *m;
+  H5T_class_t type_class;
+  size_t type_size;
   /*attributes always have rank==1, at least when the H5LT API is used
     to make them*/
+  h5_check(g_id,obj_name,attr_name);
+  h5_get_info(g_id, obj_name, attr_name, &rank, size, &type_class, &type_size);
   if (attr_name){
-    status|=H5LTget_attribute_info(g_id,obj_name,attr_name,size,NULL,NULL);
     v=gsl_vector_alloc(size[0]);
     status|=H5LTget_attribute_double(g_id,obj_name,attr_name,v->data);
+    return v;
   } else {
-    H5LTget_dataset_ndims(g_id, obj_name, &rank);
-    H5LTget_dataset_info(g_id, obj_name, size, NULL, NULL);
-    if (rank==1){
+    switch (rank){
+    case 1:
       v=gsl_vector_alloc(size[0]);
       H5LTread_dataset_double(g_id, obj_name, v->data);
       return v;
-    } else if (rank==2){
+    case 2:
       m=gsl_matrix_alloc(size[0],size[1]);
       H5LTread_dataset_double(g_id, obj_name, m->data);
       return m;
-    } else {
-      //error
+    default:
       fprintf(stderr,"[%s] hdf5 data object has an invalid number of dimensions: %i.\n",__func__,rank);
-      return NULL;
+      abort();
     }
   }
   return v;
@@ -285,7 +349,7 @@ load_prior(hid_t g_id, void *op_data) /*ode model parameters, contains prior par
 }
 
 
-/* loads events if present
+/* loads events 
 */
 herr_t /*hdf5 error type, undocumented*/
 load_event_block
@@ -299,32 +363,45 @@ load_event_block
   assert(mp->model_x.name);
 
   int rank;
+  printf("[%s] getting dataset size («%s»).\n",__func__,name); fflush(stdout);
   herr_t status=H5LTget_dataset_ndims(g_id, name, &rank);
+  assert(rank<=2 && rank>0);
   hsize_t size[2]; // rank is always 1 or 2 in all of our cases, so 2 always works;
-  int index=-1;
   status|=H5LTget_dataset_info(g_id,name,size,NULL,NULL);
+  printf("[%s] size of «%s» is %lli × %lli.\n",__func__,name,size[0],size[1]); fflush(stdout);
   assert(status>=0); // I think that hdf5 functions return negative error codes
-  size_t TargetNameSize;
-  status=H5LTget_attribute_info(g_id, name, "TargetName",NULL, NULL, &TargetNameSize);
-  assert(status>=0);
-  char TargetName[TargetNameSize];
-  status=H5LTget_attribute_string(g_id, name, "TargetName",TargetName);
-  gsl_matrix *value=h5_to_gsl(g_id,name,NULL);
-  gsl_vector *time=h5_to_gsl(g_id,name,"Time");
-  gsl_vector_int *type=h5_to_gsl(g_id,name,"Type");
-  gsl_vector_int *effect=h5_to_gsl(g_id,name,"Effect");
   
+  char *ExperimentName=h5_to_char(g_id, name, "ExperimentName");
+  printf("[%s] affected experiment «%s».\n",__func__,ExperimentName);
+  fflush(stdout);
+  char *TargetName=h5_to_char(g_id, name, "TargetName");
+  printf("[%s] affected variable «%s».\n",__func__,TargetName);
+  fflush(stdout);
+  gsl_matrix *value=h5_to_gsl(g_id,name,NULL);
+  assert(value);
+  gsl_vector *time=h5_to_gsl(g_id,name,"Time");
+  assert(time);
+  gsl_vector_fprintf(stdout,time,"%g"); fflush(stdout);
+  gsl_vector_int *type=h5_to_gsl_int(g_id,name,"op");
+  assert(type);
+  gsl_vector_int *effect=h5_to_gsl_int(g_id,name,"Effect");
+  assert(effect);  
   gsl_vector_int *target=event_find_targets
     ((effect_t*) effect->data,
      TargetName, effect->size,
      mp->model_p.name,mp->model_p.size,
      mp->model_x.name,mp->model_x.size
      );
-  
+  assert(target);
+  printf("[%s] event targets:\n",__func__);
+  gsl_vector_int_fprintf(stdout,target,"%i");
+  int index=-1;
   int major, minor;
   status|=H5LTget_attribute_int(g_id,name,"index",&index);
   status|=H5LTget_attribute_int(g_id,name,"AffectsMajorIndex",&major);
   status|=H5LTget_attribute_int(g_id,name,"AffectsMinorIndex",&minor);
+  printf("[%s] Experiment: %i (%i.%i).\n",__func__,index,major,minor);
+  fflush(stdout);
   assert(status>=0);
   assert(index>=0);
   experiment *E;
@@ -372,7 +449,7 @@ read_data
   mp->size->C=(int) nE;
   mp->size->T=0;
   init_E(mp);
-  printf("[read_data] experiments initialised.\n"); fflush(stdout);
+  printf("[%s] experiments initialised.\n",__func__); fflush(stdout);
   idx=0;
   status=H5Literate(data_group_id, H5_INDEX_NAME, H5_ITER_INC, &idx, load_data_block, mp);
   if (status<0) {
@@ -394,9 +471,12 @@ read_data
   size_t i;
   /* read event tables */
   if (H5Lexists(file_id,"/event",H5P_DEFAULT)>0){
+    printf("[%s] loading events from file.\n",__func__); fflush(stdout);
     hid_t event_group_id = H5Gopen2(file_id,"/event",H5P_DEFAULT);
     idx=0;
+    for (i=0;i<mp->size->C;i++) mp->E[i]->single=calloc(mp->E[i]->t->size,sizeof(event_row_t*));
     status = H5Literate(event_group_id, H5_INDEX_NAME, H5_ITER_INC, &idx, load_event_block, mp);
+    printf("[%s] events read.\n",__func__);
     assert(status>=0);
     for (i=0;i<mp->size->C;i++){
       if (mp->E[i]->event_list)

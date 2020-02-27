@@ -439,21 +439,25 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
   ode_solver **solver;
   sensitivity_approximation *a;
   solver=mp->solver;
+  assert(solver);
+  assert(mp->size);
   int N=get_number_of_state_variables(mp);
   int D=get_number_of_MCMC_variables(mp);
   int P=get_number_of_model_parameters(mp);
   //int F=get_number_of_model_outputs(mp);
   int U=get_number_of_model_inputs(mp);
   int C=get_number_of_experimental_conditions(mp);
-
+  assert(P>0 && N>0);
   /* The ODE model integration below takes by far the most time to
    * calculate.  This is the only bit of the code that needs to be
    * parallel apart from parallel tempering done by mpi.
    */
+    
 #pragma omp parallel for private(model,j,e_t,k,K,a,y,fy,yS,fyS,t,T,input_part) reduction(|:i_flag)
   for (c=0; c<C; c++){/* loop over different experimental conditions */
     model=solver[c]->odeModel;    
     a=mp->S_approx[c];
+    assert(mp->E[c]->p);
     gsl_vector_memcpy(mp->E[c]->p,mp->p); // events may modify this vector
     /* each loop iteration gets a different input vector, because an
        event may change the input parameters.
@@ -686,6 +690,7 @@ int LogPosterior(const double beta, const gsl_vector *x,  void* model_params, do
   int D=omp->prior->mu->size;
   double x_i;
   double p_i;
+  assert(D>0);
   //gsl_sf_result result;
   //int gsl_status;
   for (i=0;i<D;i++) {

@@ -1,4 +1,5 @@
 #include "model_parameters_smmala.h"
+#include <assert.h>
 /* Data will always be stored in blocks (matrices), there will be
  * vector views to identify specific rows.  Whether omp->Data or omp->data_block
  * is used in memory allocation is up to the data read functions.
@@ -74,6 +75,9 @@ int experiment_alloc(experiment *E, problem_size *size){
   int D=size->D;
   int P=size->P;
   int T=E->t->size;
+  printf("[%s] P=%i.\n",__func__,P); fflush(stdout);
+  assert(P>0);
+  assert(N>0 && T>0);
   E->p=gsl_vector_alloc(P);
   E->y=(gsl_vector **) malloc(sizeof(gsl_vector*)*T);
   E->fy=(gsl_vector **) malloc(sizeof(gsl_vector*)*T);

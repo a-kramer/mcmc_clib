@@ -829,6 +829,14 @@ void event_interpret(gpointer event, gpointer buffer){
        "Effect",
        (int*) SBEE->event->effect->data, SBEE->event->effect->len);
     assert(status==0);
+
+    status=H5LTset_attribute_double
+      (SBEE->h5->group_id,
+       SBEE->EventName,
+       "Time",
+       SBEE->event->time->data, SBEE->event->time->size);
+    assert(status==0);
+    
     /* Number of species can be different from SBtab, so matching by
        name is required */
     GString *TargetName = g_string_sized_new (20*n);

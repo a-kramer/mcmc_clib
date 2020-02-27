@@ -146,7 +146,7 @@ void ode_model_free(ode_model* model){
 ode_solver* ode_solver_alloc(ode_model* model){ 
   ode_solver* solver = (ode_solver*) malloc(sizeof(ode_solver)); 
   if (solver == NULL){
-    fprintf(stderr,"malloc failed to allocate memory for ode_solver\n");
+    fprintf(stderr,"[%s] malloc failed to allocate memory for ode_solver\n",__func__);
     return NULL;
   }
   
@@ -159,7 +159,7 @@ ode_solver* ode_solver_alloc(ode_model* model){
   int P = ode_model_getP(model);
   solver->params = (double*) malloc( sizeof(double) * P );
   if( solver->params == NULL ){
-    fprintf(stderr,"malloc failed to allocate memory in ode_solver for params.\n");
+    fprintf(stderr,"[%s] malloc failed to allocate memory in ode_solver for params.\n",__func__);
     CVodeFree(solver->cvode_mem);
     free(solver);
     return 0;
@@ -204,7 +204,7 @@ void ode_solver_init(ode_solver* solver, const double t0,  double* y0, int lenY,
   
   if (p != 0){
     if (lenP != solver->odeModel->P) {
-      fprintf(stderr,"[ode_solver_init] lenP must be equal %d, the number of parameters in the ode model.\n",solver->odeModel->P);
+      fprintf(stderr,"[%s] lenP (%i) must be equal %d, the number of parameters in the ode model.\n",__func__,lenP,solver->odeModel->P);
       return;
     }
     
@@ -215,7 +215,7 @@ void ode_solver_init(ode_solver* solver, const double t0,  double* y0, int lenY,
   /* Get initial conditions */
   if(y0 != 0){
     if( lenY != solver->odeModel->N ){
-      fprintf(stderr,"[ode_solver_init] lenY must be equal %d, the number of variables in the ode model.\n",solver->odeModel->N);
+      fprintf(stderr,"[%s] lenY (%i) must be equal %d, the number of variables in the ode model.\n",__func__,lenY,solver->odeModel->N);
       return;
     }
     NV_DATA_S(solver->y) = y0;
@@ -239,7 +239,7 @@ void ode_solver_reinit(ode_solver* solver, const double t0,  double* y0, int len
   /* Get initial conditions */
   if(y0){
     if( lenY != solver->odeModel->N ){
-      fprintf(stderr,"[ode_solver_init] lenY must be equal %d, the number of variables in the ode model.\n",solver->odeModel->N);
+      fprintf(stderr,"[%s] lenY (%i) must be equal %d, the number of variables in the ode model.\n",__func__,lenY,solver->odeModel->N);
       return ;
     }
     NV_DATA_S(solver->y) = y0;
@@ -255,7 +255,7 @@ void ode_solver_reinit(ode_solver* solver, const double t0,  double* y0, int len
   /* Get parameters */
   if (p){
     if (lenP != solver->odeModel->P) {
-      fprintf(stderr,"[ode_solver_init] lenP must be equal %d, the number of parameters in the ode model.\n",solver->odeModel->P);
+      fprintf(stderr,"[%s] lenP (%i) must be equal %d, the number of parameters in the ode model.\n",__func__,lenP,solver->odeModel->P);
       return ;
     }
     int P = solver->odeModel->P;
@@ -281,8 +281,8 @@ void ode_solver_init_sens(ode_solver* solver,  double* yS0, int lenP, int lenY){
   int N = solver->odeModel->N;
   //int P = solver->odeModel->P;
   
-  if (solver->odeModel->vf_sens == 0) {
-    fprintf(stderr,"ode_solver_init_sens: no sensitivities defined for this model.\n");
+  if (solver->odeModel->vf_sens == NULL) {
+    fprintf(stderr,"[%s] no sensitivities defined for this model.\n",__func__);
     return;
   }
   
@@ -291,7 +291,7 @@ void ode_solver_init_sens(ode_solver* solver,  double* yS0, int lenP, int lenY){
   
   if(yS0){
     if (lenY != N) {
-      fprintf(stderr,"ode_solver_init_sens: lenY must be equal to %d the number of parameters and variables in the ode model.\n",solver->odeModel->N);
+      fprintf(stderr,"[%s] lenY (%i) must be equal to %d the number of parameters and variables in the ode model.\n",__func__,lenY,solver->odeModel->N);
       return ;
     }    
     for(i=0; i<lenP; i++) NV_DATA_S(solver->yS[i]) = &yS0[i*lenY];
@@ -340,14 +340,14 @@ void ode_solver_reinit_sens(ode_solver* solver,  double* yS0, int lenP, int lenY
   //int P = solver->odeModel->P;
   
   if (solver->odeModel->vf_sens == NULL) {
-    fprintf(stderr,"ode_solver_init_sens: no sensitivities defined for this model.\n");
+    fprintf(stderr,"[%s] no sensitivities defined for this model.\n",__func__);
     return;
   }
   
   double tmp[N];
   if(yS0){
     if (lenY != N) {
-      fprintf(stderr,"ode_solver_init_sens: lenY must be equal to %d the number of variables in the ode model.\n",solver->odeModel->N);
+      fprintf(stderr,"[%s] lenY (%i) must be equal to %d the number of variables in the ode model.\n",__func__,lenY,solver->odeModel->N);
       return ;
     }    
     for(i=0; i<lenP; i++) NV_DATA_S(solver->yS[i]) = &yS0[i*lenY];
@@ -493,7 +493,7 @@ void ode_solver_print_stats(const ode_solver* solver, FILE* outF){
   flag &= CVDlsGetNumRhsEvals(cvode_mem, &nfeLS);
   
   
-  fprintf(outF,"\n# Solver Statistics\n\n");
+  fprintf(outF,"\n# [%s] Solver Statistics\n\n",__func__);
   fprintf(outF,"# Steps            = %5ld\n\n", nst);
   fprintf(outF,"# RhsEvals         = %5ld\n",   nfe);
   fprintf(outF,"# ErrTestFails     = %5ld   LinSolvSetups        = %5ld\n", netf, nsetups);
@@ -509,7 +509,7 @@ void ode_solver_print_stats(const ode_solver* solver, FILE* outF){
   fprintf(outF,"\n# Jacobian Statistics\n");
   fprintf(outF,"# JacEvals  = %5ld    RhsEvals  = %5ld\n", nje, nfeLS);
   if (flag!=CV_SUCCESS) {
-    fprintf(stderr,"[CV] print stats failed, CVode flag=%i\n",flag);
+    fprintf(stderr,"[%s] print stats failed, CVode flag=%i\n",__func__,flag);
   }
 }
 

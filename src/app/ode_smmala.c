@@ -162,9 +162,7 @@ h5block_init(char *output_file, /*will create this file for writing*/
   NameWriteError|=H5LTmake_dataset_string(file_id,"OutputFunctionNames",f_names);
   if (NameWriteError){
     fprintf(stderr,"[h5block_init] writing (x,p,f)-names into hdf5 file failed.");
-  }/* else {
-    printf("# [main] all names have been written to file «%s».\n",output_file);
-    }*/
+  }
   free(x_names);
   free(p_names);
   free(f_names);
@@ -332,11 +330,11 @@ void display_chunk_properties(hdf5block_t *h5block)/*structure holding the hdf5 
   hsize_t *block=h5block->block;
   hsize_t *count=h5block->count;
   hsize_t *stride=h5block->stride;
-  printf("#[main]");
-  printf("# offset: %lli×%lli;\n",offset[0],offset[1]);
-  printf("#  block: %lli×%lli;\n",block[0],block[1]);
-  printf("#  stride: %lli×%lli;\n",stride[0],stride[1]);
-  printf("#  count: %lli×%lli.\n",count[0],count[1]);
+  printf("[%s]",__func__);
+  printf("  offset: %lli×%lli;\n",offset[0],offset[1]);
+  printf("   block: %lli×%lli;\n",block[0],block[1]);
+  printf("  stride: %lli×%lli;\n",stride[0],stride[1]);
+  printf("   count: %lli×%lli.\n",count[0],count[1]);
 }
 
 /*writes a sampled chunk into the appropriate hyperslab of hdf5 file*/
@@ -472,7 +470,7 @@ mcmc_foreach(int rank, /*MPI rank*/
   assert(status==0);
   // write remaining data to the output hdf5 file
   int Rest=SampleSize % CHUNK;
-  printf("[main] last iteration done %i points remain to write.\n",Rest);
+  printf("[%s] last iteration done %i points remain to write.\n",__func__,Rest);
   if (Rest > 0){
     h5block->chunk_size[0]=Rest;
     h5block->chunk_size[1]=D;
@@ -482,7 +480,7 @@ mcmc_foreach(int rank, /*MPI rank*/
     h5block->chunk_size[1]=1;
     h5block->post_chunk_id=H5Screate_simple(2, h5block->chunk_size, NULL);
     
-    printf("[main] writing the remaining %i sampled parametrisations to file.\n",Rest);
+    printf("[%s] writing the remaining %i sampled parametrisations to file.\n",__func__,Rest);
     h5block->block[0]=Rest;
     h5block->block[1]=D;
     display_chunk_properties(h5block);
@@ -490,7 +488,7 @@ mcmc_foreach(int rank, /*MPI rank*/
     H5Dwrite(h5block->parameter_set_id, H5T_NATIVE_DOUBLE, h5block->para_chunk_id, h5block->para_dataspace_id, H5P_DEFAULT, log_para_chunk->data);
     
     h5block->block[1]=1;
-    printf("[main] writing their %i log-posterior values to file.\n",Rest);
+    printf("[%s] writing their %i log-posterior values to file.\n",__func__,Rest);
     display_chunk_properties(h5block);
 
     status |= H5Sselect_hyperslab(h5block->post_dataspace_id, H5S_SELECT_SET, h5block->offset, h5block->stride, h5block->count, h5block->block);
@@ -567,7 +565,7 @@ void print_experiment_information(int rank,/*MPI rank*/ int R, /*MPI Comm size*/
   
   for (i=0;i<C;i++){
     if (omp->E[i]->init_y){
-      fprintf(stderr,"[main] warning: y(t0) already initialised.\n");
+      fprintf(stderr,"[%s] warning: y(t0) already initialised.\n",__func__);
     }else{
       omp->E[i]->init_y=gsl_vector_alloc(N);
       gsl_vector_memcpy(omp->E[i]->init_y,y0);
@@ -577,7 +575,7 @@ void print_experiment_information(int rank,/*MPI rank*/ int R, /*MPI Comm size*/
   
   LE=C-NNE;
   if (rank==0){
-    printf("# [main] There are %i experiments",C);
+    printf("[%s] There are %i experiments",__func__,C);
     if (NNE>0){
       printf(", %i of which ",NNE);
       if (NNE==1) printf("is");
@@ -594,11 +592,11 @@ void display_test_evaluation_results(mcmc_kernel *kernel)/*MCMC kernel struct*/{
   int D=MCMC_DIM(kernel);
   double *x=MCMC_STATE(kernel);
   double *log_p=MCMC_POSTERIOR(kernel);
-  printf("# [main] test evaluation of Posterior function done:\n");
+  printf("# [%s] test evaluation of Posterior function done:\n",__func__);
   printf("# \tθ=θ₀; LogPosterior(θ|D)=%+g;\n# where θ₀:",log_p[0]); 
   for (i=0;i<D;i++) printf(" %+g ",x[i]);
   printf("\n");
-  printf("# [main] LogLikelihood(D|θ):");
+  printf("[%s] LogLikelihood(D|θ):",__func__);
   printf("%+g\tLogPrior(θ)=%+g.\n",log_p[1],log_p[2]);
 }
 
@@ -699,7 +697,6 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
       h5file=argv[i+1];
     } else if (strcmp(argv[i],"-t")==0 || strcmp(argv[i],"--init-at-t")==0) {
       t0=strtod(argv[i+1],NULL);
-      //printf("[main] t0=%f\n",t0);
     } else if (strcmp(argv[i],"-w")==0 || strcmp(argv[i],"--warm-up")==0) warm_up=strtol(argv[i+1],NULL,10);
     else if (strcmp(argv[i],"--resume")==0 || strcmp(argv[i],"-r")==0) sampling_action=SMPL_RESUME;
     else if (strcmp(argv[i],"--sens-approx")==0) sensitivity_approximation=1;
@@ -727,9 +724,9 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
    */
   ode_model *odeModel = ode_model_loadFromFile(lib_name);  /* alloc */
   if (!odeModel) {
-    fprintf(stderr, "# [main] (rank %i) Library %s could not be loaded.\n",rank,lib_name);
+    fprintf(stderr, "[%s] (rank %i) Library %s could not be loaded.\n",__func__,rank,lib_name);
     exit(1);
-  } else printf( "# [main] (rank %i) Library %s loaded.\n",rank, lib_name);
+  } else printf( "[%s] (rank %i) Library %s loaded.\n",__func__,rank, lib_name);
   
   /* construct an output file from rank, library name, and user
    * supplied string.
@@ -749,7 +746,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   int N = ode_model_getN(odeModel);
   int P = ode_model_getP(odeModel);
   int F = ode_model_getF(odeModel);
-
+  printf("[%s] problem size: %i state variables, %i parameters [coefficients and inputs], %i output functions.\n",__func__,N,P,F);
   const char **x_name=ode_model_get_var_names(odeModel);
   const char **p_name=ode_model_get_param_names(odeModel);
   const char **f_name=ode_model_get_func_names(odeModel);
@@ -763,12 +760,12 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   /* load Data from hdf5 file
    */
   if (h5file){
-    printf("# [main] (rank %i) reading hdf5 file, loading data.\n",rank);
+    printf("[%s] (rank %i) reading hdf5 file, loading data.\n",__func__,rank);
     fflush(stdout);
     read_data(h5file,omp);
     fflush(stdout);
   } else {
-    fprintf(stderr,"# [main] (rank %i) no data provided (-d option), exiting.\n",rank);
+    fprintf(stderr,"[%s] (rank %i) no data provided (-d option), exiting.\n",__func__,rank);
     MPI_Abort(MPI_COMM_WORLD,-1);
   }
   /* allocate a solver for each experiment for parallelization
@@ -782,9 +779,9 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
     if (solver[c]) c_success++;
   }
   if (c_success==C) {
-    printf("# [main] Solver[0:%i] for «%s» created.\n",C,lib_base);
+    printf("[%s] Solver[0:%i] for «%s» created.\n",__func__,C,lib_base);
   } else {
-    fprintf(stderr, "# [main] Solvers for «%s» could not be created.\n",lib_base);
+    fprintf(stderr, "[%s] Solvers for «%s» could not be created.\n",__func__,lib_base);
     ode_model_free(odeModel);
     MPI_Abort(MPI_COMM_WORLD,-1);
   }
@@ -793,7 +790,6 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
    *  be turned off.
    */
   if (sensitivity_approximation){
-    //printf("# [main] experimental: Sensitivity approximation activated.\n");
     for (c=0;c<C;c++) ode_solver_disable_sens(solver[c]);
     /* also: make sensitivity function unavailable; that way
      * ode_model_has_sens(model) will return «FALSE»;
@@ -806,6 +802,11 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   realtype solver_param[3] = {cnf_options.abs_tol, cnf_options.rel_tol, 0};
   
   omp->t0=t0;
+    /* save in ode model parameter struct: */
+  set_number_of_state_variables(omp,N);
+  set_number_of_model_parameters(omp,P);
+  set_number_of_model_outputs(omp,F);
+
   /* ode model parameter struct has pointers for sim results that need
      memory allocation: */
   ode_model_parameters_alloc(omp);
@@ -814,10 +815,6 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   /* necessity of normalisation will be checked and noted for later: */
   data_normalisation(omp);
   fflush(stdout);
-  /* save in ode model parameter struct: */
-  set_number_of_state_variables(omp,N);
-  set_number_of_model_parameters(omp,P);
-  set_number_of_model_outputs(omp,F);
 
   /* get default parameters from the model file
    */
@@ -852,10 +849,8 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
    * parameters p and default initial conditions of the state y; In
    * addition error tolerances are set and sensitivity initialized.
    */
-  //printf("# [main] (rank %i) init ivp: t0=%g\n",rank,omp->t0);
   for (c=0;c<C;c++){
     ode_solver_init(solver[c], omp->t0, omp->E[c]->init_y->data, N, p, P);
-    //printf("# [main] solver initialised.\n");    
     ode_solver_setErrTol(solver[c], solver_param[1], &solver_param[0], 1);
     if (ode_model_has_sens(odeModel)) {
       ode_solver_init_sens(solver[c], omp->E[0]->yS0->data, P, N);
@@ -867,9 +862,9 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
    */
   smmala_model* model = smmala_model_alloc(LogPosterior, NULL, omp);
   if (model){
-    printf("[main] (rank %i) smmala_model allocated.\n",rank);
+    printf("[%s] (rank %i) smmala_model allocated.\n",__func__,rank);
   }else{
-    fprintf(stderr,"[main] (rank %i) smmala_model could not be allocated.\n",rank);
+    fprintf(stderr,"[%s] (rank %i) smmala_model could not be allocated.\n",__func__,rank);
     MPI_Abort(MPI_COMM_WORLD,-1);
   }
   
@@ -886,7 +881,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   double step=cnf_options.initial_stepsize;
   if (m>1.0 && rank>0) step*=gsl_pow_int(m,rank);
   pdf_normalisation_constant(omp);
-  printf("[main] (rank %i) likelihood log(normalisation constant): %g\n",rank,omp->pdf_lognorm);
+  printf("[%s] (rank %i) likelihood log(normalisation constant): %g\n",__func__,rank,omp->pdf_lognorm);
   mcmc_kernel* kernel = smmala_kernel_alloc(beta,D,step,model,seed,tgac);
   
   int resume_load_status;
@@ -895,10 +890,10 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
     assert(resume_load_status==EXIT_SUCCESS);
     for (i=0;i<D;i++) init_x[i]=kernel->x[i];
   } else if (start_from_prior){     
-    if (rank==0) printf("# [main] setting initial mcmc vector to prior mean.\n");
+    if (rank==0) printf("[%s] setting initial mcmc vector to prior mean (size %i).\n",__func__,D);
     for (i=0;i<D;i++) init_x[i]=gsl_vector_get(omp->prior->mu,i);
   } else {
-    if (rank==0) printf("# [main] setting mcmc initial value to log(default parameters)\n");
+    if (rank==0) printf("[%s] setting mcmc initial value to log(default parameters)\n",__func__);
     for (i=0;i<D;i++) init_x[i]=gsl_sf_log(p[i]);
   }
   fflush(stdout);
@@ -907,22 +902,13 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   /* here we initialize the mcmc_kernel; this makes one test
    * evaluation of the log-posterior density function. 
    */
-  
-  /*
-  if (rank==0){
-    printf("# [main] initializing MCMC.\n");
-    printf("# [main] init_x:");
-    for (i=0;i<D;i++) printf(" %g ",init_x[i]);
-    printf("\n");
-  }
-  */
-  
+  printf("[%s] kernel->model_function->",__func__);
   mcmc_init(kernel, init_x);
   /* display the results of that test evaluation
    *
    */
   if (rank==0){
-    printf("# [main] rank %i init complete .\n",rank);
+    printf("[%s] rank %i init complete .\n",__func__,rank);
     display_test_evaluation_results(kernel);
     ode_solver_print_stats(solver[0], stdout);
     fflush(stdout);

@@ -424,24 +424,28 @@ static void smmala_params_free(smmala_params* params){
 
 static int smmala_kernel_init(mcmc_kernel* kernel, const double *x){
   int res,i,n;
+  assert(kernel);
+  assert(x);
   n = kernel->N;
-	
+  printf("[%s] %i mcmc variables.\n",__func__,n);
   smmala_params* state = (smmala_params*) kernel->kernel_params;
   /* copy x to the kernel x state */
   for (i=0; i<n; i++) kernel->x[i] = x[i];
 
   smmala_model* model = kernel->model_function;
   gsl_vector_const_view x_init = gsl_vector_const_view_array(x,n);
+  assert(model);
   res = model->LogPosterior(state->beta, &(x_init.vector), model->m_params, state->fx, state->dfx, state->Hfx);
   if (res != 0){
-    fprintf(stderr,"smmala_kernel_init: Likelihood function failed\n");
+    fprintf(stderr,"[%s] Likelihood function failed\n",__func__);
     exit(-1);
   }
   res = gsl_linalg_cholesky_decomp(state->Hfx[0]);
   if (res != 0){
-	fprintf(stderr,"Error: matrix not positive definite in smmala_init.\n");
+    fprintf(stderr,"[%s] Error: matrix not positive definite in smmala_init.\n",__func__);
 	return -1;
-  }  
+  }
+  printf("[%s] done.\n",__func__); fflush(stdout);
   return EXIT_SUCCESS;
 }
 
@@ -466,13 +470,13 @@ static int smmala_kernel_init_rand(mcmc_kernel* kernel){
   res = model->LogPosterior(state->beta, x, model->m_params, state->fx,state->dfx, state->Hfx);
   /* TODO: write a proper error handler */
   if (res != 0){
-    fprintf(stderr,"smmala_kernel_init: Likelihood function failed\n");
+    fprintf(stderr,"[%s] Likelihood function failed\n",__func__);
     return 1;
   }
   
   res = gsl_linalg_cholesky_decomp(state->Hfx[0]);
   if (res != 0){
-    fprintf(stderr,"Error: matrix not positive definite in smmala_init.\n");
+    fprintf(stderr,"[%s] Error: matrix not positive definite in smmala_init.\n",__func__);
     return -1;
   }
   return 0;
