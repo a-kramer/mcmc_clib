@@ -276,11 +276,13 @@ gsl_vector** get_experiment_specific_inputs(sbtab_t *ExperimentTable, sbtab_t *I
   gchar *InputSets;
   GPtrArray *InputTable;
   KeyValue_t input;
-    
+  GString *u_ref=g_string_sized_new(20);
+  printf("[%s] input has size %i.\n",__func__,nU);
   for (j=0;j<nE;j++) { // j is the major experiment index
     E_default_input[j]=gsl_vector_alloc(nU);
     gsl_vector_memcpy(E_default_input[j],default_input);
     input_ID=sbtab_get_column(Input,"!ID");
+    
     assert(input_ID);
     if (InputSetNames && j<InputSetNames->len){
       InputSets=(gchar*) g_ptr_array_index(InputSetNames,j);
@@ -292,8 +294,9 @@ gsl_vector** get_experiment_specific_inputs(sbtab_t *ExperimentTable, sbtab_t *I
       }
     }
     for (k=0;k<nU;k++){
-      input_id=g_ptr_array_index(input_ID,k);
-      u_col=sbtab_get_column(ExperimentTable,input_id);
+      g_string_printf(u_ref,">%s",(char*) g_ptr_array_index(input_ID,k));
+      printf("[%s] looking for «%s».\n",__func__,u_ref->str);
+      u_col=sbtab_get_column(ExperimentTable,u_ref->str);
       if (u_col){
 	s=g_ptr_array_index(u_col,j);
 	val=strtod(s,NULL);
@@ -1399,6 +1402,7 @@ gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT, int lflag){
   guint T=DataTable->column[0]->len;
   gsl_matrix **Y;
   gchar *y,*dy,*s, *ds;
+  GString *y_ref=g_string_sized_new(20);
   Y=malloc(sizeof(gsl_matrix*)*2);
   
   for (i=0;i<2;i++) {
@@ -1413,13 +1417,12 @@ gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT, int lflag){
   }else{ // so, lflag is FALSE, that means that it's a normalisation experiment; we avoid devision by infinity just to be sure:
     gsl_matrix_set_all(Y[STDV],1024);
   }
-
-
   // find the name of each outputs error quantifier:  
   GPtrArray *NoiseName;
   printf("[%s] Found experiment %s with %i measurements of %i items.\n",__func__,DataTable->TableName,T,F);  fflush(stdout);
   for (i_c=0; i_c<F; i_c++){
     y=(gchar *) g_ptr_array_index(L1_OUT->column[0],i_c);
+    g_string_printf(y_ref,">%s",y);
     NoiseName=sbtab_get_column(L1_OUT,"!ErrorName");
     if (NoiseName){
       dy=g_ptr_array_index(NoiseName,i_c);
@@ -1428,13 +1431,13 @@ gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT, int lflag){
     }
     
     //printf("[%s] reading the column %s ± %s\n",__func__,y,dy);  fflush(stdout);
-    c=sbtab_get_column(DataTable,y);
+    c=sbtab_get_column(DataTable,y_ref->str);
     dc=sbtab_get_column(DataTable,dy);
     if (c){
       for (i_r=0; i_r<T; i_r++){
 	s = (gchar*) g_ptr_array_index(c,i_r);
 	if (s){
-	  //printf("[%s] row %i; got string «%s» ",__func__,i_r,s);
+	  printf("[%s] row %i; got string «%s» ",__func__,i_r,s);
 	  val=strtod(s,NULL);
 	  gsl_matrix_set(Y[DATA],i_r,i_c,val);
 	} 
@@ -1444,7 +1447,7 @@ gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *L1_OUT, int lflag){
 	  dval=strtod(ds,NULL);
 	  gsl_matrix_set(Y[STDV],i_r,i_c,dval);
 	}
-	//printf("..so %g ± %g\n",val,dval);
+	printf("..so %g ± %g\n",val,dval);
       }
     }
   }  
@@ -1490,6 +1493,7 @@ gsl_matrix* get_input_matrix(sbtab_t *DataTable, GPtrArray *input_ID, gsl_vector
   gsl_matrix *U;
   gsl_vector_view u_row;
   double val;
+  GString *u_ref=g_string_sized_new(20);
   U=gsl_matrix_alloc(N,nU);
   for (i=0;i<N;i++){
     // copy all default values into matrix, then override later.
@@ -1499,8 +1503,8 @@ gsl_matrix* get_input_matrix(sbtab_t *DataTable, GPtrArray *input_ID, gsl_vector
   assert(input_ID);
   printf("[%s] getting dose values in a Dose Response experiment %s.\n",__func__,DataTable->TableName); fflush(stdout);
   for (j=0;j<nU;j++){
-    s=g_ptr_array_index(input_ID,j);
-    if (s) u=sbtab_get_column(DataTable,s);
+    g_string_printf(u_ref,">%s",(char*) g_ptr_array_index(input_ID,j));
+    u=sbtab_get_column(DataTable,u_ref->str);
     if (u){
       printf("[%s] Found input column %i (%s).\n",__func__,j,s);  fflush(stdout);
       for (i=0;i<N;i++){

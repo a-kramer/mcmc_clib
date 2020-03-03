@@ -410,7 +410,7 @@ int save_simulation_results(ode_model_parameters *omp){
   return EC;
 }
 
-
+/* this badly needs refactoring into three parts: simulation, normalisation, the actual likelihood part.*/
 int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_matrix *fisher_information){
 
   /* Here, the ode integration is done
@@ -485,6 +485,15 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 	  e_t=mp->E[c]->before_t[j]->event[k]->t;
 	  i_flag|=ode_solver_step(solver[c], e_t, y, fy, yS, fyS, a);
 	  event_apply(mp->E[c]->before_t[j]->event[k],y,mp->E[c]->p,yS);
+	  /* discontinuities require a re-init */
+	  ode_solver_reinit(solver[c], e_t,
+			    y->data,
+			    y->size,
+			    mp->E[c]->p->data,
+			    mp->E[c]->p->size);
+	  if (ode_model_has_sens(model)){
+	    ode_solver_reinit_sens(solver[c], yS->data, P, N);
+	  }
 	}
       }
       /* 2. advance the state to the measurement time t(j) */
