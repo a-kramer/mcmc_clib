@@ -90,6 +90,7 @@ sbtab_t *sbtab_find_table_with(GHashTable *sbtab_hash, gchar *rowID){
   return table_has_rowID;
 }
 
+/* given a list of table names (space separated), this function returns the first table that is found using the given names (in the order given)*/
 sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names){
   sbtab_t *table=NULL;
   gchar **Name;
@@ -98,18 +99,20 @@ sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names){
   guint n=(int) g_strv_length(Name);
   //printf("[sbtab_find] %i tokens.\n",n); fflush(stdout);
   gint i=-1;
-  while (table==NULL && i+1<n){
-    table=g_hash_table_lookup(sbtab_hash,Name[++i]);
+  for (i=0;i<n;i++){
+    table=g_hash_table_lookup(sbtab_hash,Name[i]);
+    if (table) break;
   }
-  if (table!=NULL){
-    printf("[%s] found table «%s».\n",__func__,Name[i]);
+  if (table){
+    printf("[%s] found table «%s».\n",__func__,table->TableName);
   } else {
-    printf("[%s] not found (%s).\n",__func__,Name[i]);
+    printf("[%s] failed.\n",__func__);
   }
   g_strfreev(Name);  
   return table;
 }
 
+/* given a list of space separated table names, this function returns all tables. All names must be valid. Tables that don't exist are not added to the return list. Do not rely on the index in the return list if a table was not found. */
 GPtrArray* sbtab_get_tables(GHashTable *sbtab_hash, const gchar *TableNames){
   assert(TableNames);
   gchar **Name=g_strsplit(TableNames," ",-1);
@@ -123,7 +126,7 @@ GPtrArray* sbtab_get_tables(GHashTable *sbtab_hash, const gchar *TableNames){
       g_ptr_array_add(table,t);
       printf("[%s] %s found.\n",__func__,Name[i]);
     } else {
-      printf("[%s] warning: %s not found.\n",__func__,Name[i]);
+      fprintf(stderr,"[%s] warning: %s not found.\n",__func__,Name[i]);
     }
   }
   return table;
@@ -154,9 +157,10 @@ int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
     if(n!=c) {
       fprintf(stderr,"[%s] data contained %i entries while table has %i headers\n\t\t",__func__,n,c);
       for (i=0;i<c;i++) fprintf(stderr,"«%s» ",sbtab->key[i]);
-      fprintf(stderr,"\n\t\t");
+      fprintf(stderr,"\n");
       for (i=0;i<n;i++) fprintf(stderr,"«%s» ",s[i]);
-      fprintf(stderr,"\t\t\tinput is a [tc]sv file, so delimited by ,; or \\t and inline comments marked by %%\n");
+      fprintf(stderr,"\n");
+      fprintf(stderr,"[%s] input is a tsv file, so delimited by «%s» and inline comments marked by %%\n",__func__,fs);
       guint nTK;
       const gchar **TK=(const gchar **) g_hash_table_get_keys_as_array(sbtab->col,&nTK);
       for (i=0;i<c;i++)
@@ -178,27 +182,50 @@ int sbtab_append(const sbtab_t *sbtab, const char *key, char *data){
   }
 }
 
+/*returns row `i` from table `sbtab` with column header `key` or empty
+  string if not found*/
 gchar* sbtab_get(const sbtab_t *sbtab, const char *key, const size_t i){
   gchar *d;
   GPtrArray *a=NULL;
   a=g_hash_table_lookup(sbtab->col,key);
   if (a!=NULL) d=g_ptr_array_index(a,i);
-  else d=NULL;
+  else d=g_strdup("");
   return d;
 }
 
+/* given one or more alternative column names, this function looks up the names in the given order until the first match. If no match is found `>` is prepended and the names are tried again.*/
 GPtrArray* sbtab_get_column(const sbtab_t *sbtab, const char *key){
   gchar** Key=g_strsplit(key," ",-1);
   guint n=g_strv_length(Key);
   GPtrArray *a=NULL;
   guint i=0;
-  while (!a && i<n){
-    a=g_hash_table_lookup(sbtab->col,Key[i++]);
+  GString *ref_key=g_string_sized_new(strlen(key)+2);
+  for (i=0;i<n;i++){
+    a=g_hash_table_lookup(sbtab->col,Key[i]);
+    if (a) break;
+  }
+  if(!a){
+    fprintf(stderr,
+	    "[%s] «%s» not found in «%s» trying keys as references: '>[…]'.\n",
+	    __func__,key,sbtab->TableName);
+    for (i=0;i<n;i++){
+      g_string_printf(ref_key,">%s",Key[i]);
+      a=g_hash_table_lookup(sbtab->col,ref_key->str);
+      if(a){
+	fprintf(stderr,
+		"[%s] warning: found «%s» as a reference «%s».\n",
+		__func__,Key[i],ref_key->str);
+	break;
+      }
+    }
   }
   if (a==NULL){
-    fprintf(stderr,"[sbtab_get_column] warning: lookup of «%s» in Table «%s» failed.\n",key,sbtab->TableName);
+    fprintf(stderr,
+	    "[%s] warning: lookup of key «%s» (and '>key') in Table «%s» failed.\n",
+	    __func__,key,sbtab->TableName);
   }
   g_strfreev(Key);
+  g_string_free(ref_key,TRUE);
   return a;
 }
 
