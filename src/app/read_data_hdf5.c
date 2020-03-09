@@ -1,6 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <assert.h>
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_linalg.h>
@@ -108,7 +105,7 @@ void* h5_to_gsl_int(hid_t g_id, const char *obj_name, const char* attr_name){
       H5LTread_dataset_int(g_id, obj_name, m->data);
       return m;
     default:
-      fprintf(stderr,"[%s] hdf5 data object has an invalid number of dimensions: %i.\n",__func__,rank);
+      fprintf(stderr,"[%s] currently, the number of dimensions should be either 1 or 2, got: %i.\n",__func__,rank);
       abort();      
     }
   }
@@ -142,7 +139,7 @@ void* h5_to_gsl(hid_t g_id, const char *obj_name, const char* attr_name){
       H5LTread_dataset_double(g_id, obj_name, m->data);
       return m;
     default:
-      fprintf(stderr,"[%s] hdf5 data object has an invalid number of dimensions: %i.\n",__func__,rank);
+      fprintf(stderr,"[%s] currently, the number of dimensions should be either 1 or 2, got: %i.\n",__func__,rank);
       abort();
     }
   }
@@ -363,20 +360,20 @@ load_event_block
   assert(mp->model_x.name);
 
   int rank;
-  printf("[%s] getting dataset size («%s»).\n",__func__,name); fflush(stdout);
+  // printf("[%s] getting dataset size («%s»).\n",__func__,name); fflush(stdout);
   herr_t status=H5LTget_dataset_ndims(g_id, name, &rank);
   assert(rank<=2 && rank>0);
   hsize_t size[2]; // rank is always 1 or 2 in all of our cases, so 2 always works;
   status|=H5LTget_dataset_info(g_id,name,size,NULL,NULL);
-  printf("[%s] size of «%s» is %lli × %lli.\n",__func__,name,size[0],size[1]); fflush(stdout);
+  // printf("[%s] size of «%s» is %lli × %lli.\n",__func__,name,size[0],size[1]); fflush(stdout);
   assert(status>=0); // I think that hdf5 functions return negative error codes
   
   char *ExperimentName=h5_to_char(g_id, name, "ExperimentName");
-  printf("[%s] affected experiment «%s».\n",__func__,ExperimentName);
-  fflush(stdout);
+  // printf("[%s] affected experiment «%s».\n",__func__,ExperimentName);
+  //fflush(stdout);
   char *TargetName=h5_to_char(g_id, name, "TargetName");
-  printf("[%s] affected variable «%s».\n",__func__,TargetName);
-  fflush(stdout);
+  //printf("[%s] affected variable «%s».\n",__func__,TargetName);
+  //fflush(stdout);
   gsl_matrix *value=h5_to_gsl(g_id,name,NULL);
   assert(value);
   gsl_vector *time=h5_to_gsl(g_id,name,"Time");
@@ -393,14 +390,14 @@ load_event_block
      mp->model_x.name,mp->model_x.size
      );
   assert(target);
-  printf("[%s] event targets:\n",__func__);
+  //printf("[%s] event targets:\n",__func__);
   gsl_vector_int_fprintf(stdout,target,"%i");
   int index=-1;
   int major, minor;
   status|=H5LTget_attribute_int(g_id,name,"index",&index);
   status|=H5LTget_attribute_int(g_id,name,"AffectsMajorIndex",&major);
   status|=H5LTget_attribute_int(g_id,name,"AffectsMinorIndex",&minor);
-  printf("[%s] Experiment: %i (%i.%i).\n",__func__,index,major,minor);
+  //printf("[%s] Experiment: %i (%i.%i).\n",__func__,index,major,minor);
   fflush(stdout);
   assert(status>=0);
   assert(index>=0);
