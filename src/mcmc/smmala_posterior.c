@@ -19,6 +19,55 @@
 #include "omp.h"
 int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *dl, gsl_matrix *FI);
 
+
+int approximate_sens(ode_solver *solver, double tout, gsl_vector *y, gsl_vector *fy, gsl_matrix *yS, gsl_matrix *fyS, sensitivity_approximation *a){
+  gsl_vector_view eJt_diag;
+  gsl_vector_view jacp_row;
+  int status;
+  assert(yS);
+  int P=yS->size1;
+  int i;
+  gsl_matrix *InverseJx_Jp;
+  ode_solver_get_jac(solver,tout,y->data,fy->data,a->jacobian_y->data);
+  ode_solver_get_jacp(solver,tout,y->data,fy->data,a->jacobian_p->data);
+  gsl_matrix_transpose(a->jacobian_y); // now jacobian_y(i,j)=df[i]/dy[j];
+  gsl_matrix_memcpy(a->Jt,a->jacobian_y);
+  gsl_matrix_scale(a->Jt,tout);        // this is now Jacobian*t    
+  status=gsl_linalg_QR_decomp(a->jacobian_y,a->tau);
+  if (status!= GSL_SUCCESS){
+    fprintf(stderr,"[%s] QR decomposition failed. %s\n",__func__,gsl_strerror(status));      
+  } 
+  for (i=0;i<P;i++){
+    jacp_row=gsl_matrix_row(a->jacobian_p,i);
+    // solve in place; jac_p will contain the solution
+    status=gsl_linalg_QR_svx(a->jacobian_y, a->tau, &jacp_row.vector);
+    if (status!=GSL_SUCCESS) {
+      fprintf(stderr,"[%s] QR solution of linear equations failed: %s. Using minimum Norm solution.\n",__func__,gsl_strerror(status));
+      if (gsl_linalg_QR_lssolve(a->jacobian_y, a->tau, &jacp_row.vector, a->x, a->r)!=GSL_SUCCESS) {
+	fprintf(stderr,"[%s] QR lssolve also failed. exiting.\n",__func__);
+	abort();
+      } else {
+	gsl_vector_memcpy(&jacp_row.vector,a->x);
+      }	
+    }
+  }
+  status=gsl_linalg_exponential_ss(a->Jt,a->eJt,GSL_PREC_SINGLE);
+  if (status!=GSL_SUCCESS){
+    // this is not yet considered stable by GSL :/
+    fprintf(stderr,"[%s] matrix exponential failed. %s\n",__func__,gsl_strerror(status));
+    return GSL_FAILURE;
+  }
+  eJt_diag=gsl_matrix_diagonal(a->eJt);
+  gsl_vector_add_constant(&eJt_diag.vector,-1.0);
+  if (gsl_blas_dgemm(CblasNoTrans, CblasTrans,1.0,a->jacobian_p,a->eJt,1.0,yS)!=GSL_SUCCESS){
+    fprintf(stderr,"[%s] dge Matrix·Matrix failed.\n",__func__);
+    return GSL_FAILURE;
+  }
+  return GSL_SUCCESS;
+}
+
+
+
 int ode_solver_process_sens(ode_solver *solver, double tout,
 			    gsl_vector *y, gsl_vector* fy,
 			    gsl_matrix *yS, gsl_matrix *fyS,
@@ -28,67 +77,16 @@ int ode_solver_process_sens(ode_solver *solver, double tout,
   
   if (ode_model_has_sens(model)){
     ode_solver_get_sens(solver, tout, yS->data);
-  }  else {
-    // printf("approximating sensitivity\n"); fflush(stdout);
-    // approximate sensitivities using steady state assumptions;
-    gsl_vector_view eJt_diag;
-    //gsl_permutation *permutation;
-    gsl_vector_view jacp_row;
-    //int signum;
-    int status;
-    //int N=ode_model_getN(model);
-    int P=ode_model_getP(model);
-    int i;
-    // get jacobian
-    ode_solver_get_jac(solver,tout,y->data,fy->data,a->jacobian_y->data);
-    ode_solver_get_jacp(solver,tout,y->data,fy->data,a->jacobian_p->data);
-    gsl_matrix_transpose(a->jacobian_y); // now jacobian_y(i,j)=df[i]/df[j];
-    //gsl_printf("Jac_y",a->jacobian_y,1);
-    gsl_matrix_memcpy(a->Jt,a->jacobian_y);
-    gsl_matrix_scale(a->Jt,tout);           // this is now Jacobian*t    
-    // each row of jacp is a different parameter; row1 is df[i]/dp1
-    status=gsl_linalg_QR_decomp(a->jacobian_y,a->tau);
-    //    status=gsl_linalg_LU_decomp(jacobian_y, permutation, &signum);
-    if (status!= GSL_SUCCESS){
-      fprintf(stderr,"[sens approx] QR decomposition failed. %s\n",gsl_strerror(status));      
-    } 
-    for (i=0;i<P;i++){
-      jacp_row=gsl_matrix_row(a->jacobian_p,i);
-      // solve in place; jac_p will contain the solution
-      status=gsl_linalg_QR_svx(a->jacobian_y, a->tau, &jacp_row.vector);
-      if (status!=GSL_SUCCESS) {
-	fprintf(stderr,"[sens approx] QR solution of linear equations failed: %s. Using minimum Norm solution.\n",gsl_strerror(status));
-	if (gsl_linalg_QR_lssolve(a->jacobian_y, a->tau, &jacp_row.vector, a->x, a->r)!=GSL_SUCCESS) {
-	  fprintf(stderr,"[sens approx] QR lssolve also failed. exiting.\n");
-	  exit(-1);
-	} else {
-	  gsl_vector_memcpy(&jacp_row.vector,a->x);
-	}	
-      }
-    }
-    status=gsl_linalg_exponential_ss(a->Jt,a->eJt,GSL_PREC_SINGLE);
-    if (status!=GSL_SUCCESS){
-      // this is not yet considered stable by GSL :/
-      fprintf(stderr,"[sens approx] matrix exponential failed. %s\n",gsl_strerror(status));
-    }
-    eJt_diag=gsl_matrix_diagonal(a->eJt);
-    gsl_vector_add_constant(&eJt_diag.vector,-1.0);
-    if (gsl_blas_dgemm(CblasNoTrans, CblasTrans,1.0,a->jacobian_p,a->eJt,1.0,yS)!=GSL_SUCCESS){
-      fprintf(stderr,"[sens approx] dge Matrix·Matrix failed.\n");
-    }
-    //gsl_permutation_free(permutation);
-  } // end if has sens
-  
+  } else {
+    approximate_sens(solver,tout,y,fy,yS,fyS,a);
+  }  
   if (ode_model_has_funcs_sens(model)){
     ode_solver_get_func_sens(solver, tout, y->data, yS->data, fyS->data);
-  } // end if has func sens
+  }
   return GSL_SUCCESS;
 }
-//ode_solver_step(solver, gsl_vector_get(t,j), y, fy, yS, fyS, a);
+
 int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy, gsl_matrix *yS, gsl_matrix *fyS, sensitivity_approximation *a){
-  /* solves ODE for parameter vector p;
-   * returns state vectors y
-   */
   double tout;
   ode_model *model;
   model=solver->odeModel;
@@ -96,21 +94,14 @@ int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy,
 
   if (CVerror!=CV_SUCCESS) {
     fprintf(stderr, "ODE solver failed with ERROR = %i.\n",CVerror);
-    // return a rejection message; the Likelihood is not defined for this argument;
     return GSL_EDOM;
   }
-  // get sensitivities and output function values for the calculated ODE solutions
   if (ode_model_has_funcs(model)) {
-    //printf("obtaining functions: "); fflush(stdout);
     ode_solver_get_func(solver, tout, y->data, fy->data);
-    //gsl_vector_fprintf(stdout,fy,"%f, ");
-    //printf("..done\n"); fflush(stdout);
-  }
-  else {
+  } else {
     fprintf(stderr,"ode model has no output functions");
     exit(-1);
   }
-  //printf("obtaining sensitivities.\n"); fflush(stdout);
   ode_solver_process_sens(solver, tout, y, fy, yS, fyS, a);
   return GSL_SUCCESS;
 }

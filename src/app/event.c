@@ -26,7 +26,7 @@ event_sub_list
   assert(event->time->size == event->value->size1);
   size_t first_TP_after[N]; // first time point of measurement after an event
   /* find out where events belong in the timeline */
-  printf("[%s] number of events: %li\n",__func__,N);
+  //printf("[%s] number of events: %li\n",__func__,N);
   for (i=0;i<N;i++){
     j=0;
     et=gsl_vector_get(event->time,i);
@@ -43,11 +43,11 @@ event_sub_list
       /* count how many events occur right before time point j*/
       if (first_TP_after[i]==j) K[j]++;
     }
-    printf("[%s] %li event%c occur%c before TimePoint %li (t=%g)\n",
-	   __func__,K[j],
-	   K[j]>1?'s':' ',
-	   K[j]==1?'s':' ',
-	   j,gsl_vector_get(t,j));
+    /* printf("[%s] %li event%c occur%c before TimePoint %li (t=%g)\n", */
+    /* 	   __func__,K[j], */
+    /* 	   K[j]>1?'s':' ', */
+    /* 	   K[j]==1?'s':' ', */
+    /* 	   j,gsl_vector_get(t,j)); */
     assert(K[j]<=N);
   }
   size_t k=0;
@@ -65,7 +65,7 @@ event_sub_list
     }
     k=K[j];
   }
-  printf("[%s] done.\n",__func__);
+  //printf("[%s] done.\n",__func__);
   return EXIT_SUCCESS;
 }
 
@@ -267,7 +267,7 @@ event_row_link
   e->t=gsl_vector_get(event->time_before_t[point],row);
   e->value_row=gsl_matrix_row(event->val_before_t[point],row);
   e->value=&(e->value_row.vector);
-  printf("[%s] linking t=%g (%li variable targets before time point %li).\n",__func__,e->t,e->value->size,point);
+  //printf("[%s] linking t=%g (%li variable targets before time point %li).\n",__func__,e->t,e->value->size,point);
   fflush(stdout);
   return e;
 }
@@ -293,7 +293,7 @@ void event_push
   event_row_t *e; /* current event pointer */
   event_row_t *n; /* new event */
   event_row_t **p; /* a pointer to n's parent.next component */
-  printf("[%s] inserting %li events into linked list.\n",__func__,event_table->time->size);
+  //printf("[%s] inserting %li events into linked list.\n",__func__,event_table->time->size);
   assert(single);
   for (i=0;i<time->size;i++){
     assert(event_table->time_before_t && event_table->time_before_t[i]);
@@ -309,9 +309,9 @@ void event_push
       n->next=e;
       *p=n;
     }
-    list_print(single[i]);
+    //list_print(single[i]);
   }
-  printf("[%s] done.\n",__func__);
+  //printf("[%s] done.\n",__func__);
 }
 
 
@@ -345,13 +345,13 @@ event_convert_to_arrays
 {
   size_t j,L;
   int i;
-  printf("[%s] converting %li linked lists to arrays.\n",__func__,T); fflush(stdout);
+  //printf("[%s] converting %li linked lists to arrays.\n",__func__,T); fflush(stdout);
   before_measurement **b=calloc(T,sizeof(before_measurement*));
   event_row_t *p;
   if (single){
     for (j=0;j<T;j++){
       L=list_length(single[j]);
-      printf("[%s] list %li has length %li.\n",__func__,j,L); 
+      //printf("[%s] list %li has length %li.\n",__func__,j,L); 
       b[j]=event_array_alloc(L);
       p=single[j];
       i=L-1;

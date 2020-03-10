@@ -157,17 +157,9 @@ load_stdv_block(hid_t g_id, /*group id (hdf5)*/
 		const H5L_info_t *info, /*info struct, as defined in hdf5 API*/
 		void *op_data)/*model parameter struct, contains experiment array*/{
   ode_model_parameters *mp=op_data;
-  int rank;
-  herr_t status=H5LTget_dataset_ndims(g_id, name, &rank);
-  hsize_t *size;
+  herr_t status=0;
   int index=-1;
-  size=malloc(sizeof(size_t)*rank);
-  status|=H5LTget_dataset_info(g_id,name,size,NULL,NULL);
-  assert(status>=0); // I think that hdf5 functions return negative error codes
-  gsl_matrix *stdv_block;
-  stdv_block=gsl_matrix_alloc(size[0],size[1]);
-  status|=H5LTread_dataset_double(g_id, name, stdv_block->data);
-
+  gsl_matrix *stdv_block=h5_to_gsl(g_id,name,NULL);
   int major, minor;
   //printf("[load_data_block] checking experiment's index: ");
   status|=H5LTget_attribute_int(g_id,name,"index",&index); //printf(" %i ",index); assert(status>=0);
@@ -175,16 +167,6 @@ load_stdv_block(hid_t g_id, /*group id (hdf5)*/
   status|=H5LTget_attribute_int(g_id,name,"minor",&minor); //printf("%i",minor);
   assert(status>=0);
   assert(index>=0);
-  
-  /* This is a debugging comparison by name using scanf. Not necessary.
-   */
-  //int i,nout=0;
-  //printf("[load_stdv_block] the current hdf5 «name» is: %s\n",name);
-  //nout=sscanf(name,"sd_data_block_%d",&i);
-  //printf("[load_stdv_block] nout=%d; the retrieved stdv index is: %i\n",nout,index);
-  //assert(nout==1);
-  //assert(i==index);
-  
   if (index < mp->size->C && index >= 0){
     assert(mp->E[index]->sd_data_block==NULL);
     mp->E[index]->sd_data_block=stdv_block;
@@ -192,7 +174,6 @@ load_stdv_block(hid_t g_id, /*group id (hdf5)*/
     fprintf(stderr,"[load_stdv_block] error: experiment index is larger than number ofexperiments (simulation units).\n");
     exit(-1);
   }
-  free(size);
   return status>=0?0:-1;  
 }
 
@@ -207,56 +188,29 @@ load_data_block(hid_t g_id,
 		const H5L_info_t *info,
 		void *op_data)/*ode model parameters, contains experiment array E[]*/{
   ode_model_parameters *mp=op_data;
-  int rank;
-  herr_t status=H5LTget_dataset_ndims(g_id, name, &rank);
-  hsize_t *size;
-  size=malloc(sizeof(hsize_t)*rank);
-  status|=H5LTget_dataset_info(g_id,name,size,NULL,NULL);
-  assert(status>=0); // I think that hdf5 functions return negative error codes, but it's undocumented
-  gsl_matrix *data_block;
-  //printf("[load_data_block] loading data of size %lli×%lli.\n",size[0],size[1]);
-  fflush(stdout);
-  data_block=gsl_matrix_alloc((size_t) size[0],(size_t) size[1]);
+  //int rank;
+  herr_t status=0;
+  gsl_matrix *data_block=h5_to_gsl(g_id,name,NULL);
   assert(data_block!=NULL && data_block->data !=NULL);  
-  status|=H5LTread_dataset_double(g_id, name, data_block->data);
-  assert(status>=0);
   //printf("[load_data_block] gsl_matrix(%li,%li) loaded.\n",data_block->size1,data_block->size2);
-  fflush(stdout);
+  //  fflush(stdout);
   int index, major, minor, lflag;
-  //printf("[load_data_block] checking experiment's index: ");
-  status|=H5LTget_attribute_int(g_id,name,"index",&index); //printf(" %i ",index); assert(status>=0);
-  status|=H5LTget_attribute_int(g_id,name,"major",&major); //printf("%i.",major); assert(status>=0);
-  status|=H5LTget_attribute_int(g_id,name,"minor",&minor); //printf("%i",minor); assert(status>=0);
-  status|=H5LTget_attribute_int(g_id,name,"LikelihoodFlag",&lflag); //printf(" %i ",lflag);
-  //printf("\n");
+  status|=H5LTget_attribute_int(g_id,name,"index",&index);
+  status|=H5LTget_attribute_int(g_id,name,"major",&major);
+  status|=H5LTget_attribute_int(g_id,name,"minor",&minor);
+  status|=H5LTget_attribute_int(g_id,name,"LikelihoodFlag",&lflag);
   assert(status>=0);
-  hsize_t T,U; // measurement time, lenght of input vector, number of unknown parameters
-  status|=H5LTget_attribute_ndims(g_id,name,"time",&rank);
-  //printf("[load_data_block] checking experiment's measurement times(%i).\n",rank);
-  fflush(stdout);
-  assert(status>=0);
-  H5T_class_t type_class;
-  size_t      type_size;
-  gsl_vector *time, *input;
-  
-  //  if (rank==1){    
-  status|=H5LTget_attribute_info(g_id,name,"time",&T,&type_class,&type_size);
-  assert(status>=0);    
-  //printf("[load_data_block] loading simulation unit %i; Experiment %i.%i with %lli measurements\n",index,major,minor,T);    
-  fflush(stdout);
-  time=gsl_vector_alloc((size_t) T);
-  H5LTget_attribute_double(g_id,name,"time",time->data);
-  //}
-  H5LTget_attribute_info(g_id,name,"input",&U,&type_class,&type_size);
-  //printf("[load_data_block] input size: %i.\n",(int) U);
-  input=gsl_vector_alloc((size_t) U);
-  H5LTget_attribute_double(g_id,name,"input",input->data);
+  gsl_vector *time=h5_to_gsl(g_id,name,"time");
+  gsl_vector *input=h5_to_gsl(g_id,name,"input");
   
   // normalisation properties
   int NormaliseByExperiment;
   int NormaliseByTimePoint;
   gsl_vector_int *NormaliseByOutput=NULL;
   herr_t attr_err;
+  H5T_class_t type_class;
+  size_t type_size;
+
   hid_t d_id=H5Dopen2(g_id, name, H5P_DEFAULT);
   if (H5LTfind_attribute(d_id,"NormaliseByExperiment")){
     attr_err=H5LTget_attribute_int(g_id, name,"NormaliseByExperiment",&NormaliseByExperiment);
@@ -302,7 +256,6 @@ load_data_block(hid_t g_id,
     fprintf(stderr,"[load_experiment_block] error: experiment index is larger than number ofexperiments (simulation units).\n");
     exit(-1);
   }
-  free(size);
   return status>=0?0:-1;
 }
 
@@ -368,7 +321,7 @@ load_event_block
   // printf("[%s] size of «%s» is %lli × %lli.\n",__func__,name,size[0],size[1]); fflush(stdout);
   assert(status>=0); // I think that hdf5 functions return negative error codes
   
-  char *ExperimentName=h5_to_char(g_id, name, "ExperimentName");
+  //char *ExperimentName=h5_to_char(g_id, name, "ExperimentName");
   // printf("[%s] affected experiment «%s».\n",__func__,ExperimentName);
   //fflush(stdout);
   char *TargetName=h5_to_char(g_id, name, "TargetName");
