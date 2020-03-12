@@ -27,19 +27,21 @@ int approximate_sens(ode_solver *solver, double tout, gsl_vector *y, gsl_vector 
   assert(yS);
   int P=yS->size1;
   int i;
-  gsl_matrix *InverseJx_Jp;
+
+  /* CVODE stores matrices column wise, but gsl stores them row wise */
+  /* so copying values from CVODE to gsl transposes a matrix */
   ode_solver_get_jac(solver,tout,y->data,fy->data,a->jacobian_y->data);
   ode_solver_get_jacp(solver,tout,y->data,fy->data,a->jacobian_p->data);
   gsl_matrix_transpose(a->jacobian_y); // now jacobian_y(i,j)=df[i]/dy[j];
   gsl_matrix_memcpy(a->Jt,a->jacobian_y);
-  gsl_matrix_scale(a->Jt,tout);        // this is now Jacobian*t    
+  gsl_matrix_scale(a->Jt,tout-(a->t0));        // this is now Jacobian*t    
   status=gsl_linalg_QR_decomp(a->jacobian_y,a->tau);
   if (status!= GSL_SUCCESS){
     fprintf(stderr,"[%s] QR decomposition failed. %s\n",__func__,gsl_strerror(status));      
   } 
   for (i=0;i<P;i++){
     jacp_row=gsl_matrix_row(a->jacobian_p,i);
-    // solve in place; jac_p will contain the solution
+    // solve in place; jac_p will contain the solution: jac_y\jac_p
     status=gsl_linalg_QR_svx(a->jacobian_y, a->tau, &jacp_row.vector);
     if (status!=GSL_SUCCESS) {
       fprintf(stderr,"[%s] QR solution of linear equations failed: %s. Using minimum Norm solution.\n",__func__,gsl_strerror(status));
@@ -51,6 +53,10 @@ int approximate_sens(ode_solver *solver, double tout, gsl_vector *y, gsl_vector 
       }	
     }
   }
+  gsl_matrix *L=a->jacobian_p;           /* jac_y\jac_p in matlab syntax */
+  //gsl_matrix *R=gsl_matrix_alloc(s1,s2); 
+  gsl_matrix_memcpy(a->R,L);
+  gsl_matrix_add(a->R,yS);
   status=gsl_linalg_exponential_ss(a->Jt,a->eJt,GSL_PREC_SINGLE);
   if (status!=GSL_SUCCESS){
     // this is not yet considered stable by GSL :/
@@ -58,11 +64,15 @@ int approximate_sens(ode_solver *solver, double tout, gsl_vector *y, gsl_vector 
     return GSL_FAILURE;
   }
   eJt_diag=gsl_matrix_diagonal(a->eJt);
+  gsl_matrix_memcpy(yS,L);
   gsl_vector_add_constant(&eJt_diag.vector,-1.0);
-  if (gsl_blas_dgemm(CblasNoTrans, CblasTrans,1.0,a->jacobian_p,a->eJt,1.0,yS)!=GSL_SUCCESS){
-    fprintf(stderr,"[%s] dge Matrix·Matrix failed.\n",__func__);
+  if (gsl_blas_dgemm(CblasNoTrans, CblasTrans,1.0,a->R,a->eJt,-1.0,yS)!=GSL_SUCCESS){
+    fprintf(stderr,"[%s] general double precision  Matrix·Matrix failed.\n",__func__);
     return GSL_FAILURE;
   }
+  //gsl_matrix_scale(InverseJy_Jp,-1.0);
+  //gsl_matrix_add(yS,InverseJy_Jp);
+  //gsl_matrix_free(R);
   return GSL_SUCCESS;
 }
 
@@ -103,6 +113,7 @@ int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy,
     exit(-1);
   }
   ode_solver_process_sens(solver, tout, y, fy, yS, fyS, a);
+  a->t0=tout; /* previous time for the next iteration */
   return GSL_SUCCESS;
 }
 
@@ -448,6 +459,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
   for (c=0; c<C; c++){/* loop over different experimental conditions */
     model=solver[c]->odeModel;    
     a=mp->S_approx[c];
+    a->t0=mp->t0;
     assert(mp->E[c]->p);
     gsl_vector_memcpy(mp->E[c]->p,mp->p); // events may modify this vector
     /* each loop iteration gets a different input vector, because an
@@ -458,11 +470,15 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
     ode_solver_reinit(solver[c], mp->t0, mp->E[c]->init_y->data, N,
 		      mp->E[c]->p->data,
 		      mp->E[c]->p->size);
-    if (ode_model_has_sens(model)){
-      ode_solver_reinit_sens(solver[c], mp->E[c]->yS0->data, P, N);
-    }
     t=mp->E[c]->t;
     T=t->size;
+
+    if (ode_model_has_sens(model)){
+      ode_solver_reinit_sens(solver[c], mp->E[c]->yS0->data, P, N);
+    } else {
+      for (j=0;j<T;j++) gsl_matrix_set_zero(mp->E[c]->yS[j]);
+    }
+
     for (j=0; j<T; j++){
       y=mp->E[c]->y[j]; //printf("y: %i, %zi\n",mp->size->N,y->size);
       fy=mp->E[c]->fy[j]; //printf("fy: %i, %zi\n",mp->size->F,fy->size);

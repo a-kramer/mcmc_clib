@@ -48,6 +48,8 @@ typedef struct {
 typedef struct {
   gsl_matrix *jacobian_y;
   gsl_matrix *jacobian_p;
+  double t0;
+  gsl_matrix *R;
   gsl_matrix *eJt;
   gsl_matrix *Jt;
   gsl_vector *tau;

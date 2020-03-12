@@ -135,6 +135,7 @@ int ode_model_parameters_alloc(ode_model_parameters *omp){
   for(i=0;i<C;i++){
     omp->S_approx[i]->jacobian_y=gsl_matrix_alloc(N,N);
     omp->S_approx[i]->jacobian_p=gsl_matrix_alloc(P,N);
+    omp->S_approx[i]->R=gsl_matrix_alloc(P,N); /* working memory */
     omp->S_approx[i]->tau=gsl_vector_alloc(N);
     omp->S_approx[i]->x=gsl_vector_alloc(N);
     omp->S_approx[i]->r=gsl_vector_alloc(N);
