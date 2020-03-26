@@ -83,16 +83,21 @@ int main(int argc, char*argv[]){
   
   sb_tab_file=malloc(sizeof(regex_t));
   h5_file=malloc(sizeof(regex_t));
-  regcomp(sb_tab_file,".*[.][tc]sv",REG_EXTENDED);
-  regcomp(h5_file,".*[.]h5",REG_EXTENDED);
+  regcomp(sb_tab_file,".*[.]tsv$",REG_EXTENDED);
+  regcomp(h5_file,".*[.]h5$",REG_EXTENDED);
   sbtab=g_ptr_array_new_full(3,sbtab_free);
   sbtab_hash=g_hash_table_new(g_str_hash, g_str_equal);
   for (i=1;i<argc;i++){
     if (regexec(sb_tab_file,argv[i],0,NULL,0)==0) {
-      printf("[%s] parsing sbtab file %s.\n",__func__,argv[i]);
+      printf("[%s] parsing sbtab file %s (arg %i of %i).\n",__func__,argv[i],i,argc);
+      fflush(stdout);
       table=sbtab_from_tsv(argv[i]);
-      g_ptr_array_add(sbtab,table);
-      g_hash_table_insert(sbtab_hash,table->TableName,table);
+      if (table){
+	g_ptr_array_add(sbtab,table);
+	g_hash_table_insert(sbtab_hash,table->TableName,table);
+	printf("[%s] added table «%s» with title: «%s».\n",__func__,table->TableName,table->TableTitle);
+	fflush(stdout);
+      }
     } else if (regexec(h5_file,argv[i],0,NULL,0)==0) {
       H5FileName=g_strdup(argv[i]);
     } else printf("unknown option «%s».\n",argv[i]);
@@ -102,11 +107,14 @@ int main(int argc, char*argv[]){
   }
   guint n_tab=sbtab->len;
   printf("[%s] %i tables read: ",__func__,n_tab);
+  fflush(stdout);
   for (i=0;i<n_tab;i++){
     table=g_ptr_array_index(sbtab,i);
     printf(" %s ",table->TableName);
+    fflush(stdout);
   }
   printf("\n");
+  fflush(stdout);
   hid_t file_id;
   file_id = H5Fcreate(H5FileName, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
   status |= process_data_tables(file_id, sbtab, sbtab_hash);
@@ -1013,12 +1021,14 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   status |= H5Gclose(data_group_id);
   status |= H5Gclose(sd_group_id);
   /* process event tables,because here we have access to E_default_input */
-  h5block_t *h5event=h5block_alloc(2);
-  h5event->file_id=file_id;
-  h5event->group_id = H5Gcreate2(file_id, "/event", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  event_foreach_experiment(E_table, h5event, E_default_input, Input, SU_index, sbtab_hash);
-  status |= H5Gclose(h5event->group_id);
-  h5block_free(h5event);
+  if (sbtab_get_column(E_table,"!Event")){
+    h5block_t *h5event=h5block_alloc(2);
+    h5event->file_id=file_id;
+    h5event->group_id = H5Gcreate2(file_id, "/event", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    event_foreach_experiment(E_table, h5event, E_default_input, Input, SU_index, sbtab_hash);
+    status |= H5Gclose(h5event->group_id);
+    h5block_free(h5event);
+  }
   return status;
 }
 

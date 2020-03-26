@@ -545,12 +545,11 @@ append_meta_properties(hdf5block_t *h5block,/*hdf5 file ids*/
   }
   if (i!=omp_n){
     fprintf(stderr,"[append_meta_properties] warning: finding out number of threads possibly failed reduction of (n×1: %i) != get_num_threads():%i.\n",i,omp_n);
-  } else {
-    h5block->size[0]=1;
-    h5block->size[1]=1;
-    status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_THREADS",1,h5block->size,&omp_n);
-    status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_PROCS",1,h5block->size,&omp_np);
-  }
+  } 
+  h5block->size[0]=1;
+  h5block->size[1]=1;
+  status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_THREADS",1,h5block->size,&omp_n);
+  status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_PROCS",1,h5block->size,&omp_np);
   return status;
 }
 

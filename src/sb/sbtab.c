@@ -15,10 +15,12 @@ sbtab_t* sbtab_alloc(gchar **keys){
   guint DefaultSize=32;
   if (keys!=NULL){
     n=g_strv_length(keys);
-    printf("[sbtab_alloc] received %i keys.\n",n);
+    printf("[%s] received %i keys.\n",__func__,n);
+    fflush(stdout);
     for (i=0;i<n;i++) {      
       g_strstrip(keys[i]);
       printf("\t\t\t key(%i) '%s'.\n",i,keys[i]);
+      fflush(stdout);
     }    
     sb=malloc(sizeof(sbtab_t));                    // allocate the sbtab_t element
     sb->key=keys;                                  // store the keys as column labels
@@ -34,6 +36,8 @@ sbtab_t* sbtab_alloc(gchar **keys){
       g_hash_table_insert(sb->col,g_strdup(keys[i]),sb->column[i]);
     }
   }
+  printf("[%s] done.\n",__func__);
+  fflush(stdout);
   return sb;
 }
 
@@ -244,9 +248,39 @@ void sbtab_free(void *tab){
 }
 
 
+char *MandatoryTableProperty(regex_t *RE,char *s,const char *prop){
+  char error_buffer[128];
+  regmatch_t match[2];
+  char *TableProperty;
+  int EC=regexec(RE,s,2,match,0);
+  if (EC==0){
+    TableProperty=dup_match(&match[1],s);
+    printf("Table%s: «%s»\n",prop,TableProperty); fflush(stdout);
+  } else {
+    regerror(EC,RE,error_buffer,128);
+    perror(error_buffer);
+    fprintf(stderr,"[%s] error: Table%s is missing.\n",__func__,prop);
+    abort();
+  }
+  return TableProperty;  
+}
+
+void print_keys(gchar **keys){
+  assert(keys);
+  int i,k=g_strv_length(keys);
+  printf("[%s] %i headers:",__func__,k); fflush(stdout);
+  for (i=0;i<k;i++) {
+    assert(keys[i]);
+    //g_strstrip(keys[i]);
+    printf("«%s» ",keys[i]);
+    fflush(stdout);
+  }
+  printf("done.\n");
+  fflush(stdout);
+}
+
 sbtab_t* sbtab_from_tsv(char *tsv_file){
   FILE* fid;
-  int i;
   char *s; // string to hold read in lines
   size_t n_s=DEFAULT_STR_LENGTH;
   ssize_t m_s;
@@ -259,7 +293,7 @@ sbtab_t* sbtab_from_tsv(char *tsv_file){
   int r_status=0;
   gchar **keys;
   sbtab_t *sbtab=NULL;
-  
+  int sbtab_header_read=FALSE;
   gchar fs[]="\t";
   s=malloc(sizeof(char)*n_s); // a buffer to read strings from file via getline
   r_status|=egrep(&EmptyLine,"^[[:blank:]]*$");
@@ -285,43 +319,24 @@ sbtab_t* sbtab_from_tsv(char *tsv_file){
 	  a=match[0].rm_so;
 	  s[a]='\0';
 	}
-	if (regexec(&SBtab,s,0,NULL,0)==0){
-	  if (regexec(&RE_TableName,s,2,match,0)==0){
-	    TableName=dup_match(&match[1],s);
-	    printf("TableName: «%s»\n",TableName); fflush(stdout);
+	if (sbtab_header_read){
+	  if (regexec(&SBkeys,s,2,match,0)==0){
+	    keys=g_strsplit_set(s,fs,-1);
+	    print_keys(keys);
+	    sbtab=sbtab_alloc(keys);
+	  } else if (regexec(&EmptyLine,s,0,NULL,0)==0){
+	    printf("[%s] skipping empty line «%s».\n",__func__,s);
 	  } else {
-	    fprintf(stderr,"[%s] error: TableName is missing.\n",__func__);
-	    exit(-1);
+	    assert(sbtab);
+	    sbtab_append_row(sbtab,s,fs);
 	  }
-	  if (regexec(&RE_TableType,s,2,match,0)==0){
-	    TableType=dup_match(&match[1],s);
-	    printf("TableType: «%s»\n",TableType); fflush(stdout);
-	  }else {
-	    fprintf(stderr,"[%s] warning: TableType is missing.\n",__func__);
-	  }
-	  if (regexec(&RE_TableTitle,s,2,match,0)==0){
-	    TableTitle=dup_match(&match[1],s);
-	    printf("TableTitle: «%s»\n",TableTitle); fflush(stdout);
-	  }else {
-	    fprintf(stderr,"[%s] warning: TableTitle is missing.\n",__func__);
-	  }	
-	} else if (regexec(&SBkeys,s,2,match,0)==0){
-	  keys=g_strsplit_set(s,fs,-1);
-	  int k=g_strv_length(keys);
-	  //print all headers
-	  printf("[%s] %i headers:",__func__,k); fflush(stdout);
-	  for (i=0;i<k;i++) {
-	    g_strstrip(keys[i]);
-	    if (keys[i]) printf("«%s» ",keys[i]);
-	    else fprintf(stderr,"key[%i/%i] is NULL. ",i,k); 
-	  }
-	  printf("done.\n");
-	  sbtab=sbtab_alloc(keys);
-	} else if (regexec(&EmptyLine,s,0,NULL,0)==0){
-	  printf("[%s] skipping empty line «%s».\n",__func__,s);
 	} else {
-	  assert(sbtab);
-	  sbtab_append_row(sbtab,s,fs);
+	  if (regexec(&SBtab,s,0,NULL,0)==0){
+	    sbtab_header_read=TRUE;
+	    TableName=MandatoryTableProperty(&RE_TableName,s,"Name");
+	    TableType=MandatoryTableProperty(&RE_TableType,s,"Type");
+	    TableTitle=MandatoryTableProperty(&RE_TableTitle,s,"Title");
+	  }
 	}
       }
     }
@@ -330,6 +345,7 @@ sbtab_t* sbtab_from_tsv(char *tsv_file){
       sbtab->TableName=TableName;
       sbtab->TableType=TableType;
     }
-  }  
+  }
   return sbtab;
 }
+
