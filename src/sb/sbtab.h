@@ -1,8 +1,12 @@
+#ifndef SBTAB_H
+#define SBTAB_H
 #include <stdlib.h>
 #include <stdio.h>
 #include <glib.h>
+#include <gsl/gsl_vector.h>
+#include <gsl/gsl_matrix.h>
 // "length" means: number of rows, for a table
-#define get_table_length(Table) ((Table && Table->column) ? Table->column[0]->len:0)
+#define table_length(Table) ((Table && Table->column) ? Table->column[0]->len:0)
 
 /* This struct stores a complete sbtab table.
  * Table{Name,Type,Title} are strings (*gchar)
@@ -34,3 +38,6 @@ int sbtab_get_row_index(const sbtab_t* sbtab, const gchar *ID);
 char *sbtab_get_field_by_rowID(const sbtab_t* sbtab, const gchar *ID, const gchar *RequestedColumn);
 gchar* sbtab_get(const sbtab_t *sbtab, const char *key, const size_t i);
 sbtab_t *sbtab_find_table_with(GHashTable *sbtab_hash, gchar *rowID);
+gsl_matrix* sbtab_columns_to_gsl_matrix(sbtab_t *table, GPtrArray *column_names, char *prefix, double default_value);
+gsl_vector* sbtab_column_to_gsl_vector(sbtab_t *table, gchar *column_name)
+#endif

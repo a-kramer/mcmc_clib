@@ -349,3 +349,71 @@ sbtab_t* sbtab_from_tsv(char *tsv_file){
   return sbtab;
 }
 
+/* This is a generic function to convert a column to a numeric vector
+ * Mor specific variants of this exist for some Quantities such as
+ * time-vectors and data-matrices. This one allows missing values.
+ */
+gsl_matrix* sbtab_columns_to_gsl_matrix(sbtab_t *table, GPtrArray *column_names, char *prefix, double default_value){
+  int i,j,n;
+  gchar *s,*r;
+  gchar *c;
+  double value;
+  GString *cname_str=g_string_sized_new(32);
+  /* figure out the sizes*/
+  int size[2];
+  size[0]=table->column[0]->len;
+  size[1]=column_names->len;
+  gsl_matrix *m=gsl_matrix_alloc(size[0],size[1]);
+  gsl_vector_view m_column;
+  /* */
+  GPtrArray *table_column;
+  for (i=0;i<column_names->len; i++){
+    m_column=gsl_matrix_column(m,i);
+    c=g_ptr_array_index(column_names,i);
+    g_string_assign(cname_str,c);
+    if (prefix) g_string_prepend(cname_str,prefix);
+    table_column=sbtab_get_column(table,cname_str->str);
+    if (table_column){
+      n=table_column->len;
+      for (j=0;j<n;j++){
+	s=g_ptr_array_index(column,j);
+	r=s;
+	value=strtod(s,&r);
+	if (s==r) value=NAN;
+	gsl_vector_set(&(m_column.vector),j,value);
+      }
+    }else{
+      gsl_vector_set_all(&(m_column.vector),default_value);
+    }
+  }
+  g_string_free(cname_str,TRUE);
+  return v;
+}
+
+/* This is a generic function to convert a column to a numeric vector
+ * Mor specific variants of this exist for some Quantities such as
+ * time-vectors and data-matrices. This one allows missing values.
+ */
+gsl_vector* sbtab_column_to_gsl_vector(sbtab_t *table,gchar *column_name){
+  int j,n;
+  GPtrArray *column;
+  gsl_vector *v;
+  gchar *s,*r;
+  double value;
+  column=sbtab_get_column(table,column_name);
+  if (column){
+    n=column->len;
+    v=gsl_vector_alloc(n);
+    for (j=0;j<n;j++){
+      s=g_ptr_array_index(column,j);
+      r=s;
+      value=strtod(s,&r);
+      if (s==r) value=NAN;
+      gsl_vector_set(v,j,value);
+    }
+  }else{
+    v=NULL;
+  }
+  return v;
+}
+
