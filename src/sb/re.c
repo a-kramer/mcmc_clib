@@ -38,3 +38,50 @@ int egrep(regex_t *RE, char *pattern){
   }  
   return EC;
 }
+
+void re_match_free(GString *data){
+  g_string_free(data,TRUE);
+}
+
+/*performs a regular expression match and stores all matches in an array of `GString`s */
+GPtrArray* /*array of GStrings with matches: 0 is the whole match, i>0 matched subexpressions (all are copies) */
+re_match
+(regex_t *RE, /* regular expression to match (compiled) */
+ const char *cs, /* string to perform match on */
+ int num_subexp) /* number of parethesised subexpressions */
+{
+  int i;
+  int num=num_subexp>0?num_subexp+1:1;
+  regmatch_t match[num];
+  char error_buffer[128];
+  GString *temp;
+  GPtrArray *m=g_ptr_array_new_full(num, re_match_free);
+  regoff_t a,b;
+  int length;
+  gchar *s;
+
+  int EC;
+  EC=regexec(RE, cs, num, match, REG_EXTENDED);
+  switch (EC){
+  case 0:
+    for (i=0;i<num;i++){
+      temp=g_string_sized_new(32);
+      a=match[i]->rm_so;
+      b=match[i]->rm_eo;
+      length=b-a;
+      g_string_append_len(temp,&(cs[a]),length);
+      g_ptr_array_add(temp);
+    }
+    break;
+  case REG_NOMATCH:
+    /* return empty match array */
+    for(i=0;i<num;i++) g_ptr_array_add(g_string_sized_new(0));
+    fprintf(stderr,"[%s] match failed.\n",__func__);
+    break;
+  default: 
+    regerror(EC,RE,error_buffer,128);
+    perror(error_buffer);
+    abort();   
+  }
+  return m;
+}

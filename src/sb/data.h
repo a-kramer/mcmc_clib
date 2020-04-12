@@ -3,9 +3,14 @@
 #include <glib.h>
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
-
+#include "sbtab.h"
 // Experiment Types
 typedef enum e_type {unknown_type,dose_response,time_series} experiment_type;
+typedef struct {
+  GArray *output;
+  Garray *time;
+  GArray *experiment;
+} normalisation_t;
 
 typedef struct data {
   int MajorIndex;
@@ -17,6 +22,7 @@ typedef struct data {
   gsl_vector_int NormaliseByOutput;
   gsl_matrix *measurement;
   gsl_matrix *noise;
+  gsl_vector *InitialValue;
 } data_t;
 
 

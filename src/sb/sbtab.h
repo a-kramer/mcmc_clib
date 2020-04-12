@@ -30,7 +30,8 @@ typedef struct {
 sbtab_t* sbtab_from_tsv(char *tsv_file);
 sbtab_t* sbtab_alloc(gchar **keys);
 int sbtab_append_row(const sbtab_t *sbtab, const gchar *data, const char *fs);
-GPtrArray* sbtab_get_column(const sbtab_t *sbtab, const char *key);
+GPtrArray* sbtab_find_column(const sbtab_t *sbtab, const char *key);
+int sbtab_find_row(sbtab_t *table, char *id);
 void sbtab_free(void *tab);
 sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names);
 GPtrArray* sbtab_get_tables(GHashTable *sbtab_hash, const gchar *TableNames);
@@ -40,4 +41,5 @@ gchar* sbtab_get(const sbtab_t *sbtab, const char *key, const size_t i);
 sbtab_t *sbtab_find_table_with(GHashTable *sbtab_hash, gchar *rowID);
 gsl_matrix* sbtab_columns_to_gsl_matrix(sbtab_t *table, GPtrArray *column_names, char *prefix, double default_value);
 gsl_vector* sbtab_column_to_gsl_vector(sbtab_t *table, gchar *column_name)
+void sbtab_update_gsl_matrix(gsl_matrix *A, sbtab_t *table, GPtrArray *column_names, char *prefix);
 #endif
