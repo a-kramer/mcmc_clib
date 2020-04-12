@@ -198,39 +198,35 @@ gchar* sbtab_get(const sbtab_t *sbtab, const char *key, const size_t i){
 }
 
 /* given one or more alternative column names, this function looks up the names in the given order until the first match. If no match is found `>` is prepended and the names are tried again.*/
-GPtrArray* sbtab_get_column(const sbtab_t *sbtab, const char *key){
+GPtrArray* sbtab_find_column(const sbtab_t *sbtab, const char *key, const char *prefix){
   gchar** Key=g_strsplit(key," ",-1);
   guint n=g_strv_length(Key);
   GPtrArray *a=NULL;
   guint i=0;
   GString *ref_key=g_string_sized_new(strlen(key)+2);
+  
   for (i=0;i<n;i++){
-    a=g_hash_table_lookup(sbtab->col,Key[i]);
+    if (prefix) g_string_append(ref_key,prefix);
+    g_string_append(ref_key,Key[i]);
+    a=g_hash_table_lookup(sbtab->col,ref_key->str);
     if (a) break;
-  }
-  if(!a){
-    fprintf(stderr,
-	    "[%s] «%s» not found in «%s» trying keys as references: '>[…]'.\n",
-	    __func__,key,sbtab->TableName);
-    for (i=0;i<n;i++){
-      g_string_printf(ref_key,">%s",Key[i]);
-      a=g_hash_table_lookup(sbtab->col,ref_key->str);
-      if(a){
-	fprintf(stderr,
-		"[%s] warning: found «%s» as a reference «%s».\n",
-		__func__,Key[i],ref_key->str);
-	break;
-      }
-    }
   }
   if (a==NULL){
     fprintf(stderr,
-	    "[%s] warning: lookup of key «%s» (and '>key') in Table «%s» failed.\n",
+	    "[%s] warning: lookup of key «%s» in Table «%s» failed.\n",
 	    __func__,key,sbtab->TableName);
   }
   g_strfreev(Key);
   g_string_free(ref_key,TRUE);
   return a;
+}
+
+int sbtab_find_row(sbtab_t *table, char *id){
+  int *row_ptr=NULL;
+  int r=-1;
+  row_ptr=g_hash_table_lookup(table->row,id);
+  if (row_ptr) r=row_ptr[0];
+  return r;
 }
 
 void sbtab_free(void *tab){
@@ -349,45 +345,51 @@ sbtab_t* sbtab_from_tsv(char *tsv_file){
   return sbtab;
 }
 
-/* This is a generic function to convert a column to a numeric vector
+/* This is a generic function to convert a column to a numeric matrix
  * Mor specific variants of this exist for some Quantities such as
  * time-vectors and data-matrices. This one allows missing values.
  */
 gsl_matrix* sbtab_columns_to_gsl_matrix(sbtab_t *table, GPtrArray *column_names, char *prefix, double default_value){
-  int i,j,n;
-  gchar *s,*r;
-  gchar *c;
-  double value;
-  GString *cname_str=g_string_sized_new(32);
-  /* figure out the sizes*/
   int size[2];
   size[0]=table->column[0]->len;
   size[1]=column_names->len;
   gsl_matrix *m=gsl_matrix_alloc(size[0],size[1]);
+  gsl_matrix_set_all(m,default_value);
+  sbtab_update_gsl_matrix(m,table,column_names,prefix);
+  return m;
+}
+
+void sbtab_update_gsl_matrix(gsl_matrix *m, sbtab_t *table, GPtrArray *column_names, char *prefix){
+  assert(m);
+  int i,j,n;
+  gchar *s,*r;
+  gchar *c;
+  double value;
+  GString *cname=g_string_sized_new(32);
+  /* figure out the sizes*/
+  int size[2];
+  size[0]=table->column[0]->len;
+  size[1]=column_names->len;
+  assert(m->size1 == size[0] && m->size2 == size[1]);
+  
   gsl_vector_view m_column;
-  /* */
   GPtrArray *table_column;
-  for (i=0;i<column_names->len; i++){
+  for (i=0;i<size[1]; i++){
     m_column=gsl_matrix_column(m,i);
     c=g_ptr_array_index(column_names,i);
-    g_string_assign(cname_str,c);
-    if (prefix) g_string_prepend(cname_str,prefix);
-    table_column=sbtab_get_column(table,cname_str->str);
+    g_string_assign(cname,c);
+    if (prefix) g_string_prepend(cname,prefix);
+    table_column=sbtab_get_column(table,cname->str);
     if (table_column){
-      n=table_column->len;
-      for (j=0;j<n;j++){
+      for (j=0;j<size[0];j++){
 	s=g_ptr_array_index(column,j);
 	r=s;
 	value=strtod(s,&r);
-	if (s==r) value=NAN;
-	gsl_vector_set(&(m_column.vector),j,value);
+	if (s!=r)  gsl_vector_set(&(m_column.vector),j,value);
       }
-    }else{
-      gsl_vector_set_all(&(m_column.vector),default_value);
     }
   }
   g_string_free(cname_str,TRUE);
-  return v;
 }
 
 /* This is a generic function to convert a column to a numeric vector
@@ -413,6 +415,29 @@ gsl_vector* sbtab_column_to_gsl_vector(sbtab_t *table,gchar *column_name){
     }
   }else{
     v=NULL;
+  }
+  return v;
+}
+
+/* This is a generic function to update a vector (a default)
+ * Mor specific values of this exist for some Quantities such as
+ * time-vectors and data-matrices. This one allows missing values.
+ */
+void sbtab_update_gsl_vector(gsl_vector *v, sbtab_t *table,gchar *column_name){
+  int j,n;
+  GPtrArray *column;
+  gchar *s,*r;
+  double value;
+  column=sbtab_get_column(table,column_name);
+  if (column){
+    n=column->len;
+    v=gsl_vector_alloc(n);
+    for (j=0;j<n;j++){
+      s=g_ptr_array_index(column,j);
+      r=s;
+      value=strtod(s,&r);
+      if (s!=r) gsl_vector_set(v,j,value);
+    }
   }
   return v;
 }
