@@ -5,6 +5,7 @@
 #include <glib.h>
 #include "h5block.h"
 #include "../app/event.h"
+#include "data.h"
 #include <assert.h>
 /* this structure holds the properties of an event, which are known once an avent table is opened;*/
 typedef struct {
@@ -27,7 +28,7 @@ typedef struct {
   int ExperimentMajorIndex;
   int ExperimentMinorIndex;
   g_event_t *event;
-  gsl_vector *Input;
+  data_t *Data;
 
   //  GPtrArray *event_tab;
   h5block_t *h5;

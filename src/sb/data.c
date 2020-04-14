@@ -1,32 +1,39 @@
 #include "data.h"
+#include "re.h"
+#include <math.h>
 
-data_t* data_block_alloc(int major, int minor, gsl_matrix *data, gsl_matrix *stdv, gsl_vector *input, gsl_vector *time){
+data_t* data_block_alloc(char *BaseName, int major, int minor, gsl_matrix *data, gsl_matrix *stdv, gsl_vector *input, gsl_vector *time, int likelihood_flag){
   assert(time->size == data->size1);
   assert(data->size1 == stdv->size1 && data->size2 == stdv->size2);
   data_t *D=malloc(sizeof(data_t));
+  GString *Name=g_string_new(NULL);
+  g_string_printf(Name,"E-%i.%i-%s",major,minor,BaseName);
   D->MajorIndex=major;
   D->MinorIndex=minor;
   D->measurement=data;
   D->noise=stdv;
   D->input=input;
   D->time=time;
+  D->lflag=likelihood_flag;
+  D->Name=Name;
   return D;
 }
 
 GPtrArray* /* Data blocks. Each can be simulated with exactly one input vector. */
-create_data
-(GPtrArray *DataTable, /* Data tables exactly as they appear in the spreadsheet*/
- int *lflag, /* a flag that is true if the measurement contributes to Likelihood*/
- experiment_type *ExperimentType, /* Type: _Dose Response_ or _Time Series_ */
- GPtrArray *input_override, /* default input for each experiment */
- gsl_vector *default_time, /* default measurement time if not otherwise specified*/
- GArray **Normalisation, /* experiment normalisation structure, as three integer valued vectors */
- sbtab_t *Input,
- sbtab_t *Output)
+unwrap_data
+(const GPtrArray *DataTable, /* Data tables exactly as they appear in the spreadsheet*/
+ const int *lflag, /* the measurement contributes to Likelihood (or not)*/
+ const experiment_type *ExperimentType, /* Type: _Dose Response_ or _Time Series_ */
+ const GPtrArray *ExperimentName,
+ const GPtrArray *input_override, /* default input for each experiment */
+ const gsl_vector *default_time, /* default measurement time */
+ const sbtab_t *Input,
+ const sbtab_t *Output,
+ map_t *IdxMap)
 {
-  int j;
-  int N,M,L;
-  gsl_matrix Y_DATA, Y_STDV;
+  int i,j;
+  int L;
+  gsl_matrix *Y_DATA, *Y_STDV;
   gsl_vector *u_j, *time;
   int nE=DataTable->len;
   sbtab_t *DataTable_j;
@@ -37,26 +44,27 @@ create_data
   GPtrArray *oid=sbtab_find_column(Output,"!ID",NULL);
   GPtrArray *ErrorName=sbtab_find_column(Output,"!ErrorName",NULL);
   gsl_matrix *input_block;
-  gsl_vector_view input_row, time_row;
+  gsl_vector_view input_row, time_view;
   gsl_matrix_view data_sub, stdv_sub;
   int nU=uid->len;
-  
+  char *E_j;
+  assert(lflag);
   for (j=0;j<nE;j++) { // j is the major experiment index
     DataTable_j=g_ptr_array_index(DataTable,j);
+    L=table_length(DataTable_j);
     u_j=g_ptr_array_index(input_override,j);
+    E_j=g_ptr_array_index(ExperimentName,j);
     if (DataTable_j){
+      Y_DATA=sbtab_columns_to_gsl_matrix(DataTable_j,oid,">",1.0);
+      Y_STDV=sbtab_columns_to_gsl_matrix(DataTable_j,ErrorName,NULL,INFINITY);      
       switch(ExperimentType[j]){
       case time_series:
-	//	Y=get_data_matrix(DataTable_j,Output,lflag[j]);
-	Y_DATA=sbtab_columns_to_gsl_matrix(DataTable_j, oid, ">", 1.0);
-	Y_STDV=sbtab_columns_to_gsl_matrix(DataTable_j, ErrorName, NULL, INFINITY);
 	time=sbtab_column_to_gsl_vector(DataTable_j,"!Time");
-	D=data_block_alloc(j,0,Y_DATA,Y_STDV,u_j,time);
-	g_ptr_array_append(Data,D);
+	map_index(IdxMap,j,0);
+	D=data_block_alloc(E_j,j,0,Y_DATA,Y_STDV,u_j,time,lflag[j]);
+	g_ptr_array_add(Data,D);
 	break;
       case dose_response:
-	Y=get_data_matrix(DataTable_j,Output,lflag[j]);
-	L=table_length(DataTable_j);
 	input_block=gsl_matrix_alloc(L,nU);
 	for (i=0;i<L;i++) {
 	  input_row=gsl_matrix_row(input_block,i);
@@ -66,20 +74,19 @@ create_data
 	if (default_time) time_view=gsl_vector_subvector(default_time,j,1);
 	time=sbtab_column_to_gsl_vector(DataTable_j,"!Time");
 	assert(time);
-	N=Y[DATA]->size1;
-	M=Y[DATA]->size2;
-	assert(N>0 && M>0);
-	for (i=0;i<N;i++){
-	  data_sub=gsl_matrix_submatrix(Y[DATA],i,0,1,M);
-	  stdv_sub=gsl_matrix_submatrix(Y[STDV],i,0,1,M);
+	for (i=0;i<L;i++){
+	  data_sub=gsl_matrix_submatrix(Y_DATA,i,0,1,Y_DATA->size2);
+	  stdv_sub=gsl_matrix_submatrix(Y_STDV,i,0,1,Y_STDV->size2);
 	  input_row=gsl_matrix_row(input_block,i);
 	  time_view=gsl_vector_subvector(time,i,1);
-	  D=data_block_alloc(j,i,
+	  map_index(IdxMap,j,i);
+	  D=data_block_alloc(E_j,j,i,
 			     &(data_sub.matrix),
-			     &(sd_data_sub.matrix),
-			     ,&(input_row.vector),
-			     &(time_view.vector));
-	  g_ptr_array_append(Data,D);
+			     &(stdv_sub.matrix),
+			     &(input_row.vector),
+			     &(time_view.vector),
+			     lflag[j]);
+	  g_ptr_array_add(Data,D);
 	}
 	break;
       default:
@@ -95,127 +102,56 @@ create_data
   return Data;
 }
 
-normalisation_t norm_alloc(int num_sim, int num_out){
-  int n=size>0?size:10;
-  normalisation_t *N=malloc(sizeof(normalisation_t));
-  N->output=g_array_sized_new(FALSE,FALSE,sizeof(int),num_out);
-  N->time=g_array_sized_new(FALSE,FALSE,sizeof(int),num_sim);
-  N->experiment=g_array_sized_new(FALSE,FALSE,sizeof(int),num_sim);
-  return N;
-}
-
-
-typedef struct {
-  regex_t *re;
-  sbtab_t *table;
-  GPtrArray *sub_table;
-  GArray **index;
-  GArray *major;
-  GArray *minor;
-} user_data_t;
-
-/* g_ptr_array_foreach function*/
-void find_reference(gpointer data, gpointer user_data){
-  gchar *field=data;
-  user_data_t *buffer=user_data;
-
-  gchar *Reference;
-  int I=-1;
-  int i=-1;
-  sbtab_t *st;
-
-  int re_n=(sub_table==NULL?1:2);
+void write_data(gpointer data, gpointer user_data){
+  data_t *D=data;
+  data_attr_buffer_t *buffer=user_data;
+  h5block_t *h5data=buffer->h5data;
+  h5block_t *h5stdv=buffer->h5stdv;
+  norm_t *N=buffer->N;
+  int major=D->MajorIndex;
+  int minor=D->MinorIndex;
+  int lflag=D->lflag;
+  int index=flat_index(buffer->IdxMap,major,minor);
+  printf("[%s] writing data set with index %i (MAJOR=%i, MINOR=%i)\n",
+	 __func__,index,major,minor);
+  char *H5_data_name=D->Name->str;
+  char *H5_stdv_name=D->Name->str; //same
+  printf("[%s] creating dataset «%s».\n",__func__,H5_data_name);
+  fflush(stdout);
+  h5data->size[0]=D->measurement->size1;
+  h5data->size[1]=D->measurement->size2;
+  h5stdv->size[0]=D->noise->size1;
+  h5stdv->size[1]=D->noise->size2;
   
-  if (field){
-    GPtrArray *m=re_match(buffer->re,field,re_n);
-    if (m->len>=2){
-      Reference=g_ptr_array_index(m,1);
-      I=sbtab_find_row(buffer->table->row,Reference->str)
+  H5LTmake_dataset_double(h5data->group_id,H5_data_name,2,h5data->size,D->measurement->data);
+  H5LTmake_dataset_double(h5stdv->group_id,H5_stdv_name,2,h5stdv->size,D->noise->data);
+  H5LTset_attribute_int(h5data->group_id,H5_data_name,"LikelihoodFlag",&lflag, 1);
+  H5LTset_attribute_int(h5data->group_id,H5_data_name,"index",&index, 1);
+  H5LTset_attribute_int(h5data->group_id,H5_data_name,"major",&major, 1);
+  H5LTset_attribute_int(h5data->group_id,H5_data_name,"minor",&minor, 1);
+  H5LTset_attribute_double(h5data->group_id,H5_data_name,"time",D->time->data, D->time->size);
+  H5LTset_attribute_double(h5data->group_id,H5_data_name,"input",D->input->data, D->input->size);
+  /* write normalisation attributes */
+  int rk, rt;
+  if (N && N->experiment->len>0){
+    if (norm_index(N->experiment,index,&rk)){
+      H5LTset_attribute_int
+	(h5data->group_id,H5_data_name,
+	 "NormaliseByExperiment",&rk,1);
     }
-    if (I>=0 && sub_table && m->len>=3){
-      st=g_ptr_array_index(sub_table,I);
-      Reference=g_ptr_array_index(m,2);
-      i=sbtab_find_row(st->row,Reference);
-    }
-    g_ptr_array_free(m);
   }
-  g_array_add(buffer->major,I);
-  g_array_add(buffer->minor,i);
+  if (N && N->time->len>0){
+    if (norm_index(N->time,index,&rt)){
+      H5LTset_attribute_int
+	(h5data->group_id,H5_data_name,
+	 "NormaliseByTimePoint",&rt,1);
+    }
+  }
+  if (N && N->output->len>0){
+    H5LTset_attribute_int
+      (h5data->group_id,H5_data_name,
+       "NormaliseByOutput",
+       (int*) N->output->data,N->output->len);
+  }
 }
 
-normalisation_t* normalisation(sbtab_t *ExperimentTable, experiment_type *ExperimentType, sbtab_t *OutputTable, GPtrArray *DataTable, GArray **SimUnitIdx, GArray *MajorIdx, GArray *MinorIdx){
-  regex_t ID_TimePoint, ID;
-  GPtrArray *RelativeTo;
-  int status;
-
-  status=egrep(&ID_TimePoint,"([[:alpha:]][[:alnum:]_]*)\\[?([^]]+)?\\]?");
-  status=egrep(&ID,"([[:alpha:]][[:alnum:]_]*)");
-  
-  gchar *field;
-  int nE=table_length(ExperimentTable);
-  guint K=MajorIdx->len;
-  int nO=table_length(OutputTable);
-
-  normalisation_t *N=norm_alloc(K,nO);
-  user_data_t buffer;  
-  assert(SimUnitIdx);
-  assert(MajorIdx);
-  assert(MinorIdx);
-
-  RelativeTo=sbtab_find_column(OutputTable,"!RelativeTo !NormalisedBy !NormalizedBy",NULL);
-
-  if (RelativeTo){
-    buffer.sub_i=1;
-    buffer.re=&ID;
-    buffer.table=OutputTable;
-    buffer.sub_table=NULL;
-    buffer.major=N->output;
-    g_ptr_array_foreach(RelativeTo,find_reference, &buffer);
-  }
-  /* experiment normalisation and time normalisation */
-  RelativeTo=sbtab_find_column(ExperimentTable,"!RelativeTo !NormalisedBy !NormalizedBy",NULL);
-  int I,i;
-  int ri,rt;
-  int rk,rI;
-  if (RelativeTo){
-    buffer.re=&ID_TimePoint;
-    buffer.table=ExperimentTable;
-    buffer.sub_table=DataTable;
-    buffer.major=g_array_sized_new(FALSE,FALSE,sizeof(int),nE);
-    buffer.minor=g_array_sized_new(FALSE,FALSE,sizeof(int),nE);
-    g_ptr_array_foreach(RelativeTo,find_reference, &buffer);
-    for (k=0;k<K;k++){
-      I=g_array_index(MajorIdx,int,k);
-      i=g_array_index(MinorIdx,int,k);
-      ri=i;
-      rt=-1;
-      printf("[%s] Experiment %i.%i normalised by",__func__,I,i);
-      fflush(stdout);
-      switch (ExperimentType[I]){
-      case dose_response:
-	ri=g_array_index(buffer->minor,I);
-	rt=0; 
-	break;
-      case time_series:
-	ri=0;
-	rt=minor[0];	  
-	break;
-      default:
-	fprintf(stderr,"[%s] unknown experiment type: %i.\n",__func__,ExperimentType[I]);
-	abort();
-      }
-      
-      rk=-1;
-      rI=g_array_index(buffer->major,int,I);
-      assert(rI<nE);
-      if (rI>=0 && SimUnitIdx[rI]!=NULL && ri<SimUnitIdx[rI]->len && ri>=0)
-	rk=g_array_index(SimUnitIdx[rI],int,ri);
-      g_array_append_val(N->experiment,rk);
-      g_array_append_val(N->time,rt);      
-    }
-    fflush(stdout);
-  }
-  regfree(&ID_TimePoint);
-  regfree(&ID);
-  return N;
-}
