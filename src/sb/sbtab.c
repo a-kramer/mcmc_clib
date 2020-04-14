@@ -1,6 +1,7 @@
 #include "sbtab.h"
 #include <assert.h>
 #include "re.h"
+#include <math.h>
 /* initially, we pre-allocate this:*/
 #define DEFAULT_STR_LENGTH 128
 /* sbtab_t* sbtab_alloc(gchar **keys) 
@@ -57,8 +58,6 @@ char* sbtab_get_field_by_rowID(const sbtab_t* sbtab, const gchar *ID, const gcha
   assert(sbtab);
   assert(ID);
   int r=sbtab_get_row_index(sbtab,ID);
-  //  GPtrArray *C;
-  //  C=sbtab_get_column(sbtab,ID);
   char *c=sbtab_get(sbtab,ID,r);
   return c;
 }
@@ -361,11 +360,10 @@ gsl_matrix* sbtab_columns_to_gsl_matrix(sbtab_t *table, GPtrArray *column_names,
 
 void sbtab_update_gsl_matrix(gsl_matrix *m, sbtab_t *table, GPtrArray *column_names, char *prefix){
   assert(m);
-  int i,j,n;
+  int i,j;
   gchar *s,*r;
   gchar *c;
   double value;
-  GString *cname=g_string_sized_new(32);
   /* figure out the sizes*/
   int size[2];
   size[0]=table->column[0]->len;
@@ -377,19 +375,16 @@ void sbtab_update_gsl_matrix(gsl_matrix *m, sbtab_t *table, GPtrArray *column_na
   for (i=0;i<size[1]; i++){
     m_column=gsl_matrix_column(m,i);
     c=g_ptr_array_index(column_names,i);
-    g_string_assign(cname,c);
-    if (prefix) g_string_prepend(cname,prefix);
-    table_column=sbtab_get_column(table,cname->str);
+    table_column=sbtab_find_column(table,c,prefix);
     if (table_column){
       for (j=0;j<size[0];j++){
-	s=g_ptr_array_index(column,j);
+	s=g_ptr_array_index(table_column,j);
 	r=s;
 	value=strtod(s,&r);
 	if (s!=r)  gsl_vector_set(&(m_column.vector),j,value);
       }
     }
   }
-  g_string_free(cname_str,TRUE);
 }
 
 /* This is a generic function to convert a column to a numeric vector
@@ -402,7 +397,7 @@ gsl_vector* sbtab_column_to_gsl_vector(sbtab_t *table,gchar *column_name){
   gsl_vector *v;
   gchar *s,*r;
   double value;
-  column=sbtab_get_column(table,column_name);
+  column=sbtab_find_column(table,column_name,NULL);
   if (column){
     n=column->len;
     v=gsl_vector_alloc(n);
@@ -428,7 +423,7 @@ void sbtab_update_gsl_vector(gsl_vector *v, sbtab_t *table,gchar *column_name){
   GPtrArray *column;
   gchar *s,*r;
   double value;
-  column=sbtab_get_column(table,column_name);
+  column=sbtab_find_column(table,column_name,NULL);
   if (column){
     n=column->len;
     v=gsl_vector_alloc(n);
@@ -439,6 +434,5 @@ void sbtab_update_gsl_vector(gsl_vector *v, sbtab_t *table,gchar *column_name){
       if (s!=r) gsl_vector_set(v,j,value);
     }
   }
-  return v;
 }
 
