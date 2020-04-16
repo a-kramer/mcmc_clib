@@ -15,7 +15,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "ode_model.h"
-
+#define TRUE 1
+#define FALSE 0
 
 /* Auxiliary function for getting the symbol name. 
  * Implementation of this function is subject to change.
@@ -33,7 +34,7 @@ static char* get_vf_name(const char* filename){
   char* ret = (char*) calloc( new_size , sizeof(char) );
   strncat(ret, lib_name, n);
   strcat(ret, _post);
-  //printf("[get_vf_name] vf_name: %s\n",ret);
+  //printf("[%s] vf_name: %s\n",__func__,ret);
   return ret;
 }
 
@@ -174,8 +175,8 @@ ode_solver* ode_solver_alloc(ode_model* model){
   solver->fy = N_VNewEmpty_Serial(F);
   solver->yS = NULL;
   /* allocate some storage for jacobian retrieval */
-  solver->jac=NewDenseMat(N,N);
-  solver->jacp=NewDenseMat(N,P);
+  solver->jac=SUNDenseMatrix(N,N);
+  solver->jacp=SUNDenseMatrix(N,P);
   return solver;
 }
 
@@ -202,7 +203,7 @@ void ode_solver_init(ode_solver* solver, const double t0,  double* y0, int lenY,
   int i,flag;
   /* Get parameters */
   
-  if (p != 0){
+  if (p){
     if (lenP != solver->odeModel->P) {
       fprintf(stderr,"[%s] lenP (%i) must be equal %d, the number of parameters in the ode model.\n",__func__,lenP,solver->odeModel->P);
       return;
@@ -213,7 +214,7 @@ void ode_solver_init(ode_solver* solver, const double t0,  double* y0, int lenY,
   }
   
   /* Get initial conditions */
-  if(y0 != 0){
+  if (y0){
     if( lenY != solver->odeModel->N ){
       fprintf(stderr,"[%s] lenY (%i) must be equal %d, the number of variables in the ode model.\n",__func__,lenY,solver->odeModel->N);
       return;
@@ -222,11 +223,17 @@ void ode_solver_init(ode_solver* solver, const double t0,  double* y0, int lenY,
   }
   /* initialise */
   flag = CVodeInit(solver->cvode_mem, solver->odeModel->vf_eval, t0, solver->y);
-  flag &= CVodeSetUserData(solver->cvode_mem, solver->params);
-  flag &= CVDense(solver->cvode_mem, solver->odeModel->N);
-  flag &= CVDlsSetDenseJacFn(solver->cvode_mem, solver->odeModel->vf_jac);
-  flag &= CVodeSStolerances(solver->cvode_mem, ODE_SOLVER_REL_ERR, ODE_SOLVER_ABS_ERR);
-  flag &= CVodeSetMaxNumSteps(solver->cvode_mem, ODE_SOLVER_MX_STEPS);
+  flag |= CVodeSetUserData(solver->cvode_mem, solver->params);
+  //flag |= CVDense(solver->cvode_mem, solver->odeModel->N);
+  //SUNLinearSolver LS = SUNLinSolDense(solver->y, J);
+  SUNLinearSolver LS = SUNDenseLinearSolver(solver->y,solver->jac);
+  //CVodeSetLinearSolver(solver->cvode_mem, LS, solver->jac);
+  CVDlsSetLinearSolver(solver->cvode_mem, LS, solver->jac);
+  //flag |= CVodeSetJacFn(solver->cvode_mem, solver->odeModel->vf_jac);
+  flag |= CVDlsSetJacFn(solver->cvode_mem, solver->odeModel->vf_jac);
+  //flag |= CVDlsSetDenseJacFn(solver->cvode_mem, solver->odeModel->vf_jac);
+  flag |= CVodeSStolerances(solver->cvode_mem, ODE_SOLVER_REL_ERR, ODE_SOLVER_ABS_ERR);
+  flag |= CVodeSetMaxNumSteps(solver->cvode_mem, ODE_SOLVER_MX_STEPS);
   if (flag!=CV_SUCCESS) {
     fprintf(stderr,"[CV] ode_solver_init failed, flag=%i\n",flag);
     exit(flag);
@@ -446,7 +453,8 @@ void ode_solver_get_jacp(ode_solver* solver, const double t,  double* y,  double
   solver->odeModel->vf_jacp(N,t,solver->y,solver->fy,solver->jacp,solver->params,NULL,NULL,NULL);
   /* df[i]/dy[j]=jacobian_y[j*N+i]; cvode stores matrices column-wise (i is dense in memory); */
   /* here we make the assumption that SUNDIALS_DOUBLE_PRECISION is set */
-  memcpy(jacp,solver->jacp->data,sizeof(double)*N*P); 
+  realtype *d = SUNDenseMatrix_Data(solver->jacp);
+  memcpy(jacp,d,sizeof(double)*N*P); 
 }
 
 void ode_solver_get_jac(ode_solver* solver, const double t,  double* y,  double* fy, double *jac){
@@ -459,7 +467,8 @@ void ode_solver_get_jac(ode_solver* solver, const double t,  double* y,  double*
 
   /* df[i]/dy[j]=jacobian_y[j*N+i]; cvode stores matrices column-wise (i is dense in memory); */
   /* here we make the assumption that SUNDIALS_DOUBLE_PRECISION is set */
-  memcpy(jac,solver->jac->data,sizeof(double)*N*N); 
+  realtype *d = SUNDenseMatrix_Data(solver->jac);
+  memcpy(jac,d,sizeof(double)*N*N); 
 }
 
 
@@ -474,24 +483,20 @@ void ode_solver_print_stats(const ode_solver* solver, FILE* outF){
   void* cvode_mem = solver->cvode_mem;
   
   flag = CVodeGetNumSteps(cvode_mem, &nst);  
-  flag &= CVodeGetNumRhsEvals(cvode_mem, &nfe);  
-  flag &= CVodeGetNumLinSolvSetups(cvode_mem, &nsetups);  
-  flag &= CVodeGetNumErrTestFails(cvode_mem, &netf);  
-  flag &= CVodeGetNumNonlinSolvIters(cvode_mem, &nni);  
-  flag &= CVodeGetNumNonlinSolvConvFails(cvode_mem, &ncfn); 
+  flag |= CVodeGetNumRhsEvals(cvode_mem, &nfe);  
+  flag |= CVodeGetNumLinSolvSetups(cvode_mem, &nsetups);  
+  flag |= CVodeGetNumErrTestFails(cvode_mem, &netf);  
+  flag |= CVodeGetNumNonlinSolvIters(cvode_mem, &nni);  
+  flag |= CVodeGetNumNonlinSolvConvFails(cvode_mem, &ncfn); 
   
   if (solver->yS) {
-    flag &= CVodeGetSensNumRhsEvals(cvode_mem, &nfSe);	
-    flag &= CVodeGetNumRhsEvalsSens(cvode_mem, &nfeS);    
-    flag &= CVodeGetSensNumLinSolvSetups(cvode_mem, &nsetupsS);    
-    flag &= CVodeGetSensNumErrTestFails(cvode_mem, &netfS);    
-    flag &= CVodeGetSensNumNonlinSolvIters(cvode_mem, &nniS);    
-    flag &= CVodeGetSensNumNonlinSolvConvFails(cvode_mem, &ncfnS);    
+    flag |= CVodeGetSensNumRhsEvals(cvode_mem, &nfSe);	
+    flag |= CVodeGetNumRhsEvalsSens(cvode_mem, &nfeS);    
+    flag |= CVodeGetSensNumLinSolvSetups(cvode_mem, &nsetupsS);    
+    flag |= CVodeGetSensNumErrTestFails(cvode_mem, &netfS);    
+    flag |= CVodeGetSensNumNonlinSolvIters(cvode_mem, &nniS);    
+    flag |= CVodeGetSensNumNonlinSolvConvFails(cvode_mem, &ncfnS);    
   }
-  
-  flag &= CVDlsGetNumJacEvals(cvode_mem, &nje);  
-  flag &= CVDlsGetNumRhsEvals(cvode_mem, &nfeLS);
-  
   
   fprintf(outF,"\n# [%s] Solver Statistics\n\n",__func__);
   fprintf(outF,"# Steps            = %5ld\n\n", nst);
@@ -504,12 +509,6 @@ void ode_solver_print_stats(const ode_solver* solver, FILE* outF){
     fprintf(outF,"# SensRhsEvals     = %5ld   RhsEvals             = %5ld\n", nfSe, nfeS);
     fprintf(outF,"# ErrTestFails     = %5ld   LinSolvSetups        = %5ld\n", netfS, nsetupsS);
     fprintf(outF,"# NonlinSolvIters  = %5ld   NonlinSolvConvFails  = %5ld\n", nniS, ncfnS);
-  }
-  
-  fprintf(outF,"\n# Jacobian Statistics\n");
-  fprintf(outF,"# JacEvals  = %5ld    RhsEvals  = %5ld\n", nje, nfeLS);
-  if (flag!=CV_SUCCESS) {
-    fprintf(stderr,"[%s] print stats failed, CVode flag=%i\n",__func__,flag);
   }
 }
 

@@ -13,9 +13,12 @@
 #ifdef __cplusplus  /* wrapper to enable C++ usage */
 extern "C" {
 #endif
-
 #include <cvodes/cvodes.h>
-#include <cvodes/cvodes_dense.h>
+  //#include <cvodes/cvodes_dense.h>
+  //#include <cvodes/cvodes_ls.h>
+#include <sunlinsol/sunlinsol_dense.h>
+#include <sunmatrix/sunmatrix_dense.h>
+  
 #include <nvector/nvector_serial.h>
 #include <sundials/sundials_types.h>
 #include <sundials/sundials_math.h>
@@ -25,43 +28,43 @@ extern "C" {
 #define	ODE_SOLVER_MX_STEPS		5000
 	
 typedef int (*rhs_f)(realtype, N_Vector, N_Vector, void *);
-typedef int (*jac_f)(long int, realtype, N_Vector, N_Vector, DlsMat, void*, N_Vector, N_Vector, N_Vector);
-typedef int (*jacp_f)(int, realtype, N_Vector, N_Vector, DlsMat, void*,	N_Vector, N_Vector, N_Vector);
+typedef int (*jac_f)(long int, realtype, N_Vector, N_Vector, SUNMatrix, void*, N_Vector, N_Vector, N_Vector);
+typedef int (*jacp_f)(int, realtype, N_Vector, N_Vector, SUNMatrix, void*,	N_Vector, N_Vector, N_Vector);
 typedef int (*rhs_sens)(int, realtype, N_Vector, N_Vector, int, N_Vector, N_Vector, void *, N_Vector, N_Vector);
 typedef int (*func)(realtype, N_Vector, realtype *, void *);
 typedef int (*func_sens)(realtype, N_Vector, N_Vector *, double *, void *);
 	
-typedef struct{
-	int		N;				/* number of state variables */
-	int		P;				/* number of parameters */
-	int		F;				/* number of output functions */
-	double*		v;				/* initial conditions */
-	double*		p;				/* default parameters */
-	rhs_f		vf_eval;		/* function pointer for ode RHS */
-	jac_f		vf_jac;			/* function pointer for jacobian dvf/dx */
-	jacp_f		vf_jacp;	        /* function pointer for parameter jacobian df/dp*/
-	rhs_sens	vf_sens;		/* function pointer for ode sensitivities */
-	func		vf_func;		/* function pointer for functions RHS */
-	func_sens	vf_func_sens;	/* function pointer for functions sensitivities */
-	char**		v_names;		/* string array of variable names */
-	char**		p_names;		/* string array of parameter names */
-	char**		f_names;		/* string array of function names */
-	void*		dylib;			/* pointer to dynamicaly linked library with the ode model */
-} ode_model;
-	
-
-typedef struct{
-	void*       cvode_mem;
-	ode_model*  odeModel;
-	N_Vector    y;
-	N_Vector*   yS;
-	N_Vector    fy;
-	DlsMat      jac;
-	DlsMat      jacp;
-	double*     params;
-}ode_solver;
-		
-
+  typedef struct{
+    int		N;				/* number of state variables */
+    int		P;				/* number of parameters */
+    int		F;				/* number of output functions */
+    double*		v;				/* initial conditions */
+    double*		p;				/* default parameters */
+    rhs_f		vf_eval;		/* function pointer for ode RHS */
+    jac_f		vf_jac;			/* function pointer for jacobian dvf/dx */
+    jacp_f		vf_jacp;	        /* function pointer for parameter jacobian df/dp*/
+    rhs_sens	vf_sens;		/* function pointer for ode sensitivities */
+    func		vf_func;		/* function pointer for functions RHS */
+    func_sens	vf_func_sens;	/* function pointer for functions sensitivities */
+    char**		v_names;		/* string array of variable names */
+    char**		p_names;		/* string array of parameter names */
+    char**		f_names;		/* string array of function names */
+    void*		dylib;			/* pointer to dynamicaly linked library with the ode model */
+  } ode_model;
+  
+  
+  typedef struct{
+    void*       cvode_mem;
+    ode_model*  odeModel;
+    N_Vector    y;
+    N_Vector*   yS;
+    N_Vector    fy;
+    SUNMatrix   jac;
+    SUNMatrix   jacp;
+    double*     params;
+  }ode_solver;
+  
+  
 /* Loads shared library with user defined functions and ode model data */
 ode_model*	ode_model_loadFromFile(const char *filename);
 

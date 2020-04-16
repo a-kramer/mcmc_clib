@@ -26,11 +26,11 @@ sbtab_t* sbtab_alloc(gchar **keys){
     sb=malloc(sizeof(sbtab_t));                    // allocate the sbtab_t element
     sb->key=keys;                                  // store the keys as column labels
     sb->column=malloc(sizeof(GPtrArray*)*n);
-    if (g_strcmp0(keys[0],"!ID")==0 || g_strcmp0(keys[0],"!Name")==0){
-      sb->row=g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
-    }else{
-      sb->row=NULL;
-    }
+    //    if (g_strcmp0(keys[0],"!ID")==0 || g_strcmp0(keys[0],"!Name")==0){
+    sb->row=g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    //}else{
+    // sb->row=NULL;
+    // }
     sb->col=g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     for (i=0;i<n;i++){
       sb->column[i]=g_ptr_array_new_full(DefaultSize, g_free);
@@ -43,7 +43,7 @@ sbtab_t* sbtab_alloc(gchar **keys){
 }
 
 int sbtab_get_row_index(const sbtab_t* sbtab, const gchar *ID){
-  assert(sbtab);
+  assert(sbtab && sbtab->row);
   GHashTable *row=sbtab->row;
   guint *r;
   int i=-1;
@@ -80,6 +80,7 @@ sbtab_t *sbtab_find_table_with(GHashTable *sbtab_hash, gchar *rowID){
   sbtab_t* table_has_rowID=NULL;
   sbtab_and_row data;
   data.rowID=rowID;
+  assert(sbtab_hash);
   g_hash_table_foreach(sbtab_hash, sbtab_contains,
 		       &data);
   table_has_rowID=data.table;
@@ -97,7 +98,8 @@ sbtab_t *sbtab_find_table_with(GHashTable *sbtab_hash, gchar *rowID){
 sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names){
   sbtab_t *table=NULL;
   gchar **Name;
-  printf("[sbtab_find] Looking up any of: %s.\n",Names);
+  printf("[%s] Looking up any of: %s.\n",__func__,Names);
+  assert(sbtab_hash);
   Name=g_strsplit(Names," ",-1);
   guint n=(int) g_strv_length(Name);
   //printf("[sbtab_find] %i tokens.\n",n); fflush(stdout);
@@ -111,7 +113,8 @@ sbtab_t* sbtab_find(GHashTable *sbtab_hash, const gchar *Names){
   } else {
     printf("[%s] failed.\n",__func__);
   }
-  g_strfreev(Name);  
+  g_strfreev(Name);
+  fflush(stdout);
   return table;
 }
 
@@ -175,7 +178,8 @@ int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
 }
 
 int sbtab_append(const sbtab_t *sbtab, const char *key, char *data){
-  GPtrArray *a;  
+  GPtrArray *a;
+  assert(sbtab && sbtab->col);
   a=g_hash_table_lookup(sbtab->col,key);
   if (a!=NULL) {
     g_ptr_array_add(a,g_strdup(data));
@@ -190,6 +194,7 @@ int sbtab_append(const sbtab_t *sbtab, const char *key, char *data){
 gchar* sbtab_get(const sbtab_t *sbtab, const char *key, const size_t i){
   gchar *d;
   GPtrArray *a=NULL;
+  assert(sbtab && sbtab->col);
   a=g_hash_table_lookup(sbtab->col,key);
   if (a!=NULL) d=g_ptr_array_index(a,i);
   else d=g_strdup("");
@@ -203,18 +208,18 @@ GPtrArray* sbtab_find_column(const sbtab_t *sbtab, const char *key, const char *
   GPtrArray *a=NULL;
   guint i=0;
   GString *ref_key=g_string_sized_new(strlen(key)+2);
-  
+  assert(sbtab && sbtab->col);
   for (i=0;i<n;i++){
     if (prefix) g_string_append(ref_key,prefix);
     g_string_append(ref_key,Key[i]);
     a=g_hash_table_lookup(sbtab->col,ref_key->str);
     if (a) break;
   }
-  if (a==NULL){
-    fprintf(stderr,
-	    "[%s] warning: lookup of key «%s» in Table «%s» failed.\n",
-	    __func__,key,sbtab->TableName);
-  }
+  /* if (a==NULL){ */
+  /*   fprintf(stderr, */
+  /* 	    "[%s] warning: lookup of key «%s» in Table «%s» failed.\n", */
+  /* 	    __func__,key,sbtab->TableName); */
+  /* } */
   g_strfreev(Key);
   g_string_free(ref_key,TRUE);
   return a;
@@ -223,6 +228,7 @@ GPtrArray* sbtab_find_column(const sbtab_t *sbtab, const char *key, const char *
 int sbtab_find_row(sbtab_t *table, char *id){
   int *row_ptr=NULL;
   int r=-1;
+  assert(table && table->row);
   row_ptr=g_hash_table_lookup(table->row,id);
   if (row_ptr) r=row_ptr[0];
   return r;
