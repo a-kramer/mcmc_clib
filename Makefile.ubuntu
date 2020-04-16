@@ -27,7 +27,7 @@ all: bin/ode_smmala bin/sbtab_import
 
 
 bin/ode_smmala: ./src/app/ode_smmala.c $(MALA_SRC)
-	$(MPICC) $(MALA_SRC) -o $(BIN)/ode_smmala -ldl $(CFLAGS) src/app/ode_smmala.c -lsundials_cvodes -lsundials_nvecserial $(FLAGS)
+	$(MPICC) $(MALA_SRC) -o $(BIN)/ode_smmala -ldl $(CFLAGS) src/app/ode_smmala.c -lsundials_cvodes -lsundials_nvecserial -l sundials_sunmatrixdense -lsundials_sunlinsoldense $(FLAGS)
 
 vfgen: 
 	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread

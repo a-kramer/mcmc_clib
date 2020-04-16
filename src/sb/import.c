@@ -57,17 +57,9 @@ typedef struct {
 
 gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *Output, int IsNormalisingExperiment);
 gsl_matrix* get_input_matrix(sbtab_t *DataTable, GPtrArray *input_ID, gsl_vector *default_input);
-herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, GArray **N, int lflag);
 herr_t write_prior_to_hdf5(hid_t file_id, gsl_vector *mu, void *S, int type);
 int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_hash);
 herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash);
-
-int needs_normalisation(GArray **N, int i){
-  int by_experiment=N[NORM_EXPERIMENT] && g_array_index(N[NORM_EXPERIMENT],int,i)>=0;
-  int by_timepoint=N[NORM_TIME] && g_array_index(N[NORM_TIME],int,i)>=0;
-  int by_output=N[NORM_OUTPUT] && N[NORM_OUTPUT]->len>0;
-  return (by_experiment || by_timepoint || by_output);
-}
 
 int main(int argc, char*argv[]){
   int i;
@@ -218,18 +210,18 @@ void override_default_input(gpointer data, gpointer user_data){
   sbtab_t *InputSet=data;
   GPtrArray *id=input->id;
   guint n=id->len;
-  guint i,j;
-  guint *ri;
+  gint i,j;
+  gint ri;
   gchar *ID;
   double value;
   GPtrArray *Value=sbtab_find_column(InputSet,"!DefaultValue !Value",NULL);
-  assert(Value);  
+  assert(Value);
+  assert(InputSet);
   for (i=0;i<n;i++){
     ID=g_ptr_array_index(id,i);
-    ri=g_hash_table_lookup(InputSet->row,ID);
-    if (ri){
-      j=ri[0];
-      value=strtod(g_ptr_array_index(Value,j),NULL);
+    ri=sbtab_find_row(InputSet,ID);
+    if (ri>=0){
+      value=strtod(g_ptr_array_index(Value,ri),NULL);
       gsl_vector_set(input->value,i,value);
     }
   }
@@ -285,10 +277,10 @@ GPtrArray* get_experiment_specific_inputs(sbtab_t *ExperimentTable, sbtab_t *Inp
 
 sbtab_t* get_data_table(GHashTable *sbtab_hash, gchar *experiment_id, gchar *experiment_name){
   sbtab_t *DataTable;
-  DataTable=g_hash_table_lookup(sbtab_hash,experiment_id);
+  DataTable=sbtab_find(sbtab_hash,experiment_id);
   if (DataTable==NULL) {
     fprintf(stderr,"[%s] Could not find Measurement Table by ID:\t«TableName='%s'», \n\t\twill try searching by Name instead:\t«TableName='%s'».\n",__func__,experiment_id,experiment_name);
-    if (experiment_name) DataTable=g_hash_table_lookup(sbtab_hash,experiment_name);
+    if (experiment_name) DataTable=sbtab_find(sbtab_hash,experiment_name);
   }
   assert(DataTable);
   printf("[%s] found table: «%s» (TableName).\n",__func__,DataTable->TableName);
@@ -691,7 +683,7 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   int lflag[nE];
   GPtrArray *DataTable=get_data(sbtab_hash,Experiments,lflag);
   /* the above is as written inthe spreadsheet */
-
+  printf("[%s] %i DataTables imported. Re-organizing into simulation packages.\n",__func__,DataTable->len); fflush(stdout);
   map_t *IdxMap=empty_map(nE);
   GPtrArray *D=unwrap_data
     (DataTable,
@@ -703,9 +695,9 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
      Input,
      Output,
      IdxMap);
-
+  printf("[%s] Data is re-packaged into %i simlation packages. Interpreting normalisation columns (!RelativeTo).\n",__func__,D->len); fflush(stdout);
   norm_t *N=normalisation(Experiments,ExperimentType,Output,DataTable,IdxMap);
-
+  printf("[%s] normalisation read. Writing eerything to output file.\n",__func__); fflush(stdout);
   h5block_t *h5data=h5block_alloc(2);
   h5block_t *h5stdv=h5block_alloc(2);
   h5data->file_id=file_id;
@@ -827,7 +819,8 @@ herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash){
   int i,n;
   printf("[%s] Looking up «Parameter» Table.\n",__func__);
   sbtab_t *Parameters;
-  Parameters=g_hash_table_lookup(sbtab_hash,"Parameter");
+  assert(sbtab_hash);
+  Parameters=sbtab_find(sbtab_hash,"Parameter");
   assert(Parameters);
   GPtrArray *P_ID=sbtab_find_column(Parameters,"!ID",NULL);
   if (!P_ID) P_ID=sbtab_find_column(Parameters,"!Name",NULL);
@@ -988,88 +981,6 @@ herr_t write_prior_to_hdf5(hid_t file_id, gsl_vector *mu, void *S, int type){
   status |= H5Gclose(prior_group_id);
   return status;
 }
-
-herr_t write_data_to_hdf5(hid_t file_id, gsl_matrix *Y, gsl_matrix *dY, gsl_vector *time, gsl_vector *input, int major, int minor, GArray **N, int lflag){
-  herr_t status;
-  hid_t data_group_id, sd_group_id, dataspace_id, dataset_id, sd_data_id;  
-  hsize_t size[2];
-  char H5_data_name[128];
-  static int index=0;
-  /* Create a new file using default properties. */
-  status=EXIT_SUCCESS;
-  printf("[%s] writing data set with index %i (MAJOR=%i, MINOR=%i)\n",__func__,index,major,minor);
-  printf("[%s] looking up data group «H5_ROOT/data»",__func__);
-  data_group_id=H5Gopen(file_id,"/data",H5P_DEFAULT); printf(" id=%li\n",data_group_id);
-  printf("[%s] looking up standard deviation group «H5_ROOT/stdv»",__func__);
-  sd_group_id=H5Gopen(file_id,"/stdv",H5P_DEFAULT); printf(" id=%li\n",sd_group_id);
-  assert(data_group_id>0);
-  assert(sd_group_id>0);
-  // write data and standard deviation to file
-  size[0]=Y->size1;
-  size[1]=Y->size2;
-  dataspace_id = H5Screate_simple(2, size, NULL);
-  // Y
-  sprintf(H5_data_name,"data_block_%i",index);
-  printf("[%s] creating dataset «%s».\n",__func__,H5_data_name); fflush(stdout);
-  dataset_id = H5Dcreate2(data_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  assert(dataset_id>0);
-  status |= H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Y->data);
-  status |= H5LTset_attribute_int(data_group_id,H5_data_name,"LikelihoodFlag",&lflag, 1);
-  status |= H5LTset_attribute_int(data_group_id,H5_data_name,"index",&index, 1);
-  status |= H5LTset_attribute_int(data_group_id,H5_data_name,"major",&major, 1); // major experiment index, as presented in SBtab file
-  status |= H5LTset_attribute_int(data_group_id,H5_data_name,"minor",&minor, 1); // minor experiment index, within a dose response experiment
-  // time
-  status |= H5LTset_attribute_double(data_group_id,H5_data_name,"time",time->data, time->size);
-  // input
-  status |= H5LTset_attribute_double(data_group_id,H5_data_name,"input",input->data, input->size);
-  // Normalisation attributes
-  int *rK,*rT,*rO;
-  if (N){
-    if (N[NORM_EXPERIMENT] && N[NORM_EXPERIMENT]->len>index){
-      rK=&g_array_index(N[NORM_EXPERIMENT],int,index);
-      //printf("[%s] Simulation Unit %i is normalised by unit %i .. ",__func__,index,rK[0]);
-      if (rK[0]>=0){
-	//printf("creating");
-	status |= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByExperiment",rK,1);
-      } //else {
-	//printf("omitting");
-      //}
-      //printf(" attribute.\n");
-    } 
-    if (N[NORM_TIME] && N[NORM_TIME]->len>index){
-      rT=&g_array_index(N[NORM_TIME],int,index);
-      if (rT[0]>0){
-	status |= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByTimePoint",rT,1);
-      }
-    }
-    if (N[NORM_OUTPUT] && N[NORM_OUTPUT]->len>0){
-      rO=&g_array_index(N[NORM_OUTPUT],int,0);
-      status |= H5LTset_attribute_int(data_group_id,H5_data_name,"NormaliseByOutput",rO,N[NORM_OUTPUT]->len);
-    }    
-  }
-  status |= H5Dclose(dataset_id);
-  // dY
-  sprintf(H5_data_name,"stdv_block_%i",index);
-  sd_data_id = H5Dcreate2(sd_group_id, H5_data_name, H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  status |= H5Dwrite(sd_data_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dY->data);
-  status |= H5Dclose(sd_data_id);
-  status |= H5LTset_attribute_int(sd_group_id,H5_data_name,"index",&index, 1);
-  status |= H5LTset_attribute_int(sd_group_id,H5_data_name,"major",&major, 1); // major experiment index, as presented in SBtab file
-  status |= H5LTset_attribute_int(sd_group_id,H5_data_name,"minor",&minor, 1); // minor
-  
-  status |= H5Gclose(data_group_id);
-  status |= H5Gclose(sd_group_id);
-  assert(status==0);
-  int current_index=index;
-  if (status<0){
-    fprintf(stderr,"[write_data_to_hdf5] something went wrong; overall H5 status=%i for simulation unit %i (Experiment %i.%i)\n",status,current_index,major,minor);
-  }else{
-    index++;
-  }  
-  return status;
-}
-
-
 
 gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *Output, int lflag){
   int i,i_r, i_c;

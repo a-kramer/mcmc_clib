@@ -16,7 +16,9 @@ norm_index
 {
   GArray *N=M;
   int l=N->len;
-  assert(0<=i && i<l);
+  fprintf(stderr,"[%s] called with i=%i.\n",__func__,i);
+  assert(0<=i);
+  assert(i<l);
   int j=g_array_index(N,int,i);
   if (j>=0 && j<l){
     assert(out_j);
@@ -27,6 +29,7 @@ norm_index
 }
 
 void norm_index_append(index_map_t M, int j){
+  assert(M);
   GArray *N=M;
   g_array_append_val(N,j);
 }
@@ -73,29 +76,41 @@ void user_data_free(user_data_t *buffer){
 void find_reference(gpointer data, gpointer user_data){
   gchar *field=data;
   user_data_t *buffer=user_data;
-
+  assert(buffer && buffer->table);
   GString *Reference;
   int I=UNMAPPED; // any illegal index value will do
   int i=UNMAPPED; // any illegal index value will do
   sbtab_t *st;
 
   int re_n=(buffer->sub_table==NULL?1:2);
+  int minor_needed=(buffer->sub_table != NULL && buffer->minor != NULL);
+
   
-  if (field){
+  if (field && strlen(field)>0){
     GPtrArray *m=ReMatch(buffer->re,field,re_n);
     if (m->len>=2){
       Reference=g_ptr_array_index(m,1);
-      I=sbtab_find_row(buffer->table,Reference->str);
+      if (Reference->len>0){
+	I=sbtab_find_row(buffer->table,Reference->str);
+      }
+      //fprintf(stderr,"[%s] appending I=%i %p.\n",__func__,I,buffer->major);
     }
-    if (I>=0 && buffer->sub_table && m->len>=3){
+    if (I>=0 && minor_needed){
       st=g_ptr_array_index(buffer->sub_table,I);
-      Reference=g_ptr_array_index(m,2);
-      i=sbtab_find_row(st,Reference->str);
+      if (st && st->row){
+	Reference=g_ptr_array_index(m,2);
+	i=sbtab_find_row(st,Reference->str);
+      }//else{
+      //fprintf(stderr,"[%s] Table «%s» (%s) has no row hashes: %p.\n",__func__,st->TableName,st->TableTitle,st->row);
+      //}
+      // assert(st);
+      // assert(st->row);
+      fprintf(stderr,"[%s] appending i=%i %p.\n",__func__,i,buffer->minor);
     }
     g_ptr_array_free(m,TRUE);
   }
   g_array_append_val(buffer->major,I);
-  g_array_append_val(buffer->minor,i);
+  if (minor_needed) g_array_append_val(buffer->minor,i);
 }
 
 norm_t* normalisation(sbtab_t *ExperimentTable, experiment_type *ExperimentType, sbtab_t *OutputTable, GPtrArray *DataTable, map_t *IdxMap){
@@ -117,11 +132,11 @@ norm_t* normalisation(sbtab_t *ExperimentTable, experiment_type *ExperimentType,
     buffer=user_data_alloc(&ID,OutputTable,NULL);
     g_ptr_array_foreach(RelativeTo,find_reference, buffer);
     // if this is defined, use g_array_copy
-    /* N->output=g_array_copy(buffer->major); */
+     N->output=g_array_copy(buffer->major); 
     // otherwise
-    guint l=buffer->major->len;
-    N->output=g_array_set_size(N->output,l);
-    memcpy(N->output->data,buffer->major->data,sizeof(int)*l);
+    /* guint l=buffer->major->len; */
+    /* N->output=g_array_set_size(N->output,l); */
+    /* memcpy(N->output->data,buffer->major->data,sizeof(int)*l); */
     
     user_data_free(buffer);
   }
@@ -161,6 +176,7 @@ norm_t* normalisation(sbtab_t *ExperimentTable, experiment_type *ExperimentType,
       } else {
 	printf("\tnothing.\n");
       }
+      fprintf(stderr,"[%s] appending rk=%i, rt=%i.\n",__func__,rk,rt);
       g_array_append_val(N->experiment,rk);
       g_array_append_val(N->time,rt);      
     }
@@ -225,9 +241,9 @@ int flat_index(const map_t *m, int major, int minor){
 
 void map_index(map_t *m, int major, int minor){
   assert(major>=0 && minor>=0);
+  int k=m->major->len;
   g_array_append_val(m->major,major);
   g_array_append_val(m->minor,minor);
   GArray *a=g_ptr_array_index(m->flat,major);
-  int k=m->major->len;
   g_array_append_val(a,k);
 }
