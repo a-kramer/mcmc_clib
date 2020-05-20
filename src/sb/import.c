@@ -58,22 +58,28 @@ typedef struct {
 gsl_matrix** get_data_matrix(sbtab_t *DataTable, sbtab_t *Output, int IsNormalisingExperiment);
 gsl_matrix* get_input_matrix(sbtab_t *DataTable, GPtrArray *input_ID, gsl_vector *default_input);
 herr_t write_prior_to_hdf5(hid_t file_id, gsl_vector *mu, void *S, int type);
-int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_hash);
+int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_hash, gsl_matrix *Conservationaws, gsl_vector_int *EiminatedCompounds);
 herr_t process_prior(hid_t file_id, GPtrArray *sbtab, GHashTable *sbtab_hash);
 
 int main(int argc, char*argv[]){
   int i;
   int status=EXIT_SUCCESS;
-  regex_t *sb_tab_file, *h5_file;
+  regex_t *sb_tab_file, *h5_file, *h5_ConLaw;
   sbtab_t *table;
   GPtrArray *sbtab;
   GHashTable *sbtab_hash;
   gchar *H5FileName=NULL;
+  hid_t CL_file;
+  gsl_matrix *CL=NULL;
+  gsl_vector_int *EliminatedCompounds=NULL;
   
   sb_tab_file=malloc(sizeof(regex_t));
   h5_file=malloc(sizeof(regex_t));
+  h5_ConLaw=malloc(sizeof(regex_t));
+
   regcomp(sb_tab_file,".*[.]tsv$",REG_EXTENDED);
   regcomp(h5_file,".*[.]h5$",REG_EXTENDED);
+  egrep(h5_ConLaw,".*[Cc]on(servation)?[Ll]aws?.h5");
   sbtab=g_ptr_array_new_full(3,sbtab_free);
   sbtab_hash=g_hash_table_new(g_str_hash, g_str_equal);
   for (i=1;i<argc;i++){
@@ -87,6 +93,13 @@ int main(int argc, char*argv[]){
 	printf("[%s] added table «%s» with title: «%s».\n",__func__,table->TableName,table->TableTitle);
 	fflush(stdout);
       }
+    } else if (regexec(h5_ConLaw,argv[i],0,NULL,0)==0){
+      CL_file=H5Fopen(argv[i],H5F_ACC_RDONLY,H5P_DEFAULT);
+      CL=h5_to_gsl(CL_file,"ConservationLaws",NULL);
+      EliminatedCompounds=h5_to_gsl_int(CL_file,"EliminatedCompounds",NULL);
+      assert(EliminatedCompounds);
+      printf("[%s] eliminated state variables(%i): \n",__func__,EliminatedCompounds->size);
+      gsl_vector_int_fprintf(stdout,EliminatedCompounds,"eliminate %i");
     } else if (regexec(h5_file,argv[i],0,NULL,0)==0) {
       H5FileName=g_strdup(argv[i]);
     } else printf("unknown option «%s».\n",argv[i]);
@@ -106,60 +119,12 @@ int main(int argc, char*argv[]){
   fflush(stdout);
   hid_t file_id;
   file_id = H5Fcreate(H5FileName, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-  status |= process_data_tables(file_id, sbtab, sbtab_hash);
+  status |= process_data_tables(file_id, sbtab, sbtab_hash,CL,EliminatedCompounds);
   status |= process_prior(file_id, sbtab, sbtab_hash);
   status |= H5Fclose(file_id);
   //process_input_table(H5FileName, sbtab, sbtab_hash);
   //process_prior(H5FileName, sbtab, sbtab_hash);
   return status;
-}
-
-gsl_vector* get_default_input(sbtab_t *Input){
-  int j;
-  double val;
-  guint nU=table_length(Input);
-  gsl_vector *default_input;
-  default_input=gsl_vector_alloc(nU);
-  gsl_vector_set_zero(default_input);
-  GPtrArray *u_col;
-  u_col=sbtab_find_column(Input,"!DefaultValue",NULL);
-  printf("[%s] ",__func__);
-  if (u_col){
-    for (j=0;j<nU;j++){
-      val=strtod(g_ptr_array_index(u_col,j),NULL);
-      gsl_vector_set(default_input,j,val);
-      printf(" %g ",val);
-    }
-    printf(";\n");
-  } else {
-    printf("none defined, defaulting to zero for all inputs.\n");
-  }
-  return default_input;
-}
-
-gsl_vector *get_default_time(sbtab_t *E_table){
-  gsl_vector *default_time;
-  GPtrArray *default_time_column;
-  default_time_column=sbtab_find_column(E_table,"!Time",NULL);
-  int nE=table_length(E_table);
-  int j;
-  gchar *s;
-  double t;
-  default_time=gsl_vector_alloc(nE);
-  printf("[%s] ",__func__);
-  if (default_time_column){
-    for (j=0;j<nE;j++) {
-      s=g_ptr_array_index(default_time_column,j);
-      t=strtod(s,NULL);
-      gsl_vector_set(default_time,j,t);
-      printf(" %g",t);
-    }
-    printf(";\n");
-  } else {    
-    gsl_vector_set_zero(default_time);
-    printf("not defined, setting to zero.\n");
-  }
-  return default_time;
 }
 
 experiment_type* get_experiment_type(GPtrArray *E_type){
@@ -227,53 +192,6 @@ void override_default_input(gpointer data, gpointer user_data){
   }
 }
 
-GPtrArray* get_experiment_specific_inputs(sbtab_t *ExperimentTable, sbtab_t *Input, gsl_vector *default_input, GHashTable *sbtab_hash){
-  assert(default_input);
-  int j,k;
-  gchar *s, *uid;
-  GPtrArray *u_col;
-  double val;
-  GPtrArray *input_ID;
-  GPtrArray *InputSetNames=sbtab_find_column(ExperimentTable,"!InputSet",NULL);
-  
-  int nU=default_input->size;
-  int nE=table_length(ExperimentTable);
-  GPtrArray *E_default_input=g_ptr_array_new_full(nE,gsl_vector_free);
-  gsl_vector *u;
-  
-  gchar *InputSets;
-  GPtrArray *InputTable;
-  KeyValue_t input;
-  printf("[%s] input has size %i.\n",__func__,nU);
-  for (j=0;j<nE;j++) { // j is the major experiment index
-    u=gsl_vector_alloc(nU);
-
-    gsl_vector_memcpy(u,default_input);
-    input_ID=sbtab_find_column(Input,"!ID",NULL);
-    
-    assert(input_ID);
-    if (InputSetNames && j<InputSetNames->len){
-      InputSets=(gchar*) g_ptr_array_index(InputSetNames,j);
-      InputTable=InputSets?sbtab_get_tables(sbtab_hash,InputSets):NULL;
-      if(InputTable){
-	input.id=input_ID;
-	input.value=u;
-	g_ptr_array_foreach(InputTable,override_default_input,&input);
-      }
-    }
-    for (k=0;k<nU;k++){
-      uid=g_ptr_array_index(input_ID,k);
-      u_col=sbtab_find_column(ExperimentTable,uid,">");
-      if (u_col){
-	s=g_ptr_array_index(u_col,j);
-	val=strtod(s,NULL);
-	gsl_vector_set(u,k,val);
-      }
-    }
-    g_ptr_array_add(E_default_input,u);
-  }
-  return E_default_input;
-}
 
 sbtab_t* get_data_table(GHashTable *sbtab_hash, gchar *experiment_id, gchar *experiment_name){
   sbtab_t *DataTable;
@@ -345,7 +263,8 @@ void determine_target_and_operation(gpointer key, gpointer value, gpointer buffe
   gchar *OP,*Target;
   gint *op;
   effect_t effect;
-  char errbuf[80];
+  const int error_buffer_size=80;
+  char errbuf[error_buffer_size];
   double val;
   int r=-1,i,j,k;
   GPtrArray *ID;
@@ -354,7 +273,7 @@ void determine_target_and_operation(gpointer key, gpointer value, gpointer buffe
   if (N>0){
     EC=regcomp(&OP_Target_RE,">([[:alpha:]]+):([[:alnum:]]+)",REG_EXTENDED);
     if (EC){
-      regerror(EC, &OP_Target_RE, errbuf, 80); abort();
+      regerror(EC, &OP_Target_RE, errbuf, error_buffer_size); abort();
     }
     if (regexec(&OP_Target_RE, Key,3,m,0)==0){
       OP=dup_match(&m[1],Key);
@@ -659,7 +578,123 @@ void event_foreach_experiment
   g_string_free(EName,TRUE);
 }
 
-int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_hash){
+gsl_matrix* initial_conditions(sbtab_t *Compound, sbtab_t *Exp){
+  assert(Exp && Compound);
+  int m=table_length(Compound);
+  int n=table_length(Exp);
+  printf("[%s] initial conditions ([%s] length=%i, %i Experiments):\n",__func__,Compound->TableName,m,n); fflush(stdout);
+  gsl_vector_view row;
+  gsl_matrix *x0=gsl_matrix_alloc(n,m);
+  gsl_vector *default_value=sbtab_column_to_gsl_vector(Compound,"!InitialValue !DefaultValue !Value");
+  assert(default_value && default_value->size == m);
+  gsl_vector_fprintf(stdout,default_value,"vec %+g"); fflush(stdout);
+  int i;
+  for (i=0;i<n;i++){
+    row=gsl_matrix_row(x0,i);
+    gsl_vector_memcpy(&(row.vector),default_value);
+  }
+  gsl_matrix_fprintf(stdout,x0,"default %+g"); fflush(stdout);
+  GPtrArray *Name=sbtab_find_column(Compound,"!Name",NULL);
+  sbtab_update_gsl_matrix(x0,Exp,Name,">");
+  
+  gsl_matrix_fprintf(stdout,x0,"updated %+g"); fflush(stdout);
+  return x0;
+}
+
+gsl_matrix* gsl_matrix_eliminate_rows(gsl_matrix *m, gsl_vector_int *el){
+  int i,j;
+  int n=m->size1-el->size;
+  gsl_vector_view w_row, m_row;
+  gsl_matrix *w=gsl_matrix_alloc(n,m->size2);
+  gsl_vector_int *l=gsl_vector_int_alloc(m->size1);
+  gsl_vector_int_set_all(l,1);
+  printf("[%s] removing %li out of %li rows:\n",__func__,el->size,m->size1);
+  for (i=0;i<el->size;i++) {
+    gsl_vector_int_set(l,gsl_vector_int_get(el,i),0);
+  }
+  gsl_vector_int_fprintf(stdout,l,"\tlogical %+i");
+  printf("[%s] new size: %i.\n",__func__,n);
+
+  j=0;
+  for (i=0;i<m->size1;i++){
+    if (gsl_vector_int_get(l,i)){
+      m_row=gsl_matrix_row(m,i);
+      w_row=gsl_matrix_row(w,j++);
+      gsl_vector_memcpy(&(w_row.vector),&(m_row.vector));
+    }
+  }
+  return w;
+}
+
+
+gsl_matrix* gsl_matrix_eliminate_columns(gsl_matrix *m, gsl_vector_int *el){
+  int i,j;
+  int n=m->size2-el->size;
+  gsl_vector_view w_column, m_column;
+  gsl_matrix *w=gsl_matrix_alloc(m->size1,n);
+  gsl_vector_int *l=gsl_vector_int_alloc(m->size2);
+  gsl_vector_int_set_all(l,1);
+  printf("[%s] removing %li out of %li columns:\n",__func__,el->size,m->size2);
+  for (i=0;i<el->size;i++) {
+    gsl_vector_int_set(l,gsl_vector_int_get(el,i),0);
+  }
+  gsl_vector_int_fprintf(stdout,l,"\tlogical %+i");
+  printf("[%s] new size: %i.\n",__func__,n);
+
+  j=0;
+  for (i=0;i<m->size2;i++){
+    if (gsl_vector_int_get(l,i)){
+      m_column=gsl_matrix_column(m,i);
+      w_column=gsl_matrix_column(w,j++);
+      gsl_vector_memcpy(&(w_column.vector),&(m_column.vector));
+    }
+  }
+  return w;
+}
+
+
+gsl_matrix* gsl_matrix_cat(gsl_matrix *A, gsl_matrix *B, int dim){
+  gsl_matrix *C;
+  int i;
+  int j=0;
+  gsl_vector_view a,b,c;
+  switch (dim){
+  case 1:
+    assert(A->size2 == B->size2);
+    C=gsl_matrix_alloc(A->size1+B->size1,A->size2);
+    for (i=0;i<A->size1;i++){
+      a=gsl_matrix_row(A,i);
+      c=gsl_matrix_row(C,j++);
+      gsl_vector_memcpy(&(c.vector),&(a.vector));
+    }
+    for (i=0;i<B->size1;i++){
+      b=gsl_matrix_row(B,i);
+      c=gsl_matrix_row(C,j++);
+      gsl_vector_memcpy(&(c.vector),&(b.vector));
+    }    
+    break;
+  case 2:    
+    assert(A->size1 == B->size1);
+    C=gsl_matrix_alloc(A->size1,A->size2+B->size2);
+    for (i=0;i<A->size2;i++){
+      a=gsl_matrix_column(A,i);
+      c=gsl_matrix_column(C,j++);
+      gsl_vector_memcpy(&(c.vector),&(a.vector));
+    }
+    for (i=0;i<B->size2;i++){
+      b=gsl_matrix_column(B,i);
+      c=gsl_matrix_column(C,j++);
+      gsl_vector_memcpy(&(c.vector),&(b.vector));
+    }
+    break;
+  default:
+    fprintf(stderr,"[%s] dim must be 1 or 2 (given %i)\n",__func__,dim);
+    C=NULL;
+  }
+  return C;
+}
+
+int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_hash, gsl_matrix *ConservationLaws, gsl_vector_int *EliminatedCompounds){
   int status=EXIT_SUCCESS;
   sbtab_t *Input=sbtab_find(sbtab_hash,"Input input Inputs inputs");
   sbtab_t *Output=sbtab_find(sbtab_hash,"Output output L1OUT Outputs outputs");
@@ -668,7 +703,7 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   
   guint nE=table_length(Experiments);
   printf("[%s] %i Experiments.\n",__func__,nE);
-  gsl_vector *default_time=get_default_time(Experiments);
+  gsl_vector *default_time=sbtab_column_to_gsl_vector(Experiments,"!Time");
   GPtrArray *EName=sbtab_find_column(Experiments,"!Name",NULL);
   GPtrArray *EType=sbtab_find_column(Experiments,"!Type",NULL);
   experiment_type *ExperimentType=get_experiment_type(EType);
@@ -676,13 +711,33 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   printf("[%s] found list of experiments: %s with %i entries\n",
 	 __func__,Experiments->TableName,nE);
 
+  sbtab_t *Compound=sbtab_find(sbtab_hash,"Compound Compounds compounds StateVariable StateVariables");
+  gsl_matrix *x0=initial_conditions(Compound,Experiments);
+  printf("[%s] initial values (%i×%i):\n",__func__,x0->size1,x0->size2);
+  gsl_matrix_fprintf(stdout,x0,"\t\tfull %+g");
+  gsl_matrix *ConservedConstants=gsl_matrix_alloc(nE,ConservationLaws->size2);
+  gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,1.0, x0, ConservationLaws,0.0,ConservedConstants);
+  gsl_matrix *x0_reduced=gsl_matrix_eliminate_columns(x0,EliminatedCompounds);
+  gsl_matrix_fprintf(stdout,x0_reduced,"\t\treduced %+g"); fflush(stdout);
+  assert(x0->size1 == nE);
+  assert(x0->size2 == table_length(Compound));
 
-  gsl_vector *default_input=get_default_input(Input);
-  GPtrArray *E_default_input=get_experiment_specific_inputs(Experiments, Input, default_input, sbtab_hash);
-
+  gsl_vector *default_input=sbtab_column_to_gsl_vector(Input,"!DefaultValue !Value");
+  gsl_vector_fprintf(stdout,default_input,"default input %+g");
+  gsl_matrix *ExperimentSpecificInput=gsl_matrix_alloc(nE,default_input->size);
+  int i;
+  gsl_vector_view input_row;
+  for (i=0;i<nE;i++){
+    input_row=gsl_matrix_row(ExperimentSpecificInput,i);
+    gsl_vector_memcpy(&(input_row.vector),default_input);
+  }
+  gsl_matrix_fprintf(stdout,ExperimentSpecificInput,"specific input %+g");
+  gsl_matrix *ExpInput=gsl_matrix_cat(ExperimentSpecificInput,ConservedConstants,2);
+  gsl_matrix_fprintf(stdout,ExpInput,"cat specific & conserved %+g");
+    
   int lflag[nE];
   GPtrArray *DataTable=get_data(sbtab_hash,Experiments,lflag);
-  /* the above is as written inthe spreadsheet */
+  /* the above is as written in the spreadsheet */
   printf("[%s] %i DataTables imported. Re-organizing into simulation packages.\n",__func__,DataTable->len); fflush(stdout);
   map_t *IdxMap=empty_map(nE);
   GPtrArray *D=unwrap_data
@@ -690,10 +745,11 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
      lflag,
      ExperimentType,
      EName,
-     E_default_input,
+     ExpInput,
      default_time,
      Input,
      Output,
+     x0_reduced,
      IdxMap);
   printf("[%s] Data is re-packaged into %i simlation packages. Interpreting normalisation columns (!RelativeTo).\n",__func__,D->len); fflush(stdout);
   norm_t *N=normalisation(Experiments,ExperimentType,Output,DataTable,IdxMap);
@@ -1044,7 +1100,7 @@ gsl_matrix* get_input_matrix(sbtab_t *DataTable, GPtrArray *input_ID, gsl_vector
   assert(DataTable);
   guint N=DataTable->column[0]->len;
   guint nU=default_input->size;
-  gchar *s=NULL, *ui=NULL, *uid_j;
+  gchar *ui=NULL, *uid_j;
   GPtrArray *u=NULL;
   gsl_matrix *U;
   gsl_vector_view u_row;
@@ -1062,7 +1118,7 @@ gsl_matrix* get_input_matrix(sbtab_t *DataTable, GPtrArray *input_ID, gsl_vector
     uid_j = g_ptr_array_index(input_ID,j);
     u=sbtab_find_column(DataTable,uid_j,">");
     if (u){
-      printf("[%s] Found input column %i (%s).\n",__func__,j,s);  fflush(stdout);
+      printf("[%s] Found input column %i (%s).\n",__func__,j,uid_j);  fflush(stdout);
       for (i=0;i<N;i++){
 	ui = (gchar*) g_ptr_array_index(u,i);
 	if (ui){

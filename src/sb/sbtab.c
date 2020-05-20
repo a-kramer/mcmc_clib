@@ -163,7 +163,7 @@ int sbtab_append_row(const sbtab_t *sbtab, const char *data, const char *fs){
     if(n!=c) {
       fprintf(stderr,"[%s] data contained %i entries while table has %i headers\n\t\t",__func__,n,c);
       for (i=0;i<c;i++) fprintf(stderr,"«%s» ",sbtab->key[i]);
-      fprintf(stderr,"\n");
+      fprintf(stderr,"\n\t\t");
       for (i=0;i<n;i++) fprintf(stderr,"«%s» ",s[i]);
       fprintf(stderr,"\n");
       fprintf(stderr,"[%s] input is a tsv file, so delimited by «%s» and inline comments marked by %%\n",__func__,fs);
@@ -214,6 +214,7 @@ GPtrArray* sbtab_find_column(const sbtab_t *sbtab, const char *key, const char *
     g_string_append(ref_key,Key[i]);
     a=g_hash_table_lookup(sbtab->col,ref_key->str);
     if (a) break;
+    else ref_key = g_string_assign (ref_key,"");
   }
   /* if (a==NULL){ */
   /*   fprintf(stderr, */
@@ -317,8 +318,12 @@ sbtab_t* sbtab_from_tsv(char *tsv_file){
       if (m_s>0){
 	if (regexec(&SBcomment,s,1,match,0)==0){
 	  // remove comment from line
+	  //printf("[%s] comment found:\n",__func__);
+	  //printf("\t\t«%s»\n",s);
 	  a=match[0].rm_so;
 	  s[a]='\0';
+	  g_strstrip(s);
+	  //printf("\t\t«%s»\n",s);
 	}
 	if (sbtab_header_read){
 	  if (regexec(&SBkeys,s,2,match,0)==0){
@@ -366,6 +371,8 @@ gsl_matrix* sbtab_columns_to_gsl_matrix(sbtab_t *table, GPtrArray *column_names,
 
 void sbtab_update_gsl_matrix(gsl_matrix *m, sbtab_t *table, GPtrArray *column_names, char *prefix){
   assert(m);
+  assert(table);
+  assert(column_names);
   int i,j;
   gchar *s,*r;
   gchar *c;
@@ -421,7 +428,7 @@ gsl_vector* sbtab_column_to_gsl_vector(sbtab_t *table,gchar *column_name){
 }
 
 /* This is a generic function to update a vector (a default)
- * Mor specific values of this exist for some Quantities such as
+ * More specific values of this exist for some Quantities such as
  * time-vectors and data-matrices. This one allows missing values.
  */
 void sbtab_update_gsl_vector(gsl_vector *v, sbtab_t *table,gchar *column_name){

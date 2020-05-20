@@ -26,10 +26,11 @@ GPtrArray* unwrap_data
  const int *lflag,
  const experiment_type *ExperimentType,
  const GPtrArray *ExperimentName,
- const GPtrArray *input_override,
+ const gsl_matrix *input_override,
  const gsl_vector *default_time,
  const sbtab_t *Input,
  const sbtab_t *Output,
+ const gsl_matrix *x0,
  map_t *IdxMap);
 
 #endif
