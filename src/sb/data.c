@@ -156,8 +156,12 @@ void write_data(gpointer data, gpointer user_data){
   h5stdv->size[0]=D->noise->size1;
   h5stdv->size[1]=D->noise->size2;
   
-  H5LTmake_dataset_double(h5data->group_id,H5_data_name,2,h5data->size,D->measurement->data);
   H5LTmake_dataset_double(h5stdv->group_id,H5_stdv_name,2,h5stdv->size,D->noise->data);
+  H5LTset_attribute_int(h5stdv->group_id,H5_stdv_name,"index",&index, 1);
+  H5LTset_attribute_int(h5stdv->group_id,H5_stdv_name,"major",&major, 1);
+  H5LTset_attribute_int(h5stdv->group_id,H5_stdv_name,"minor",&minor, 1);
+
+  H5LTmake_dataset_double(h5data->group_id,H5_data_name,2,h5data->size,D->measurement->data);
   H5LTset_attribute_int(h5data->group_id,H5_data_name,"LikelihoodFlag",&lflag, 1);
   H5LTset_attribute_int(h5data->group_id,H5_data_name,"index",&index, 1);
   H5LTset_attribute_int(h5data->group_id,H5_data_name,"major",&major, 1);

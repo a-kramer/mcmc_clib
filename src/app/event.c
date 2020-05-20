@@ -24,6 +24,7 @@ event_sub_list
   size_t N=event->value->size1;
   size_t M=event->value->size2;
   assert(event->time->size == event->value->size1);
+  assert(T>0);
   size_t first_TP_after[N]; // first time point of measurement after an event
   /* find out where events belong in the timeline */
   //printf("[%s] number of events: %li\n",__func__,N);
@@ -275,7 +276,7 @@ event_row_link
 
 void list_print(event_row_t *r){
   while(r){
-    //printf("[%s] t=%g with %li effects.\n",__func__,r->t,r->value->size);
+    printf("[%s] t=%g with %li effects.\n",__func__,r->t,r->value->size);
     r=r->next;
   }
 }
