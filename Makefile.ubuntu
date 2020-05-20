@@ -14,7 +14,7 @@ MALA_SRC = ./src/mcmc/smmala.c ./src/mcmc/mcmc_kernel.c			\
 ./src/ode/ode_model.c ./src/mcmc/mv_norm.c		\
 ./src/mcmc/model_parameters_smmala.c ./src/app/normalisation_sd.c	\
 ./src/app/dynamic_array.c ./src/mcmc/smmala_posterior.c ./src/app/diagnosis_output.c \
-./src/app/read_data_hdf5.c ./src/app/flatten.c ./src/app/event.c 
+./src/app/read_data_hdf5.c ./src/app/flatten.c ./src/app/event.c ./src/sb/h5block.c
 
 SB_SRC = ./src/sb/sbtab.c ./src/sb/event_glib.c ./src/sb/re.c ./src/sb/h5block.c ./src/sb/data.c ./src/sb/norm.c
 
@@ -27,7 +27,7 @@ all: bin/ode_smmala bin/sbtab_import
 
 
 bin/ode_smmala: ./src/app/ode_smmala.c $(MALA_SRC)
-	$(MPICC) $(MALA_SRC) -o $(BIN)/ode_smmala -ldl $(CFLAGS) src/app/ode_smmala.c -lsundials_cvodes -lsundials_nvecserial -l sundials_sunmatrixdense -lsundials_sunlinsoldense $(FLAGS)
+	$(MPICC) $(MALA_SRC) -o $(BIN)/ode_smmala -ldl $(CFLAGS) src/app/ode_smmala.c -lsundials_cvodes -lsundials_nvecserial -lsundials_sunmatrixdense -lsundials_sunlinsoldense $(FLAGS)
 
 vfgen: 
 	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread
