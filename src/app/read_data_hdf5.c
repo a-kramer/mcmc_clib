@@ -325,13 +325,13 @@ load_event_block
   // printf("[%s] affected experiment «%s».\n",__func__,ExperimentName);
   //fflush(stdout);
   char *TargetName=h5_to_char(g_id, name, "TargetName");
-  //printf("[%s] affected variable «%s».\n",__func__,TargetName);
-  //fflush(stdout);
+  printf("[%s] affected variable «%s».\n",__func__,TargetName);
+  fflush(stdout);
   gsl_matrix *value=h5_to_gsl(g_id,name,NULL);
   assert(value);
   gsl_vector *time=h5_to_gsl(g_id,name,"Time");
   assert(time);
-  //gsl_vector_fprintf(stdout,time,"%g"); fflush(stdout);
+  gsl_vector_fprintf(stdout,time,"%g"); fflush(stdout);
   gsl_vector_int *type=h5_to_gsl_int(g_id,name,"op");
   assert(type);
   gsl_vector_int *effect=h5_to_gsl_int(g_id,name,"Effect");
@@ -344,7 +344,7 @@ load_event_block
      );
   assert(target);
   //printf("[%s] event targets:\n",__func__);
-  //gsl_vector_int_fprintf(stdout,target,"%i");
+  gsl_vector_int_fprintf(stdout,target,"%i");
   int index=-1;
   int major, minor;
   status|=H5LTget_attribute_int(g_id,name,"index",&index);

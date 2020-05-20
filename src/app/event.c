@@ -115,6 +115,7 @@ event_find_targets
       fprintf(stderr,"[%s] not handled case: %i.\n",__func__,effect[i]);
       abort();
     }
+    assert(a>=0);
     gsl_vector_int_set(target,i,a);
     token=strtok(NULL, " ");
   }
@@ -274,7 +275,7 @@ event_row_link
 
 void list_print(event_row_t *r){
   while(r){
-    printf("[%s] t=%g with %li effects.\n",__func__,r->t,r->value->size);
+    //printf("[%s] t=%g with %li effects.\n",__func__,r->t,r->value->size);
     r=r->next;
   }
 }
@@ -293,25 +294,27 @@ void event_push
   event_row_t *e; /* current event pointer */
   event_row_t *n; /* new event */
   event_row_t **p; /* a pointer to n's parent.next component */
-  //printf("[%s] inserting %li events into linked list.\n",__func__,event_table->time->size);
+  printf("[%s] inserting %li events into linked list.\n",__func__,event_table->time->size);
   assert(single);
   for (i=0;i<time->size;i++){
-    assert(event_table->time_before_t && event_table->time_before_t[i]);
-    J=event_table->time_before_t[i]->size;
-    for (j=0;j<J;j++){
-      p=&(single[i]);
-      e=*p;
-      n=event_row_link(i,j,event_table);
-      while (e && n->t < e->t) {
-	p=&(e->next);
-	e=e->next;
+    assert(event_table->time_before_t);
+    if (event_table->time_before_t[i]){
+      J=event_table->time_before_t[i]->size;
+      for (j=0;j<J;j++){
+	p=&(single[i]);
+	e=*p;
+	n=event_row_link(i,j,event_table);
+	while (e && n->t < e->t) {
+	  p=&(e->next);
+	  e=e->next;
+	}
+	n->next=e;
+	*p=n;
       }
-      n->next=e;
-      *p=n;
+      list_print(single[i]);
     }
-    //list_print(single[i]);
   }
-  //printf("[%s] done.\n",__func__);
+  printf("[%s] done.\n",__func__); fflush(stdout);
 }
 
 
@@ -351,8 +354,9 @@ event_convert_to_arrays
   if (single){
     for (j=0;j<T;j++){
       L=list_length(single[j]);
-      //printf("[%s] list %li has length %li.\n",__func__,j,L); 
-      b[j]=event_array_alloc(L);
+      //printf("[%s] list %li has length %li.\n",__func__,j,L);
+      //fflush(stdout);
+      if (L>0) b[j]=event_array_alloc(L);
       p=single[j];
       i=L-1;
       while (p && i>=0){
@@ -372,11 +376,13 @@ void events_are_time_ordered(size_t num, before_measurement **b){
   int i,j;
   double t;
   for (i=0;i<num;i++){
-    assert(b[i]);
-    t=b[i]->event[0]->t;
-    for (j=1;j<b[i]->size;j++){
-      assert(b[i]->event[j]->t>=t);
-      t=b[i]->event[j]->t;
+    if(b[i]){
+      t=b[i]->event[0]->t;
+      for (j=1;j<b[i]->size;j++){
+	assert(b[i]->event[j]->t>=t);
+	t=b[i]->event[j]->t;
+      }
+      //printf("[%s] event %i is time ordered.\n",__func__,i);
     }
   }
 }

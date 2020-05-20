@@ -459,6 +459,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
   for (c=0; c<C; c++){/* loop over different experimental conditions */
     model=solver[c]->odeModel;    
     a=mp->S_approx[c];
+    e_t=mp->t0;
     a->t0=mp->t0;
     assert(mp->E[c]->p);
     gsl_vector_memcpy(mp->E[c]->p,mp->p); // events may modify this vector
@@ -504,7 +505,8 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 	}
       }
       /* 2. advance the state to the measurement time t(j) */
-      i_flag|=ode_solver_step(solver[c], gsl_vector_get(t,j), y, fy, yS, fyS, a);
+      if (gsl_vector_get(t,j) > e_t)
+	i_flag|=ode_solver_step(solver[c], gsl_vector_get(t,j), y, fy, yS, fyS, a);
     }
   }
   

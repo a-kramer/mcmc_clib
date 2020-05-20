@@ -1056,13 +1056,13 @@ gsl_vector_int* get_parameter_scale(GPtrArray *Scale){
   for (i=0;i<n;i++){
     Type=g_ptr_array_index(Scale,i);
     if (regexec(&LogType, Type, 3, match, 0)==0){
-      //printf("[%s] (%i) «%s» matches RE for 'natural logarithm'\n",__func__,i,Type);
+      printf("[%s] (%i) «%s» matches RE for 'natural logarithm'\n",__func__,i,Type);
       gsl_vector_int_set(scale_type,i,LOG_SCALE);
     } else if (regexec(&Log10Type, Type, 3, match, 0)==0){
-      //printf("[%s] (%i) «%s» matches RE for 'base-10 logarithm'\n",__func__,i,Type);
+      printf("[%s] (%i) «%s» matches RE for 'base-10 logarithm'\n",__func__,i,Type);
       gsl_vector_int_set(scale_type,i,LOG10_SCALE);
     } else if (regexec(&LinType, Type, 3, match, 0)==0){
-      //printf("[%s] (%i) «%s» matches RE for 'linear scale'\n",__func__,i,Type);
+      printf("[%s] (%i) «%s» matches RE for 'linear scale'\n",__func__,i,Type);
       gsl_vector_int_set(scale_type,i,LIN_SCALE);
     } else {
       printf("[%s] This «!Scale[%i]» is unknown: «%s»\n",__func__,(int) i, Type);
