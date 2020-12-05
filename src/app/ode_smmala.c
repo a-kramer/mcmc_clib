@@ -50,6 +50,7 @@
 #include "hdf5.h"
 #include "hdf5_hl.h"
 #include "omp.h"
+#include "options.h"
 #include "../mcmc/model_parameters_smmala.h"
 // define target block types
 #define INTEGER_BLOCK 1
@@ -68,29 +69,6 @@
 //#define BETA(rank,R) (1.0/((double)(rank+1)))
 //#define BETA(rank,R) gsl_sf_exp(-gamma*((double) rank))
 
-
-/* collects most of the options that have defaults, values from
-   possible configuration files and values from command line
-   arguments.
- */
-typedef struct {
-  char *library_file; /*@code .so@ file*/
-  char *output_file; /*name suffix of the result file*/
-  char *resume_file; /*name prefix of the sesume file*/
-  double target_acceptance; /*taget acceptance of the mcmc algorithm, Metropolis works well with 24%, smmala probably at 50%*/
-  double initial_stepsize; /*mcmc step size before tuning*/
-  double initial_stepsize_rank_factor; /* the initial size can be
-					  adjusted depending on
-					  temperature by setting thos
-					  to a value larger than 1:
-					  @code step_size =
-					  pow(rank_factor,rank) *
-					  initial_step_size;@*/
-  long sample_size; /*target recorded sample size*/
-  double abs_tol; /* ode solver parameter*/
-  double rel_tol; /* ode solver parameter*/
-  double t0; /* global initial time for integration (ivp)*/
-} main_options;  // these are user supplied options to the program
 
 
 /* collects all parameters and size arrays needed for hdf5 functions
@@ -599,23 +577,6 @@ void display_test_evaluation_results(mcmc_kernel *kernel)/*MCMC kernel struct*/{
   printf("%+g\tLogPrior(θ)=%+g.\n",log_p[1],log_p[2]);
 }
 
-/*this is where the hard coded defaults are set. All options are
-  scalars (or pointers to elsewhere allocated memory) so the result is
-  not a reference*/
-main_options /*a struct with default values*/
-get_default_options(char *global_sample_filename_stem,/*for mcmc result files*/ char *lib_name)/*Model library name*/{
-  main_options option;
-  option.initial_stepsize_rank_factor=1.0;
-  option.output_file=global_sample_filename_stem;
-  option.library_file=lib_name;
-  option.target_acceptance=-0.25;
-  option.initial_stepsize =-0.1;
-  option.sample_size=-100;
-  option.abs_tol=ODE_SOLVER_ABS_ERR;
-  option.rel_tol=ODE_SOLVER_REL_ERR;
-  return option;
-}
-
 /* Calculates the normalisation constant of the likelihood function:
  * 1/sqrt(2*pi*sigma²)^beta for all data points (product).
  * This is done in log-space
@@ -677,7 +638,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   int start_from_prior=no;
   int sensitivity_approximation=no;
 
-  main_options cnf_options=get_default_options(global_sample_filename_stem, lib_name);
+  main_options *cnf_options=default_options(global_sample_filename_stem, lib_name);
   
   MPI_Init(&argc,&argv);
   int rank,R;
@@ -699,17 +660,17 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
     } else if (strcmp(argv[i],"-w")==0 || strcmp(argv[i],"--warm-up")==0) warm_up=strtol(argv[i+1],NULL,10);
     else if (strcmp(argv[i],"--resume")==0 || strcmp(argv[i],"-r")==0) sampling_action=SMPL_RESUME;
     else if (strcmp(argv[i],"--sens-approx")==0) sensitivity_approximation=1;
-    else if (strcmp(argv[i],"-l")==0) strcpy(cnf_options.library_file,argv[i+1]);
+    else if (strcmp(argv[i],"-l")==0) strcpy(cnf_options->library_file,argv[i+1]);
     //    else if (strcmp(argv[i],"-n")==0) Tuning=0;
-    else if (strcmp(argv[i],"-s")==0) cnf_options.sample_size=strtol(argv[i+1],NULL,0);
-    else if (strcmp(argv[i],"-o")==0) strncpy(cnf_options.output_file,argv[i+1],BUFSZ);
-    else if (strcmp(argv[i],"-a")==0) cnf_options.target_acceptance=strtod(argv[i+1],NULL);
-    else if (strcmp(argv[i],"-i")==0 || strcmp(argv[i],"--initial-step-size")==0) cnf_options.initial_stepsize=strtod(argv[i+1],NULL);
-    else if (strcmp(argv[i],"-m")==0 || strcmp(argv[i],"--initial-step-size-rank-multiplier")==0) cnf_options.initial_stepsize_rank_factor=strtod(argv[i+1],NULL);
+    else if (strcmp(argv[i],"-s")==0) cnf_options->sample_size=strtol(argv[i+1],NULL,0);
+    else if (strcmp(argv[i],"-o")==0) strncpy(cnf_options->output_file,argv[i+1],BUFSZ);
+    else if (strcmp(argv[i],"-a")==0) cnf_options->target_acceptance=strtod(argv[i+1],NULL);
+    else if (strcmp(argv[i],"-i")==0 || strcmp(argv[i],"--initial-step-size")==0) cnf_options->initial_stepsize=strtod(argv[i+1],NULL);
+    else if (strcmp(argv[i],"-m")==0 || strcmp(argv[i],"--initial-step-size-rank-multiplier")==0) cnf_options->initial_stepsize_rank_factor=strtod(argv[i+1],NULL);
 
     else if (strcmp(argv[i],"-g")==0) gamma=strtod(argv[i+1],NULL);
-    else if (strcmp(argv[i],"--abs-tol")==0) cnf_options.abs_tol=strtod(argv[i+1],NULL);
-    else if (strcmp(argv[i],"--rel-tol")==0) cnf_options.rel_tol=strtod(argv[i+1],NULL);
+    else if (strcmp(argv[i],"--abs-tol")==0) read_abs_tol(cnf_options->abs_tol,argv[i+1]);
+    else if (strcmp(argv[i],"--rel-tol")==0) cnf_options->rel_tol=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"--seed")==0) seed=strtod(argv[i+1],NULL);
     else if (strcmp(argv[i],"-h")==0 || strcmp(argv[i],"--help")==0) {
       print_help();
@@ -736,9 +697,9 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   dot=strchr(lib_base,'.');
   if (dot)  dot[0]='\0';
   sprintf(resume_filename,"%s_resume_%02i.h5",lib_base,rank);
-  sprintf(rank_sample_file,"mcmc_rank_%02i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options.output_file));
-  cnf_options.output_file=rank_sample_file;
-  cnf_options.resume_file=resume_filename;
+  sprintf(rank_sample_file,"mcmc_rank_%02i_of_%i_%s_%s",rank,R,lib_base,basename(cnf_options->output_file));
+  cnf_options->output_file=rank_sample_file;
+  cnf_options->resume_file=resume_filename;
 
   /* local variables for parameters and inital conditions as presented
      in ode model lib: */
@@ -796,10 +757,6 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
     odeModel->vf_sens=NULL;
   }
   
-  /* init solver 
-   */
-  realtype solver_param[3] = {cnf_options.abs_tol, cnf_options.rel_tol, 0};
-  
   omp->t0=t0;
     /* save in ode model parameter struct: */
   set_number_of_state_variables(omp,N);
@@ -829,12 +786,12 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
    * line parameters. So, to check whether default parameters were
    * altered by the command line, the variable declaration defaults
    * are negative at first. Alterations to some meta-parameter p can
-   * be checked by: if (cnf_options.p<0)
-   * cnf_options.p=read_from_file(SOME FILE);
+   * be checked by: if (cnf_options->p<0)
+   * cnf_options->p=read_from_file(SOME FILE);
    */
-  cnf_options.initial_stepsize=fabs(cnf_options.initial_stepsize);
-  cnf_options.target_acceptance=fabs(cnf_options.target_acceptance);
-  cnf_options.sample_size=fabs(cnf_options.sample_size);
+  cnf_options->initial_stepsize=fabs(cnf_options->initial_stepsize);
+  cnf_options->target_acceptance=fabs(cnf_options->target_acceptance);
+  cnf_options->sample_size=fabs(cnf_options->sample_size);
 
   /* load default initial conditions
    */
@@ -850,11 +807,15 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
    */
   for (c=0;c<C;c++){
     ode_solver_init(solver[c], omp->t0, omp->E[c]->init_y->data, N, p, P);
-    ode_solver_setErrTol(solver[c], solver_param[1], &solver_param[0], 1);
+    ode_solver_setErrTol
+      (solver[c],
+       cnf_options->rel_tol,
+       cnf_options->abs_tol->value, cnf_options->abs_tol->size);
     if (ode_model_has_sens(odeModel)) {
       ode_solver_init_sens(solver[c], omp->E[0]->yS0->data, P, N);
     }
   }
+  
   /* An smmala_model is a struct that contains the posterior
    * probablity density function and a pointer to its parameters and
    * pre-allocated work-memory.
@@ -875,9 +836,9 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   int D=omp->size->D;
   double init_x[D];
   double beta=assign_beta(rank,R,round(gamma));
-  double tgac=cnf_options.target_acceptance;
-  double m=cnf_options.initial_stepsize_rank_factor;
-  double step=cnf_options.initial_stepsize;
+  double tgac=cnf_options->target_acceptance;
+  double m=cnf_options->initial_stepsize_rank_factor;
+  double step=cnf_options->initial_stepsize;
   if (m>1.0 && rank>0) step*=gsl_pow_int(m,rank);
   pdf_normalisation_constant(omp);
   printf("[%s] (rank %i) likelihood log(normalisation constant): %g\n",__func__,rank,omp->pdf_lognorm);
@@ -913,7 +874,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
     fflush(stderr);  
   }
   
-  size_t SampleSize = cnf_options.sample_size;  
+  size_t SampleSize = cnf_options->sample_size;  
   
   /* in parallel tempering th echains can swap their positions;
    * this buffers the communication between chains.
@@ -924,7 +885,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
    */
   size_t BurnInSampleSize;
   if (warm_up==0){
-    BurnInSampleSize = 7 * (int) sqrt(cnf_options.sample_size);
+    BurnInSampleSize = 7 * (int) sqrt(cnf_options->sample_size);
   } else {
     BurnInSampleSize=warm_up;
   }
@@ -944,7 +905,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   /* this struct contains all necessary id's and size arrays
    * for writing sample data to an hdf5 file in chunks
    */
-  hdf5block_t *h5block = h5block_init(cnf_options.output_file,
+  hdf5block_t *h5block = h5block_init(cnf_options->output_file,
 				      omp,SampleSize,
 				      x_name,p_name,f_name);
   
@@ -952,7 +913,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
    * these iterations are recorded and saved to an hdf5 file
    * the file is set up and identified via the h5block variable.
    */  
-  mcmc_error=mcmc_foreach(rank, R, SampleSize, omp, kernel, h5block, buffer, &cnf_options);
+  mcmc_error=mcmc_foreach(rank, R, SampleSize, omp, kernel, h5block, buffer, cnf_options);
   assert(mcmc_error==EXIT_SUCCESS);
   append_meta_properties(h5block,&seed,&BurnInSampleSize, h5file, lib_base);
   h5block_close(h5block);

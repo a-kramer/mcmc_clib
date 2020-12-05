@@ -4,8 +4,8 @@ CPP=c++
 CPPFLAGS = -O2
 CFLAGS = -O2 -march=native -std=gnu11 -D_GNU_SOURCE -Wall -fopenmp -Wfatal-errors
 
-LDFLAGS = `pkg-config --libs gsl glib-2.0`
-IFLAGS = `pkg-config --cflags gsl glib-2.0`
+LDFLAGS = `pkg-config --libs gsl glib-2.0 mpi`
+IFLAGS = `pkg-config --cflags gsl glib-2.0 mpi`
 
 FLAGS = `pkg-config --libs --cflags gsl glib-2.0 hdf5` -lhdf5_hl
 
@@ -13,7 +13,7 @@ MALA_SRC = ./src/mcmc/smmala.c ./src/mcmc/mcmc_kernel.c			\
 ./src/ode/ode_model.c ./src/mcmc/mv_norm.c		\
 ./src/mcmc/model_parameters_smmala.c ./src/app/normalisation_sd.c	\
 ./src/app/dynamic_array.c ./src/mcmc/smmala_posterior.c ./src/app/diagnosis_output.c \
-./src/app/read_data_hdf5.c ./src/app/flatten.c ./src/app/event.c
+./src/app/read_data_hdf5.c ./src/app/flatten.c ./src/app/event.c ./src/app/options.c
 
 SB_SRC = ./src/sb/sbtab.c ./src/sb/event_glib.c ./src/sb/re.c ./src/sb/h5block.c
 

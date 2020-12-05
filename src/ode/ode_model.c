@@ -183,6 +183,7 @@ void ode_solver_setErrTol(ode_solver* solver, const double rel_tol,  double* abs
   
   if( (abs_tol_len != 1) && (abs_tol_len != solver->odeModel->N)){
     fprintf(stderr,"ode_solver_setErrTol: length of abs_tol must be 1 or equal to the number of variables in the ode model.\n");
+    //abort();
     return ;
   }
   
