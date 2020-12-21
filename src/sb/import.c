@@ -98,7 +98,7 @@ int main(int argc, char*argv[]){
       CL=h5_to_gsl(CL_file,"ConservationLaws",NULL);
       EliminatedCompounds=h5_to_gsl_int(CL_file,"EliminatedCompounds",NULL);
       assert(EliminatedCompounds);
-      printf("[%s] eliminated state variables(%i): \n",__func__,EliminatedCompounds->size);
+      printf("[%s] eliminated state variables(%li): \n",__func__,EliminatedCompounds->size);
       gsl_vector_int_fprintf(stdout,EliminatedCompounds,"eliminate %i");
     } else if (regexec(h5_file,argv[i],0,NULL,0)==0) {
       H5FileName=g_strdup(argv[i]);
@@ -713,8 +713,9 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
 
   sbtab_t *Compound=sbtab_find(sbtab_hash,"Compound Compounds compounds StateVariable StateVariables");
   gsl_matrix *x0=initial_conditions(Compound,Experiments);
-  printf("[%s] initial values (%i×%i):\n",__func__,x0->size1,x0->size2);
+  printf("[%s] initial values (%li×%li):\n",__func__,x0->size1,x0->size2);
   gsl_matrix_fprintf(stdout,x0,"\t\tfull %+g");
+  assert(ConservationLaws);
   gsl_matrix *ConservedConstants=gsl_matrix_alloc(nE,ConservationLaws->size2);
   gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,1.0, x0, ConservationLaws,0.0,ConservedConstants);
   gsl_matrix *x0_reduced=gsl_matrix_eliminate_columns(x0,EliminatedCompounds);

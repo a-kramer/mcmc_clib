@@ -73,8 +73,8 @@ unwrap_data
   gsl_vector_view x0_row;
   int nU=input_override->size2;
   assert(input_override);
-  printf("[%s] input_override (%i×%i) for %i Experiments and %i input parameters.\n",__func__,input_override->size1,input_override->size2,nE,table_length(Input)); fflush(stdout);
-  printf("[%s] initial values (%i×%i) for %i Experiments.\n",__func__,x0->size1,x0->size2,nE); fflush(stdout);
+  printf("[%s] input_override (%li×%li) for %i Experiments and %i input parameters.\n",__func__,input_override->size1,input_override->size2,nE,table_length(Input)); fflush(stdout);
+  printf("[%s] initial values (%li×%li) for %i Experiments.\n",__func__,x0->size1,x0->size2,nE); fflush(stdout);
   assert(input_override->size1 == nE);
 
   
