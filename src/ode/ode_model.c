@@ -41,7 +41,7 @@ static char* get_vf_name(const char* filename){
 ode_model* ode_model_loadFromFile(const char *filename){
 
   //printf("loading library from: %s\n",filename);
-  void* odeLibrary = dlopen(filename, RTLD_LAZY | RTLD_LOCAL);				/* resource acc */
+  void* odeLibrary = dlopen(filename, RTLD_LAZY | RTLD_LOCAL);	// model.so: gcc -shared -fPIC model_cvs.c -o model.so
   
   if (odeLibrary == NULL){
     fprintf(stderr, "Library %s could not be loaded.\n",filename);

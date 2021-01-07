@@ -117,7 +117,6 @@ int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy,
   return GSL_SUCCESS;
 }
 
-
 /* Normalisation information: quantities are normalised in place:
  * NORMALISATION_TYPE: fy_i ← normalisation_function(fy_i,fy_j)
  * DATA_NORMALISED_BY_REFERENCE: fy_i(t_j,k,u)←fy_i(t_j,k,u)/fy_i(t_j,k,reference_u)

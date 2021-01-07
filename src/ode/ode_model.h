@@ -35,21 +35,21 @@ typedef int (*func)(realtype, N_Vector, realtype *, void *);
 typedef int (*func_sens)(realtype, N_Vector, N_Vector *, double *, void *);
 	
   typedef struct{
-    int		N;				/* number of state variables */
-    int		P;				/* number of parameters */
-    int		F;				/* number of output functions */
-    double*		v;				/* initial conditions */
-    double*		p;				/* default parameters */
-    rhs_f		vf_eval;		/* function pointer for ode RHS */
-    jac_f		vf_jac;			/* function pointer for jacobian dvf/dx */
-    jacp_f		vf_jacp;	        /* function pointer for parameter jacobian df/dp*/
-    rhs_sens	vf_sens;		/* function pointer for ode sensitivities */
-    func		vf_func;		/* function pointer for functions RHS */
+    int		N;		/* number of state variables */
+    int		P;		/* number of parameters */
+    int		F;		/* number of output functions */
+    double*	v;		/* initial conditions */
+    double*	p;		/* default parameters */
+    rhs_f	vf_eval;	/* function pointer for ode RHS */
+    jac_f	vf_jac;		/* function pointer for jacobian dvf/dx */
+    jacp_f	vf_jacp;	/* function pointer for parameter jacobian df/dp*/
+    rhs_sens	vf_sens;	/* function pointer for ode sensitivities */
+    func	vf_func;	/* function pointer for functions RHS */
     func_sens	vf_func_sens;	/* function pointer for functions sensitivities */
-    char**		v_names;		/* string array of variable names */
-    char**		p_names;		/* string array of parameter names */
-    char**		f_names;		/* string array of function names */
-    void*		dylib;			/* pointer to dynamicaly linked library with the ode model */
+    char**	v_names;	/* string array of variable names */
+    char**	p_names;	/* string array of parameter names */
+    char**	f_names;	/* string array of function names */
+    void*	dylib;		/* pointer to dynamicaly linked library with the ode model */
   } ode_model;
   
   
