@@ -13,12 +13,9 @@
 #ifdef __cplusplus  /* wrapper to enable C++ usage */
 extern "C" {
 #endif
+
 #include <cvodes/cvodes.h>
-  //#include <cvodes/cvodes_dense.h>
-  //#include <cvodes/cvodes_ls.h>
-#include <sunlinsol/sunlinsol_dense.h>
-#include <sunmatrix/sunmatrix_dense.h>
-  
+#include <cvodes/cvodes_dense.h>
 #include <nvector/nvector_serial.h>
 #include <sundials/sundials_types.h>
 #include <sundials/sundials_math.h>

@@ -86,26 +86,24 @@ void VectorField::PrintCVODES(map<string,string> options){
 
     fout << "#include <math.h>" << endl;
 	
-    /* Default is CVODES v2.6.0 */
+	/* Default is CVODES v2.6.0 */
     /* Headers for CVODES */
-    fout << "/* Include headers for SUNDIALS v2.4.0, CVODES v2.6.0 */" << endl;
-    fout << "#include <cvodes/cvodes.h> " << endl;
-    fout << "#include <sunlinsol/sunlinsol_dense.h>" << endl;
-    fout << "#include <sunmatrix/sunmatrix_dense.h>" << endl;
-    //fout << "#include <cvodes/cvodes_dense.h> " << endl;	
-    fout << "#include <nvector/nvector_serial.h> " << endl;	
-    fout << "#include <sundials/sundials_types.h> " << endl;
+	fout << "/* Include headers for SUNDIALS v2.4.0, CVODES v2.6.0 */" << endl;
+	fout << "#include <cvodes/cvodes.h> " << endl;	
+	fout << "#include <cvodes/cvodes_dense.h> " << endl;	
+	fout << "#include <nvector/nvector_serial.h> " << endl;	
+	fout << "#include <sundials/sundials_types.h> " << endl;
 	/* Declerations for ode_model.h	*/
 	fout << endl;
 	fout << "typedef int (*rhs_f)(realtype, N_Vector, N_Vector, void *);" << endl;
 	fout << "typedef int (*jac_f)(long int, realtype," << endl;
 	fout << "                     N_Vector, N_Vector," << endl;
-	fout << "                     SUNMatrix, void*," << endl;
+	fout << "                     DlsMat, void*," << endl;
 	fout << "                     N_Vector, N_Vector, N_Vector);" << endl;
 	fout << endl;
 	fout << "typedef int (*jacp_f)(int, realtype," << endl;
 	fout << "                     N_Vector, N_Vector," << endl;
-	fout << "                     SUNMatrix, void*," << endl;
+	fout << "                     DlsMat, void*," << endl;
 	fout << "                     N_Vector, N_Vector, N_Vector);" << endl;
 	fout << endl;
 	fout << "typedef int (*rhs_sens)(int, realtype, N_Vector, N_Vector," << endl;
@@ -207,12 +205,12 @@ void VectorField::PrintCVODES(map<string,string> options){
     fout << endl;
     fout << func_return_type << " " << Name() << "_jac(long N_, realtype t," << endl;
     fout << "                N_Vector y_, N_Vector fy_," << endl;
-	fout << "                SUNMatrix jac_, void *params," << endl;
+	fout << "                DlsMat jac_, void *params," << endl;
     fout << "                N_Vector tmp1, N_Vector tmp2, N_Vector tmp3)" << endl;
 
     pout << func_return_type << " " << Name() << "_jac(long, realtype," << endl;
     pout << "                N_Vector, N_Vector," << endl;
-	pout << "                SUNMatrix, void *," << endl;
+	pout << "                DlsMat, void *," << endl;
     pout << "                N_Vector, N_Vector, N_Vector);" << endl;
     fout << "    {" << endl;
 
@@ -250,7 +248,7 @@ void VectorField::PrintCVODES(map<string,string> options){
         for (int j = 0; j < nv; ++j){            
             // Skip zero elements.  CVODE initializes jac_ to zero before calling the Jacobian function.
 			if (Jac_y(i,j) != 0)
-                fout << "    SM_ELEMENT_D(jac_, " << i << ", " << j << ") = " << Jac_y(i,j) << ";" << endl;
+                fout << "    DENSE_ELEM(jac_, " << i << ", " << j << ") = " << Jac_y(i,j) << ";" << endl;
 		}
 	}
 	/* end of jacobian function */
@@ -264,12 +262,12 @@ void VectorField::PrintCVODES(map<string,string> options){
     fout << endl;
     fout << func_return_type << " " << Name() << "_jacp(int N_, realtype t," << endl;
     fout << "                N_Vector y_, N_Vector fy_," << endl;
-	fout << "                SUNMatrix jacp_, void *params," << endl;
+	fout << "                DlsMat jacp_, void *params," << endl;
     fout << "                N_Vector tmp1, N_Vector tmp2, N_Vector tmp3)" << endl;
 
     pout << func_return_type << " " << Name() << "_jacp(int, realtype," << endl;
     pout << "                N_Vector, N_Vector," << endl;
-	pout << "                SUNMatrix, void *," << endl;
+	pout << "                DlsMat, void *," << endl;
     pout << "                N_Vector, N_Vector, N_Vector);" << endl;
     fout << "    {" << endl;
 
@@ -308,7 +306,7 @@ void VectorField::PrintCVODES(map<string,string> options){
             ex df = f.diff(p);
             // Skip zero elements.  CVODE initializes jac_ to zero before calling the Jacobian function.
             if (df != 0)
-                fout << "    SM_ELEMENT_D(jacp_, " << i << ", " << j << ") = " << df << ";" << endl;
+                fout << "    DENSE_ELEM(jacp_, " << i << ", " << j << ") = " << df << ";" << endl;
             }
         }
     if (options["version"] != "2.3.0")
