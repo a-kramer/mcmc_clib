@@ -564,8 +564,9 @@ void print_experiment_information(int rank,/*MPI rank*/ int R, /*MPI Comm size*/
   
   for (i=0;i<C;i++){
     if (omp->E[i]->init_y){
-      fprintf(stderr,"[%s] warning: y(t0) already initialised.\n",__func__);
+      fprintf(stderr,"[%s] y(t0) set by h5 file in Experiment %i of %i. I'll leave it unchanged\n",__func__,i,C);
     }else{
+      fprintf(stderr,"[%s] y(t0) is not yet set for Experiment %i of %i. I'll use the global default from the model's «.so» file (set in vfgen file).\n",__func__,i,C);
       omp->E[i]->init_y=gsl_vector_alloc(N);
       gsl_vector_memcpy(omp->E[i]->init_y,y0);
     }

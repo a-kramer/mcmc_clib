@@ -93,6 +93,13 @@ int main(int argc, char*argv[]){
 	printf("[%s] added table «%s» with title: «%s».\n",__func__,table->TableName,table->TableTitle);
 	fflush(stdout);
       }
+    } else if (regexec(h5_ConLaw,argv[i],0,NULL,0)==0){
+      CL_file=H5Fopen(argv[i],H5F_ACC_RDONLY,H5P_DEFAULT);
+      CL=h5_to_gsl(CL_file,"ConservationLaws",NULL);
+      EliminatedCompounds=h5_to_gsl_int(CL_file,"EliminatedCompounds",NULL);
+      assert(EliminatedCompounds);
+      printf("[%s] eliminated state variables(%li): \n",__func__,EliminatedCompounds->size);
+      gsl_vector_int_fprintf(stdout,EliminatedCompounds,"eliminate %i");
     } else if (regexec(h5_file,argv[i],0,NULL,0)==0) {
       H5FileName=g_strdup(argv[i]);
     } else printf("unknown option «%s».\n",argv[i]);
@@ -112,7 +119,7 @@ int main(int argc, char*argv[]){
   fflush(stdout);
   hid_t file_id;
   file_id = H5Fcreate(H5FileName, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-  status |= process_data_tables(file_id, sbtab, sbtab_hash, CL, EliminatedCompounds);
+  status |= process_data_tables(file_id, sbtab, sbtab_hash,CL,EliminatedCompounds);
   status |= process_prior(file_id, sbtab, sbtab_hash);
   status |= H5Fclose(file_id);
   //process_input_table(H5FileName, sbtab, sbtab_hash);
@@ -696,20 +703,39 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   
   guint nE=table_length(Experiments);
   printf("[%s] %i Experiments.\n",__func__,nE);
-  GPtrArray *ID=sbtab_get_column(Experiments,"!ID");
-  assert(ID);
-  if (ID!=Experiments->column[0]) printf("[%s] warning: !ID is not first column, contrary to SBtab specification.\n",__func__);
-  GPtrArray *E_Name=sbtab_get_column(Experiments,"!Name");
-  GPtrArray *E_type=sbtab_get_column(Experiments,"!Type");
-  gsl_vector *default_time=NULL;
-  default_time=get_default_time(Experiments);
-  int *ExperimentType=get_experiment_type(E_type);
-  printf("[%s] found list of experiments: %s with %i entries\n",__func__,Experiments->TableName,nE);
-  gsl_vector *default_input;
-  default_input=get_default_input(Input);
-  // each experiment can override the default input:
-  gsl_vector **E_default_input;
-  E_default_input=get_experiment_specific_inputs(Experiments, Input, default_input, sbtab_hash);
+  gsl_vector *default_time=sbtab_column_to_gsl_vector(Experiments,"!Time");
+  GPtrArray *EName=sbtab_find_column(Experiments,"!Name",NULL);
+  GPtrArray *EType=sbtab_find_column(Experiments,"!Type",NULL);
+  experiment_type *ExperimentType=get_experiment_type(EType);
+  
+  printf("[%s] found list of experiments: %s with %i entries\n",
+	 __func__,Experiments->TableName,nE);
+
+  sbtab_t *Compound=sbtab_find(sbtab_hash,"Compound Compounds compounds StateVariable StateVariables");
+  gsl_matrix *x0=initial_conditions(Compound,Experiments);
+  printf("[%s] initial values (%li×%li):\n",__func__,x0->size1,x0->size2);
+  gsl_matrix_fprintf(stdout,x0,"\t\tfull %+g");
+  assert(ConservationLaws);
+  gsl_matrix *ConservedConstants=gsl_matrix_alloc(nE,ConservationLaws->size2);
+  gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,1.0, x0, ConservationLaws,0.0,ConservedConstants);
+  gsl_matrix *x0_reduced=gsl_matrix_eliminate_columns(x0,EliminatedCompounds);
+  gsl_matrix_fprintf(stdout,x0_reduced,"\t\treduced %+g"); fflush(stdout);
+  assert(x0->size1 == nE);
+  assert(x0->size2 == table_length(Compound));
+
+  gsl_vector *default_input=sbtab_column_to_gsl_vector(Input,"!DefaultValue !Value");
+  gsl_vector_fprintf(stdout,default_input,"default input %+g");
+  gsl_matrix *ExperimentSpecificInput=gsl_matrix_alloc(nE,default_input->size);
+  int i;
+  gsl_vector_view input_row;
+  for (i=0;i<nE;i++){
+    input_row=gsl_matrix_row(ExperimentSpecificInput,i);
+    gsl_vector_memcpy(&(input_row.vector),default_input);
+  }
+  gsl_matrix_fprintf(stdout,ExperimentSpecificInput,"specific input %+g");
+  gsl_matrix *ExpInput=gsl_matrix_cat(ExperimentSpecificInput,ConservedConstants,2);
+  gsl_matrix_fprintf(stdout,ExpInput,"cat specific & conserved %+g");
+    
   int lflag[nE];
   GPtrArray *DataTable=get_data(sbtab_hash,Experiments,lflag);
   /* the above is as written in the spreadsheet */
@@ -719,8 +745,8 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
     (DataTable,
      lflag,
      ExperimentType,
-     E_Name,
-     E_default_input,
+     EName,
+     ExpInput,
      default_time,
      Input,
      Output,
@@ -784,13 +810,13 @@ gsl_vector_int* get_parameter_scale(GPtrArray *Scale){
   for (i=0;i<n;i++){
     Type=g_ptr_array_index(Scale,i);
     if (regexec(&LogType, Type, 3, match, 0)==0){
-      //printf("[%s] (%i) «%s» matches RE for 'natural logarithm'\n",__func__,i,Type);
+      printf("[%s] (%i) «%s» matches RE for 'natural logarithm'\n",__func__,i,Type);
       gsl_vector_int_set(scale_type,i,LOG_SCALE);
     } else if (regexec(&Log10Type, Type, 3, match, 0)==0){
-      //printf("[%s] (%i) «%s» matches RE for 'base-10 logarithm'\n",__func__,i,Type);
+      printf("[%s] (%i) «%s» matches RE for 'base-10 logarithm'\n",__func__,i,Type);
       gsl_vector_int_set(scale_type,i,LOG10_SCALE);
     } else if (regexec(&LinType, Type, 3, match, 0)==0){
-      //printf("[%s] (%i) «%s» matches RE for 'linear scale'\n",__func__,i,Type);
+      printf("[%s] (%i) «%s» matches RE for 'linear scale'\n",__func__,i,Type);
       gsl_vector_int_set(scale_type,i,LIN_SCALE);
     } else {
       printf("[%s] This «!Scale[%i]» is unknown: «%s»\n",__func__,(int) i, Type);

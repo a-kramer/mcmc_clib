@@ -138,40 +138,40 @@ extern inline void ode_solver_disable_sens(ode_solver* solver){
 #endif
 
 /* returns initial conditions in y0 */
-void	ode_model_get_initial_conditions(const ode_model* model, double* y0, int lenY0);
+void ode_model_get_initial_conditions(const ode_model* model, double* y0, int lenY0);
 /* returns default parameter values in params */
-void	ode_model_get_default_params(const ode_model* model, double* params, int lenParams);
+void ode_model_get_default_params(const ode_model* model, double* params, int lenParams);
 
 	
 /* Frees resources used by ode_model */
-void		ode_model_free(ode_model* model);
+void ode_model_free(ode_model* model);
 
 /* Creates a new ode_solver for the given model */
-ode_solver*	ode_solver_alloc(ode_model* model);
+ode_solver* ode_solver_alloc(ode_model* model);
 	
 /* Initialises the ode solver. y0, yS0 and p can be NULL.
  */
-void		ode_solver_init(ode_solver* solver, const double t0, double* y0, int lenY, double* p, int lenP );
-void		ode_solver_init_sens(ode_solver* solver,  double* yS0, int lenP, int lenY);
+void ode_solver_init(ode_solver* solver, const double t0, double* y0, int lenY, double* p, int lenP );
+void ode_solver_init_sens(ode_solver* solver,  double* yS0, int lenP, int lenY);
 
 /* Sets error tollerances, NOTE this function should be called only after an ode_solver_init or ode_solver_reinit.
 */
-void		ode_solver_setErrTol(ode_solver* solver, const double rel_tol, double* abs_tol, const int abs_tol_len);
+void ode_solver_setErrTol(ode_solver* solver, const double rel_tol, double* abs_tol, const int abs_tol_len);
 	
 /* Re-initialises the ode solver. y0, yS0 and p can be NULL in which case the default values are used.
  */	
-void		ode_solver_reinit(ode_solver* solver, const double t0,  double* y0, int lenY, const double* p, int lenP );
-void		ode_solver_reinit_sens(ode_solver* solver, double* yS0, int lenP, int lenY);
+void ode_solver_reinit(ode_solver* solver, const double t0,  double* y0, int lenY, const double* p, int lenP );
+void ode_solver_reinit_sens(ode_solver* solver, double* yS0, int lenP, int lenY);
 	
 /* Solves the ode system until time t and returns solution in y.
  */	
-int		ode_solver_solve(ode_solver* solver, const double t, double* y, double* tout);
+int ode_solver_solve(ode_solver* solver, const double t, double* y, double* tout);
 /* Returns sensitivities for the current solution at t. This function must be called only after ode_solver_solve.
 */	
-void		ode_solver_get_sens(ode_solver* solver, double t, double* yS);
+void ode_solver_get_sens(ode_solver* solver, double t, double* yS);
 /* Returns functions of the carrent solution.
  */	
-void		ode_solver_get_func(ode_solver* solver, const double t, double* y, double* fy);
+void ode_solver_get_func(ode_solver* solver, const double t, double* y, double* fy);
 /* Returns sensitivities of functions of the carrent solution.
    */	
 void ode_solver_get_func_sens(ode_solver* solver, const double t, double* y, double* yS, double* fyS);
@@ -180,10 +180,10 @@ void ode_solver_get_jacp(ode_solver* solver, const double t,  double* y,  double
   
 /* Prints to out solver statistics.
 */	
-void		ode_solver_print_stats(const ode_solver* solver, FILE* outF);
+void ode_solver_print_stats(const ode_solver* solver, FILE* outF);
 	
 /* Frees resources used by the ode_solver */
-void		ode_solver_free(ode_solver* solver);
+void ode_solver_free(ode_solver* solver);
 
 	
 #ifdef __cplusplus

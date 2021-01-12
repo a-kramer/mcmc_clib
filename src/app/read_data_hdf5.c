@@ -30,7 +30,6 @@ load_stdv_block(hid_t g_id, /*group id (hdf5)*/
   int index=-1;
   gsl_matrix *stdv_block=h5_to_gsl(g_id,name,NULL);
   int major, minor;
-  //printf("[load_data_block] checking experiment's index: ");
   status|=H5LTget_attribute_int(g_id,name,"index",&index); //printf(" %i ",index); assert(status>=0);
   status|=H5LTget_attribute_int(g_id,name,"major",&major); //printf("%i.",major); assert(status>=0);
   status|=H5LTget_attribute_int(g_id,name,"minor",&minor); //printf("%i",minor);
@@ -71,7 +70,7 @@ load_data_block(hid_t g_id,
   assert(status>=0);
   gsl_vector *time=h5_to_gsl(g_id,name,"time");
   gsl_vector *input=h5_to_gsl(g_id,name,"input");
-  
+  gsl_vector *y0=h5_to_gsl(g_id,name,"InitilValue");
   // normalisation properties
   int NormaliseByExperiment;
   int NormaliseByTimePoint;
@@ -114,6 +113,7 @@ load_data_block(hid_t g_id,
     mp->E[index]->lflag=lflag;
     assert(mp->E[index]->data_block==NULL);
     mp->E[index]->data_block=data_block;
+    mp->E[index]->init_y=y0;
     mp->E[index]->input_u=input;
     mp->E[index]->t=time;
     mp->E[index]->input_u=input;
