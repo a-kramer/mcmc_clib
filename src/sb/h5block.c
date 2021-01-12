@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <assert.h>
 #include "h5block.h"
 
 h5block_t* h5block_alloc(hsize_t rank){

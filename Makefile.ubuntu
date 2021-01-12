@@ -8,7 +8,7 @@ CFLAGS = -O2 -march=native -std=gnu11 -D_GNU_SOURCE -Wall -fopenmp -Wfatal-error
 LDFLAGS = `pkg-config --libs gsl glib-2.0`
 IFLAGS = `pkg-config --cflags gsl glib-2.0`
 
-FLAGS = `pkg-config --libs --cflags gsl glib-2.0 hdf5` -lhdf5_hl
+FLAGS = `pkg-config --libs --cflags gsl glib-2.0 hdf5 mpi` -lhdf5_hl
 
 MALA_SRC = ./src/mcmc/smmala.c ./src/mcmc/mcmc_kernel.c			\
 ./src/ode/ode_model.c ./src/mcmc/mv_norm.c		\
@@ -27,7 +27,7 @@ all: bin/ode_smmala bin/sbtab_import
 
 
 bin/ode_smmala: ./src/app/ode_smmala.c $(MALA_SRC)
-	$(MPICC) $(MALA_SRC) -o $(BIN)/ode_smmala -ldl $(CFLAGS) src/app/ode_smmala.c -lsundials_cvodes -lsundials_nvecserial -lsundials_sunmatrixdense -lsundials_sunlinsoldense $(FLAGS)
+	$(MPICC) $(MALA_SRC) -o $(BIN)/ode_smmala -ldl $(CFLAGS) src/app/ode_smmala.c -lsundials_cvodes -lsundials_nvecserial $(FLAGS)
 
 vfgen: 
 	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread

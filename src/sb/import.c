@@ -112,7 +112,7 @@ int main(int argc, char*argv[]){
   fflush(stdout);
   hid_t file_id;
   file_id = H5Fcreate(H5FileName, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-  status |= process_data_tables(file_id, sbtab, sbtab_hash,CL,EliminatedCompounds);
+  status |= process_data_tables(file_id, sbtab, sbtab_hash, CL, EliminatedCompounds);
   status |= process_prior(file_id, sbtab, sbtab_hash);
   status |= H5Fclose(file_id);
   //process_input_table(H5FileName, sbtab, sbtab_hash);
@@ -696,20 +696,20 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   
   guint nE=table_length(Experiments);
   printf("[%s] %i Experiments.\n",__func__,nE);
-  GPtrArray *ID=sbtab_get_column(E_table,"!ID");
+  GPtrArray *ID=sbtab_get_column(Experiments,"!ID");
   assert(ID);
-  if (ID!=E_table->column[0]) printf("[%s] warning: !ID is not first column, contrary to SBtab specification.\n",__func__);
-  GPtrArray *E_Name=sbtab_get_column(E_table,"!Name");
-  GPtrArray *E_type=sbtab_get_column(E_table,"!Type");
+  if (ID!=Experiments->column[0]) printf("[%s] warning: !ID is not first column, contrary to SBtab specification.\n",__func__);
+  GPtrArray *E_Name=sbtab_get_column(Experiments,"!Name");
+  GPtrArray *E_type=sbtab_get_column(Experiments,"!Type");
   gsl_vector *default_time=NULL;
-  default_time=get_default_time(E_table);
+  default_time=get_default_time(Experiments);
   int *ExperimentType=get_experiment_type(E_type);
-  printf("[%s] found list of experiments: %s with %i entries\n",__func__,E_table->TableName,nE);
+  printf("[%s] found list of experiments: %s with %i entries\n",__func__,Experiments->TableName,nE);
   gsl_vector *default_input;
   default_input=get_default_input(Input);
   // each experiment can override the default input:
   gsl_vector **E_default_input;
-  E_default_input=get_experiment_specific_inputs(E_table, Input, default_input, sbtab_hash);
+  E_default_input=get_experiment_specific_inputs(Experiments, Input, default_input, sbtab_hash);
   int lflag[nE];
   GPtrArray *DataTable=get_data(sbtab_hash,Experiments,lflag);
   /* the above is as written in the spreadsheet */
@@ -719,8 +719,8 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
     (DataTable,
      lflag,
      ExperimentType,
-     EName,
-     ExpInput,
+     E_Name,
+     E_default_input,
      default_time,
      Input,
      Output,

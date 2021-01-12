@@ -25,8 +25,8 @@ extern "C" {
 #define	ODE_SOLVER_MX_STEPS		5000
 	
 typedef int (*rhs_f)(realtype, N_Vector, N_Vector, void *);
-typedef int (*jac_f)(long int, realtype, N_Vector, N_Vector, SUNMatrix, void*, N_Vector, N_Vector, N_Vector);
-typedef int (*jacp_f)(int, realtype, N_Vector, N_Vector, SUNMatrix, void*,	N_Vector, N_Vector, N_Vector);
+typedef int (*jac_f)(long int, realtype, N_Vector, N_Vector, DlsMat, void*, N_Vector, N_Vector, N_Vector);
+typedef int (*jacp_f)(int, realtype, N_Vector, N_Vector, DlsMat, void*,	N_Vector, N_Vector, N_Vector);
 typedef int (*rhs_sens)(int, realtype, N_Vector, N_Vector, int, N_Vector, N_Vector, void *, N_Vector, N_Vector);
 typedef int (*func)(realtype, N_Vector, realtype *, void *);
 typedef int (*func_sens)(realtype, N_Vector, N_Vector *, double *, void *);
@@ -56,8 +56,8 @@ typedef int (*func_sens)(realtype, N_Vector, N_Vector *, double *, void *);
     N_Vector    y;
     N_Vector*   yS;
     N_Vector    fy;
-    SUNMatrix   jac;
-    SUNMatrix   jacp;
+    DlsMat   jac;
+    DlsMat   jacp;
     double*     params;
   }ode_solver;
   
