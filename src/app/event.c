@@ -295,7 +295,7 @@ void event_push
   event_row_t *e; /* current event pointer */
   event_row_t *n; /* new event */
   event_row_t **p; /* a pointer to n's parent.next component */
-  printf("[%s] inserting %li events into linked list.\n",__func__,event_table->time->size);
+  //printf("[%s] inserting %li events into linked list.\n",__func__,event_table->time->size);
   assert(single);
   for (i=0;i<time->size;i++){
     assert(event_table->time_before_t);
@@ -312,10 +312,10 @@ void event_push
 	n->next=e;
 	*p=n;
       }
-      list_print(single[i]);
+      //list_print(single[i]);
     }
   }
-  printf("[%s] done.\n",__func__); fflush(stdout);
+  //printf("[%s] done.\n",__func__); fflush(stdout);
 }
 
 
