@@ -6,13 +6,13 @@ CPPFLAGS = -O2
 CFLAGS = -O2 -march=native -std=gnu11 -D_GNU_SOURCE -Wall -fopenmp -Wfatal-errors
 
 PKG = `pkg-config --libs --cflags gsl glib-2.0 hdf5 ` -lhdf5_hl
-MPIPKG = `pkg-config --libs --cflags gsl glib-2.0 hdf5 mpi` -lhdf5_hl
+SMMALA_PKG = `pkg-config --libs --cflags gsl hdf5` -lhdf5_hl
 
 MALA_SRC = ./src/mcmc/smmala.c ./src/mcmc/mcmc_kernel.c			\
 ./src/ode/ode_model.c ./src/mcmc/mv_norm.c		\
 ./src/mcmc/model_parameters_smmala.c ./src/app/normalisation_sd.c	\
 ./src/app/dynamic_array.c ./src/mcmc/smmala_posterior.c ./src/app/diagnosis_output.c \
-./src/app/read_data_hdf5.c ./src/app/flatten.c ./src/app/event.c ./src/sb/h5block.c
+./src/app/read_data_hdf5.c ./src/app/flatten.c ./src/app/event.c ./src/sb/h5block.c src/app/options.c
 
 SB_SRC = ./src/sb/sbtab.c ./src/sb/event_glib.c ./src/sb/re.c ./src/sb/h5block.c ./src/sb/data.c ./src/sb/norm.c
 
@@ -25,7 +25,7 @@ all: bin/ode_smmala bin/sbtab_import
 
 
 bin/ode_smmala: ./src/app/ode_smmala.c $(MALA_SRC)
-	$(MPICC) $(MALA_SRC) -o $(BIN)/ode_smmala -ldl $(CFLAGS) src/app/ode_smmala.c -lsundials_cvodes -lsundials_nvecserial $(MPIPKG)
+	$(MPICC) $(MALA_SRC) -o $(BIN)/ode_smmala -ldl $(CFLAGS) `pkg-config --cflags gsl hdf5` src/app/ode_smmala.c -lsundials_cvodes -lsundials_nvecserial `pkg-config --libs gsl hdf5` -lhdf5_hl 
 
 vfgen: 
 	$(CPP) $(CPPFLAGS) $(VFGEN_SOURCE) -o vfgen $(IFLAGS) -DVERSION=\"2.4.1\" $(LDFLAGS) -lcln -lginac -lmxml -lpthread
@@ -37,6 +37,6 @@ vfgen:
 	$(CC) -shared -fPIC $(CFLAGS) -lm -o $@  $<
 
 bin/sbtab_import: ./src/sb/import.c $(SB_SRC)
-	$(CC) $(CFLAGS)  -o $(BIN)/sbtab_import ./src/sb/import.c $(SB_SRC) -lm $(PKG)
+	$(CC) $(CFLAGS)  -o $(BIN)/sbtab_import ./src/sb/import.c $(SB_SRC) $(PKG)
 
 

@@ -22,19 +22,18 @@
  * Implementation of this function is subject to change.
  */
 static char* get_vf_name(const char* filename){
-  char* _post = "_odeModel";
   char* lib_name = basename(filename);
-  //size_t len = strlen(lib_name);
   int n;
   char *dot;
   dot=strchr(lib_name,'.');
   n=strlen(lib_name);
   n-=strlen(dot);
+  
+  char *_post= "_odeModel";
   size_t new_size = n + strlen(_post) + 2;
-  char* ret = (char*) calloc( new_size , sizeof(char) );
-  strncat(ret, lib_name, n);
-  strcat(ret, _post);
-  //printf("[%s] vf_name: %s\n",__func__,ret);
+  char *ret = (char*) calloc( new_size , sizeof(char) );
+  strcpy(mempcpy(ret,lib_name,n),_post);
+  fprintf(stderr,"[%s] vf_name: %s\n",__func__,ret);
   return ret;
 }
 
@@ -468,7 +467,7 @@ void ode_solver_print_stats(const ode_solver* solver, FILE* outF){
   long int nst;
   long int nfe, nsetups, nni, ncfn, netf;
   long int nfSe, nfeS, nsetupsS, nniS, ncfnS, netfS;
-  long int nje, nfeLS;
+  //long int nje, nfeLS;
   int flag;
   
   void* cvode_mem = solver->cvode_mem;
