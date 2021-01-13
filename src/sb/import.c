@@ -518,6 +518,8 @@ void event_foreach_reference(gpointer PtrArrayElement, gpointer buffer){
   EventEnvironment *SBEE=buffer;
   GHashTable *sbtab_hash=SBEE->sbtab_hash;
   gchar *event_string=PtrArrayElement;
+  printf("[%s] processing: «%s».\n",__func__,event_string);
+  fflush(stdout);
   GPtrArray *events=sbtab_get_tables(sbtab_hash,event_string);
   printf("[%s] processing experiment with %i events: «%s».\n",__func__,events->len,event_string);
   if (events->len>0){
@@ -543,6 +545,7 @@ void event_foreach_experiment
 	      event_add,event_sub,
 	      event_mul,event_div};
   gchar **OP_LABEL=g_strsplit("SET ADD SUB MUL DIV"," ",-1);
+  assert(IdxMap->major->len == IdxMap->minor->len);
   int i,K=IdxMap->major->len;
   int major, minor;
   GString *EName=g_string_sized_new(40);
@@ -569,7 +572,7 @@ void event_foreach_experiment
       SBEE.ExperimentID=g_ptr_array_index(ID,major);
       SBEE.EventName=EName;
       SBEE.Data=g_ptr_array_index(Data,i);
-      e_str=g_ptr_array_index(EventColumn,i);
+      e_str=g_ptr_array_index(EventColumn,major);
       event_foreach_reference(e_str,&SBEE);
     }
   } else {
