@@ -556,7 +556,7 @@ void print_experiment_information
     }
     if (omp->E[i]->lflag==0) NNE++;
   }
-  
+  fflush(stdout);
   LE=C-NNE;
   if (rank==0){
     printf("[%s] There are %i experiments",__func__,C);
@@ -567,6 +567,7 @@ void print_experiment_information
       printf(" used only for the normalisation of the %i experiments that explicitly contribute to the LogLikelihood(NormalisedData[1:%i]|θ).\n",LE,LE); 	
     }  else printf(".\n");
   }
+  fflush(stdout);
 }
 
 /*Kernel init makes a test evakuation of log-posterior pdf; this function prints the results (uses a couple of unicode characters)*/
@@ -735,6 +736,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
     fprintf(stderr,"[%s] (rank %i) no data provided (-d option), exiting.\n",__func__,rank);
     MPI_Abort(MPI_COMM_WORLD,-1);
   }
+  fflush(stdout);
   /* allocate a solver for each experiment for parallelization
    */
   ode_solver **solver;
@@ -752,7 +754,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
     ode_model_free(odeModel);
     MPI_Abort(MPI_COMM_WORLD,-1);
   }
-
+  fflush(stdout);
   /* sensitivity analysis is not feasible for large models. So, it can
    *  be turned off.
    */
@@ -762,8 +764,9 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
      * ode_model_has_sens(model) will return «FALSE»;
      */
     odeModel->vf_sens=NULL;
+    printf("[%s] sensitivity approximation is turned on.\n",__func__);
   }
-  
+  fflush(stdout);
   omp->t0=t0;
     /* save in ode model parameter struct: */
   set_number_of_state_variables(omp,N);
@@ -777,8 +780,11 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   ode_model_parameters_link(omp);
   /* necessity of normalisation will be checked and noted for later: */
   data_normalisation(omp);
+  //printf("[%s] data normalization done.\n",__func__);
+  //for (c=0;c<C;c++){
+  //  printf("[%s] E%i needs normalization: %i\n",__func__,c,NEEDS_NORMALISATION(omp->E[c]));
+  //}
   fflush(stdout);
-
   /* get default parameters from the model file
    */
   double p[P];
@@ -862,9 +868,9 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
     if (rank==0) printf("[%s] setting mcmc initial value to log(default parameters)\n",__func__);
     for (i=0;i<D;i++) init_x[i]=gsl_sf_log(p[i]);
   }
-  fflush(stdout);
-  //display_prior_information(omp->prior);
   
+  //display_prior_information(omp->prior);
+  fflush(stdout);
   /* here we initialize the mcmc_kernel; this makes one test
    * evaluation of the log-posterior density function. 
    */
@@ -872,8 +878,10 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   /* display the results of that test evaluation
    *
    */
+  fflush(stdout);
   if (rank==0){
     printf("[%s] rank %i init complete .\n",__func__,rank);
+    fflush(stdout);
     display_test_evaluation_results(kernel);
     ode_solver_print_stats(solver[0], stdout);
     fflush(stdout);

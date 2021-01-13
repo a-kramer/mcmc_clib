@@ -715,14 +715,18 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   gsl_matrix *x0=initial_conditions(Compound,Experiments);
   printf("[%s] initial values (%li×%li):\n",__func__,x0->size1,x0->size2);
   gsl_matrix_fprintf(stdout,x0,"\t\tfull %+g");
-  assert(ConservationLaws);
-  gsl_matrix *ConservedConstants=gsl_matrix_alloc(nE,ConservationLaws->size2);
-  gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,1.0, x0, ConservationLaws,0.0,ConservedConstants);
-  gsl_matrix *x0_reduced=gsl_matrix_eliminate_columns(x0,EliminatedCompounds);
-  gsl_matrix_fprintf(stdout,x0_reduced,"\t\treduced %+g"); fflush(stdout);
-  assert(x0->size1 == nE);
-  assert(x0->size2 == table_length(Compound));
-
+  gsl_matrix *ConservedConstants;
+  gsl_matrix *x0_reduced;
+  if (ConservationLaws){
+    ConservedConstants=gsl_matrix_alloc(nE,ConservationLaws->size2);
+    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,1.0, x0, ConservationLaws,0.0,ConservedConstants);
+    x0_reduced=gsl_matrix_eliminate_columns(x0,EliminatedCompounds);
+    gsl_matrix_fprintf(stdout,x0_reduced,"\t\treduced %+g"); fflush(stdout);
+    assert(x0->size1 == nE);
+    assert(x0->size2 == table_length(Compound));
+  } else {
+    x0_reduced=x0;
+  }
   gsl_vector *default_input=sbtab_column_to_gsl_vector(Input,"!DefaultValue !Value");
   gsl_vector_fprintf(stdout,default_input,"default input %+g");
   gsl_matrix *ExperimentSpecificInput=gsl_matrix_alloc(nE,default_input->size);
@@ -732,10 +736,14 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
     input_row=gsl_matrix_row(ExperimentSpecificInput,i);
     gsl_vector_memcpy(&(input_row.vector),default_input);
   }
-  gsl_matrix_fprintf(stdout,ExperimentSpecificInput,"specific input %+g");
-  gsl_matrix *ExpInput=gsl_matrix_cat(ExperimentSpecificInput,ConservedConstants,2);
-  gsl_matrix_fprintf(stdout,ExpInput,"cat specific & conserved %+g");
-    
+  gsl_matrix *ExpInput;
+  if (ConservationLaws){
+    gsl_matrix_fprintf(stdout,ExperimentSpecificInput,"specific input %+g");
+    ExpInput=gsl_matrix_cat(ExperimentSpecificInput,ConservedConstants,2);
+    gsl_matrix_fprintf(stdout,ExpInput,"cat specific & conserved %+g");
+  } else {
+    ExpInput=ExperimentSpecificInput;
+  }
   int lflag[nE];
   GPtrArray *DataTable=get_data(sbtab_hash,Experiments,lflag);
   /* the above is as written in the spreadsheet */

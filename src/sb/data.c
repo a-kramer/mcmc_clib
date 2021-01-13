@@ -104,21 +104,22 @@ unwrap_data
 	}
 	sbtab_update_gsl_matrix(input_block,DataTable_j,uid,">");
 	if (default_time) time_view=gsl_vector_subvector(default_time,j,1);
-	time=sbtab_column_to_gsl_vector(DataTable_j,"!Time");
-	assert(time);
+	//time=sbtab_column_to_gsl_vector(DataTable_j,"!Time");
+	//assert(time);
 	for (i=0;i<L;i++){
 	  data_sub=gsl_matrix_submatrix(Y_DATA,i,0,1,Y_DATA->size2);
 	  stdv_sub=gsl_matrix_submatrix(Y_STDV,i,0,1,Y_STDV->size2);
 	  input_row=gsl_matrix_row(input_block,i);
-	  time_view=gsl_vector_subvector(time,i,1);
+	  //time_view=gsl_vector_subvector(time,i,1);
 	  map_index(IdxMap,j,i);
-	  D=data_block_alloc(E_j,j,i,
-			     &(data_sub.matrix),
-			     &(stdv_sub.matrix),
-			     &(input_row.vector),
-			     &(time_view.vector),
-			     &(x0_row.vector),
-			     lflag[j]);
+	  D=data_block_alloc
+	    (E_j,j,i,
+	     &(data_sub.matrix),
+	     &(stdv_sub.matrix),
+	     &(input_row.vector),
+	     &(time_view.vector),
+	     &(x0_row.vector),
+	     lflag[j]);
 	  g_ptr_array_add(Data,D);
 	}
 	break;

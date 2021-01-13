@@ -27,18 +27,22 @@ int approximate_sens(ode_solver *solver, double tout, gsl_vector *y, gsl_vector 
   assert(yS);
   int P=yS->size1;
   int i;
+  assert(a && a->jacobian_y && a->jacobian_p && a->tau && a->x && a->r);
+  assert(y && fy && yS && fyS);
 
   /* CVODE stores matrices column wise, but gsl stores them row wise */
   /* so copying values from CVODE to gsl transposes a matrix */
   ode_solver_get_jac(solver,tout,y->data,fy->data,a->jacobian_y->data);
   ode_solver_get_jacp(solver,tout,y->data,fy->data,a->jacobian_p->data);
+  
   gsl_matrix_transpose(a->jacobian_y); // now jacobian_y(i,j)=df[i]/dy[j];
   gsl_matrix_memcpy(a->Jt,a->jacobian_y);
   gsl_matrix_scale(a->Jt,tout-(a->t0));        // this is now Jacobian*t    
   status=gsl_linalg_QR_decomp(a->jacobian_y,a->tau);
   if (status!= GSL_SUCCESS){
     fprintf(stderr,"[%s] QR decomposition failed. %s\n",__func__,gsl_strerror(status));      
-  } 
+  }
+  fflush(stdout);
   for (i=0;i<P;i++){
     jacp_row=gsl_matrix_row(a->jacobian_p,i);
     // solve in place; jac_p will contain the solution: jac_y\jac_p
@@ -70,9 +74,6 @@ int approximate_sens(ode_solver *solver, double tout, gsl_vector *y, gsl_vector 
     fprintf(stderr,"[%s] general double precision  Matrix·Matrix failed.\n",__func__);
     return GSL_FAILURE;
   }
-  //gsl_matrix_scale(InverseJy_Jp,-1.0);
-  //gsl_matrix_add(yS,InverseJy_Jp);
-  //gsl_matrix_free(R);
   return GSL_SUCCESS;
 }
 
@@ -99,9 +100,15 @@ int ode_solver_process_sens(ode_solver *solver, double tout,
 int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy, gsl_matrix *yS, gsl_matrix *fyS, sensitivity_approximation *a){
   double tout;
   ode_model *model;
+  assert(solver);
   model=solver->odeModel;
+  assert(model);
+  assert(y->data);
+  assert(fy->data);
+
   int CVerror =  ode_solver_solve(solver, t, y->data, &tout);
 
+  fflush(stdout);
   if (CVerror!=CV_SUCCESS) {
     fprintf(stderr, "ODE solver failed with ERROR = %i.\n",CVerror);
     return GSL_EDOM;
@@ -453,7 +460,7 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
    * calculate.  This is the only bit of the code that needs to be
    * parallel apart from parallel tempering done by mpi.
    */
-  //printf("[%s] P=%i, U=%i.\n",__func__,P,U);
+
 #pragma omp parallel for private(model,j,e_t,k,K,a,y,fy,yS,fyS,t,T,input_part) reduction(|:i_flag)
   for (c=0; c<C; c++){/* loop over different experimental conditions */
     model=solver[c]->odeModel;    
@@ -472,21 +479,22 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 		      mp->E[c]->p->size);
     t=mp->E[c]->t;
     T=t->size;
-
+    fflush(stdout);
     if (ode_model_has_sens(model)){
       ode_solver_reinit_sens(solver[c], mp->E[c]->yS0->data, P, N);
+      fflush(stdout);
     } else {
       for (j=0;j<T;j++) gsl_matrix_set_zero(mp->E[c]->yS[j]);
     }
 
     for (j=0; j<T; j++){
-      y=mp->E[c]->y[j]; //printf("y: %i, %zi\n",mp->size->N,y->size);
-      fy=mp->E[c]->fy[j]; //printf("fy: %i, %zi\n",mp->size->F,fy->size);
-      yS=mp->E[c]->yS[j]; //printf("yS: %i, %zi\n",mp->size->N*P,yS->size1*yS->size2);
-      fyS=mp->E[c]->fyS[j]; //printf("fyS: %i, %zi\n",mp->size->F*P,fyS->size1*fyS->size2);
+      y=mp->E[c]->y[j]; //printf("[%s] y: %i, %zi\n",__func__,mp->size->N,y->size); fflush(stdout);
+      fy=mp->E[c]->fy[j]; //printf("[%s] fy: %i, %zi\n",__func__,mp->size->F,fy->size); fflush(stdout);
+      yS=mp->E[c]->yS[j]; //printf("[%s] yS: %i, %zi\n",__func__,mp->size->N*P,yS->size1*yS->size2); fflush(stdout);
+      fyS=mp->E[c]->fyS[j]; //printf("[%s] fyS: %i, %zi\n",__func__,mp->size->F*P,fyS->size1*fyS->size2); fflush(stdout);
       /* 1. process all events that precede t(j) */
-      assert(y && fy && yS && fyS);
-      if (mp->E[c]->event_list && mp->E[c]->before_t && mp->E[c]->before_t[j]){
+      assert(y && fy && yS && fyS && mp->E);
+      if (mp->E[c] && mp->E[c]->event_list && mp->E[c]->before_t && mp->E[c]->before_t[j]){
 	K=mp->E[c]->before_t[j]->size; // number of events prior to t[j]
 	for (k=0;k<K;k++){
 	  e_t=mp->E[c]->before_t[j]->event[k]->t;
@@ -502,19 +510,18 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
 	    ode_solver_reinit_sens(solver[c], yS->data, P, N);
 	  }
 	}
-      }
+      } 
       /* 2. advance the state to the measurement time t(j) */
-      if (gsl_vector_get(t,j) > e_t)
+      if (gsl_vector_get(t,j) > e_t){
 	i_flag|=ode_solver_step(solver[c], gsl_vector_get(t,j), y, fy, yS, fyS, a);
+      }
     }
   }
-  
+
   if (i_flag!=GSL_SUCCESS){
     l[0]=-INFINITY;
     return i_flag;
   }else{
-    //printf("pre normalisation\n");
-    //printf_omp(mp);    
     switch (mp->normalisation_type){
     case DATA_NORMALISED_INDIVIDUALLY:
       normalise(mp);
@@ -526,13 +533,9 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
       fprintf(stderr,"unknown normalisation method: %i\n",mp->normalisation_type);
       exit(-1);
     }
-    //printf("post normalisation\n");
-    //printf_omp(mp);
-    // save_simulation_results(mp); fflush(stdout);
-    //initialise all return values
-    // log-likelihood
+
     l[0]=mp->pdf_lognorm;    
-    // gradient of the log-likelihood
+
     gsl_vector_set_zero(grad_l);
     gsl_matrix_set_zero(fisher_information);  
   
@@ -586,7 +589,6 @@ int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *grad_l, gsl_m
       } // if lflag
     } //end for different experimental conditions (i.e. inputs)
   }
-  //printf("[LogLikelihood] done.\n"); fflush(stdout);
   return i_flag & status;
 }
 
@@ -723,10 +725,11 @@ int LogPosterior(const double beta, const gsl_vector *x,  void* model_params, do
     /* } */
     gsl_vector_set(omp->p,i,p_i);
   }
+  fflush(stdout);
   status &= LogLikelihood(omp, &fx[i_likelihood], dfx[i_likelihood], FI[i_likelihood]); 
   status &= LogPrior(omp->prior, x, &fx[i_prior], dfx[i_prior], FI[i_prior]);
-  //printf("PosteriorFI: prior_value=%f\n",prior_value);
-
+  fflush(stdout);
+  
   fx[i_posterior]=fx[i_likelihood];
   fx[i_posterior]*=beta;
   fx[i_posterior]+=fx[i_prior];
@@ -738,7 +741,6 @@ int LogPosterior(const double beta, const gsl_vector *x,  void* model_params, do
   gsl_matrix_memcpy(FI[i_posterior],FI[i_likelihood]);
   gsl_matrix_scale(FI[i_posterior],beta*beta);
   gsl_matrix_add(FI[i_posterior],FI[i_prior]);
-  //printf("[LogPosterior] done.\n"); fflush(stdout);
   return status;
 }
 

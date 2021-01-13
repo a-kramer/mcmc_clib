@@ -428,6 +428,7 @@ static int smmala_kernel_init(mcmc_kernel* kernel, const double *x){
   assert(x);
   n = kernel->N;
   printf("[%s] %i mcmc variables.\n",__func__,n);
+  fflush(stdout);
   smmala_params* state = (smmala_params*) kernel->kernel_params;
   /* copy x to the kernel x state */
   for (i=0; i<n; i++) kernel->x[i] = x[i];
@@ -445,7 +446,8 @@ static int smmala_kernel_init(mcmc_kernel* kernel, const double *x){
     fprintf(stderr,"[%s] Error: matrix not positive definite in smmala_init.\n",__func__);
 	return -1;
   }
-  printf("[%s] done.\n",__func__); fflush(stdout);
+  printf("[%s] done.\n",__func__);
+  fflush(stdout);
   return EXIT_SUCCESS;
 }
 

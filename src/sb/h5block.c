@@ -46,11 +46,11 @@ char* h5_to_char(hid_t g_id, const char *obj_name, const char *attr_name){
 
 int h5_check(hid_t g_id, const char *obj_name, const char *attr_name){
   assert(obj_name);
-  printf("[%s] checking existence of «%s».\n",__func__,obj_name);
+  fprintf(stderr,"[%s] checking existence of «%s».\n",__func__,obj_name);
   hid_t d_id=H5Dopen2(g_id, obj_name, H5P_DEFAULT);
   assert(H5LTfind_dataset(g_id, obj_name));
   if (attr_name){
-    printf("[%s] checking existence of «%s».\n",__func__,attr_name);
+    fprintf(stderr,"[%s] checking existence of «%s».\n",__func__,attr_name);
     assert(H5LTfind_attribute(d_id, attr_name));
   }
   fflush(stdout);

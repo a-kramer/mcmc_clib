@@ -302,6 +302,11 @@ read_data
 	mp->E[i]->before_t=event_convert_to_arrays(mp->E[i]->t->size,mp->E[i]->single);
       events_are_time_ordered(mp->E[i]->t->size,mp->E[i]->before_t);
     }
+  } else {
+    for (i=0;i<mp->size->C;i++){
+      mp->E[i]->event_list=NULL;
+      mp->E[i]->before_t=NULL;
+    }
   }
   hid_t prior_group_id=H5Gopen2(file_id,"/prior",H5P_DEFAULT);
   gsl_err = load_prior(prior_group_id,model_parameters);
