@@ -70,7 +70,7 @@ load_data_block(hid_t g_id,
   assert(status>=0);
   gsl_vector *time=h5_to_gsl(g_id,name,"time");
   gsl_vector *input=h5_to_gsl(g_id,name,"input");
-  gsl_vector *y0=h5_to_gsl(g_id,name,"InitilValue");
+  gsl_vector *y0=h5_to_gsl(g_id,name,"InitialValue");
   // normalisation properties
   int NormaliseByExperiment;
   int NormaliseByTimePoint;

@@ -604,6 +604,29 @@ gsl_matrix* initial_conditions(sbtab_t *Compound, sbtab_t *Exp){
   return x0;
 }
 
+gsl_matrix* experiment_specific_input(sbtab_t *Input, sbtab_t *Exp){
+  assert(Exp && Input);
+  int m=table_length(Input);
+  int n=table_length(Exp);
+  printf("[%s] input ([%s] length=%i, %i Experiments):\n",__func__,Input->TableName,m,n); fflush(stdout);
+  gsl_vector_view row;
+  gsl_matrix *input=gsl_matrix_alloc(n,m);
+  gsl_vector *default_value=sbtab_column_to_gsl_vector(Input,"!DefaultValue !Value");
+  assert(default_value && default_value->size == m);
+  gsl_vector_fprintf(stdout,default_value,"vec %+g"); fflush(stdout);
+  int i;
+  for (i=0;i<n;i++){
+    row=gsl_matrix_row(input,i);
+    gsl_vector_memcpy(&(row.vector),default_value);
+  }
+  gsl_matrix_fprintf(stdout,input,"default %+g"); fflush(stdout);
+  GPtrArray *Name=sbtab_find_column(Input,"!Name",NULL);
+  sbtab_update_gsl_matrix(input,Exp,Name,">");
+  gsl_matrix_fprintf(stdout,input,"updated %+g"); fflush(stdout);
+  return input;
+}
+
+
 gsl_matrix* gsl_matrix_eliminate_rows(gsl_matrix *m, gsl_vector_int *el){
   int i,j;
   int n=m->size1-el->size;
@@ -730,15 +753,8 @@ int process_data_tables(hid_t file_id,  GPtrArray *sbtab,  GHashTable *sbtab_has
   } else {
     x0_reduced=x0;
   }
-  gsl_vector *default_input=sbtab_column_to_gsl_vector(Input,"!DefaultValue !Value");
-  gsl_vector_fprintf(stdout,default_input,"default input %+g");
-  gsl_matrix *ExperimentSpecificInput=gsl_matrix_alloc(nE,default_input->size);
-  int i;
-  gsl_vector_view input_row;
-  for (i=0;i<nE;i++){
-    input_row=gsl_matrix_row(ExperimentSpecificInput,i);
-    gsl_vector_memcpy(&(input_row.vector),default_input);
-  }
+
+  gsl_matrix *ExperimentSpecificInput=experiment_specific_input(Input,Experiments);
   gsl_matrix *ExpInput;
   if (ConservationLaws){
     gsl_matrix_fprintf(stdout,ExperimentSpecificInput,"specific input %+g");
