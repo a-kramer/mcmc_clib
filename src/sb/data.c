@@ -168,7 +168,7 @@ void write_data(gpointer data, gpointer user_data){
   H5LTset_attribute_int(h5data->group_id,H5_data_name,"major",&major, 1);
   H5LTset_attribute_int(h5data->group_id,H5_data_name,"minor",&minor, 1);
   H5LTset_attribute_double(h5data->group_id,H5_data_name,"time",D->time->data, D->time->size);
-  H5LTset_attribute_double(h5data->group_id,H5_data_name,"InitilValue",D->InitialValue->data, D->InitialValue->size);
+  H5LTset_attribute_double(h5data->group_id,H5_data_name,"InitialValue",D->InitialValue->data, D->InitialValue->size);
    
   H5LTset_attribute_double(h5data->group_id,H5_data_name,"input",D->input->data, D->input->size);
   /* write normalisation attributes */
