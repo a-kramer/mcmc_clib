@@ -60,8 +60,6 @@ load_data_block(hid_t g_id,
   herr_t status=0;
   gsl_matrix *data_block=h5_to_gsl(g_id,name,NULL);
   assert(data_block!=NULL && data_block->data !=NULL);  
-  //printf("[load_data_block] gsl_matrix(%li,%li) loaded.\n",data_block->size1,data_block->size2);
-  //  fflush(stdout);
   int index, major, minor, lflag;
   status|=H5LTget_attribute_int(g_id,name,"index",&index);
   status|=H5LTget_attribute_int(g_id,name,"major",&major);
@@ -100,7 +98,7 @@ load_data_block(hid_t g_id,
       attr_err=H5LTget_attribute_int(g_id,name,"NormaliseByOutput",NormaliseByOutput->data);
       assert(attr_err>=0);
     } else {
-      fprintf(stderr,"[load_data_block] read error for NormaliseByOutput vector.\n");
+      fprintf(stderr,"[%s] read error for NormaliseByOutput vector.\n",__func__);
     }
   } else {
     NormaliseByOutput=NULL;
@@ -122,7 +120,7 @@ load_data_block(hid_t g_id,
     mp->E[index]->NormaliseByOutput=NormaliseByOutput;
     mp->size->T=GSL_MAX(mp->size->T,mp->E[index]->t->size);
   }else{
-    fprintf(stderr,"[load_experiment_block] error: experiment index is larger than number ofexperiments (simulation units).\n");
+    fprintf(stderr,"[%s] error: experiment index is larger than number ofexperiments (simulation units).\n",__func__);
     exit(-1);
   }
   return status>=0?0:-1;
@@ -140,7 +138,7 @@ load_prior(hid_t g_id, void *op_data) /*ode model parameters, contains prior par
   herr_t status=0;
   int gsl_err=GSL_SUCCESS;
   status=H5LTget_dataset_info(g_id,"mu",&D,NULL,NULL);
-  //printf("[read_data] MCMC sampling will be performed on the first %lli parameters.\n",D);
+  //printf("[%s] MCMC sampling will be performed on the first %lli parameters.\n",__func__,D);
   mp->size->D=(int) D;
   mp->prior->mu=gsl_vector_alloc((size_t) D);
   status|=H5LTread_dataset_double(g_id, "mu", mp->prior->mu->data);
@@ -182,25 +180,20 @@ load_event_block
   assert(mp->model_x.name);
 
   int rank;
-  // printf("[%s] getting dataset size («%s»).\n",__func__,name); fflush(stdout);
   herr_t status=H5LTget_dataset_ndims(g_id, name, &rank);
   assert(rank<=2 && rank>0);
   hsize_t size[2]; // rank is always 1 or 2 in all of our cases, so 2 always works;
   status|=H5LTget_dataset_info(g_id,name,size,NULL,NULL);
-  // printf("[%s] size of «%s» is %lli × %lli.\n",__func__,name,size[0],size[1]); fflush(stdout);
   assert(status>=0); // I think that hdf5 functions return negative error codes
   
-  //char *ExperimentName=h5_to_char(g_id, name, "ExperimentName");
-  // printf("[%s] affected experiment «%s».\n",__func__,ExperimentName);
-  //fflush(stdout);
   char *TargetName=h5_to_char(g_id, name, "TargetName");
-  printf("[%s] affected variable «%s».\n",__func__,TargetName);
+  //printf("[%s] affected variable «%s».\n",__func__,TargetName);
   fflush(stdout);
   gsl_matrix *value=h5_to_gsl(g_id,name,NULL);
   assert(value);
   gsl_vector *time=h5_to_gsl(g_id,name,"Time");
   assert(time);
-  gsl_vector_fprintf(stdout,time,"%g"); fflush(stdout);
+  //gsl_vector_fprintf(stdout,time,"%g"); fflush(stdout);
   gsl_vector_int *type=h5_to_gsl_int(g_id,name,"op");
   assert(type);
   gsl_vector_int *effect=h5_to_gsl_int(g_id,name,"Effect");

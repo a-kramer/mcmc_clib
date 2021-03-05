@@ -46,11 +46,11 @@ char* h5_to_char(hid_t g_id, const char *obj_name, const char *attr_name){
 
 int h5_check(hid_t g_id, const char *obj_name, const char *attr_name){
   assert(obj_name);
-  fprintf(stderr,"[%s] checking existence of «%s».\n",__func__,obj_name);
+  //fprintf(stderr,"[%s] checking existence of «%s».\n",__func__,obj_name);
   hid_t d_id=H5Dopen2(g_id, obj_name, H5P_DEFAULT);
   assert(H5LTfind_dataset(g_id, obj_name));
   if (attr_name){
-    fprintf(stderr,"[%s] checking existence of «%s».\n",__func__,attr_name);
+    //fprintf(stderr,"[%s] checking existence of «%s».\n",__func__,attr_name);
     assert(H5LTfind_attribute(d_id, attr_name));
   }
   fflush(stdout);
@@ -71,15 +71,15 @@ void h5_get_info
     rank[0]=1;
     status=H5LTget_attribute_info(g_id,obj_name,attr_name,size,type_class,type_size);
     assert(status>=0);
-    fprintf(stderr,"[%s] attribute «%s» class %i, size %li rank %i (dims: %lli %lli).\n",
-	   __func__,attr_name,*type_class, *type_size,
-	   *rank,size[0],size[1]);
+    /* fprintf(stderr,"[%s] attribute «%s» class %i, size %li rank %i (dims: %lli %lli).\n", */
+    /* 	   __func__,attr_name,*type_class, *type_size, */
+    /* 	   *rank,size[0],size[1]); */
   } else {
     H5LTget_dataset_ndims(g_id, obj_name, rank);
     H5LTget_dataset_info(g_id, obj_name, size, type_class, type_size);
-    fprintf(stderr,"[%s] dataset «%s»: class %i, size %li rank %i (dims: %lli %lli).\n",
-	   __func__,obj_name,*type_class,*type_size,
-	   *rank,size[0],size[1]);
+    /* fprintf(stderr,"[%s] dataset «%s»: class %i, size %li rank %i (dims: %lli %lli).\n", */
+    /* 	   __func__,obj_name,*type_class,*type_size, */
+    /* 	   *rank,size[0],size[1]); */
 
   }
   
