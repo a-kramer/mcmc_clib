@@ -370,6 +370,7 @@ burn_in_foreach
       acc_rate = ((double) acc_c) / ((double) CHUNK);
       fprintf(stdout, "# [rank % 2i/% 2i; β=%5f] (it %4li)\tacc. rate: %3.2f;\t%3i %% swap success\t",rank,R,beta,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
+      fflush(stdout);
       mcmc_adapt(kernel, acc_rate);
       acc_c = 0;
       swaps=0;
@@ -439,8 +440,9 @@ mcmc_foreach
       acc_rate = ((double) acc_c) / ((double) CHUNK);
       fprintf(stdout, "# [rank % 2i/% 2i; β=%5f; %3li%% done] (it %5li)\tacc. rate: %3.2f;\t%3i %% swap success\t",rank,R,beta,(100*it)/SampleSize,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
+      fflush(stdout);
       acc_c = 0;
-
+      
       // print chunk to hdf5 file
       status=h5write_current_chunk(h5block,log_para_chunk,log_post_chunk);
       h5block->offset[0]=it+1;
