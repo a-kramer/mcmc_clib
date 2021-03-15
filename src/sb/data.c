@@ -41,6 +41,19 @@ data_block_alloc
   return D;
 }
 
+void gsl_matrix_print(gsl_matrix *m, char *label){
+  int i,j;
+  assert(m);
+  if (label) printf("%s:\n",label);
+  for (i=0; i<m->size1; i++){
+    for (j=0; j<m->size2; j++){
+      printf("%g ",gsl_matrix_get(m,i,j));
+    }
+    printf("\n");
+  }
+  printf("done.\n");
+}
+
 GPtrArray* /* Data blocks. Each can be simulated with exactly one input vector. */
 unwrap_data
 (const GPtrArray *DataTable, /* Data tables exactly as they appear in the spreadsheet*/
@@ -97,12 +110,14 @@ unwrap_data
 	g_ptr_array_add(Data,D);
 	break;
       case dose_response:
+	fprintf(stderr,"[%s] a dose response experiment.\n",__func__);
 	input_block=gsl_matrix_alloc(L,nU);
 	for (i=0;i<L;i++) {
 	  input_row=gsl_matrix_row(input_block,i);
 	  gsl_vector_memcpy(&(input_row.vector),&(ThisExperimentsInput.vector));
 	}
 	sbtab_update_gsl_matrix(input_block,DataTable_j,uid,">");
+	gsl_matrix_print(input_block,"input_block");
 	if (default_time) time_view=gsl_vector_subvector(default_time,j,1);
 	//time=sbtab_column_to_gsl_vector(DataTable_j,"!Time");
 	//assert(time);
