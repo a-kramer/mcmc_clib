@@ -67,11 +67,11 @@ The workflow could be:
 
 ```
   User written:                           generated          MCMC Sampling
-  +-----------+      +---(use)---+      +------------+      +--------------+
-  |           |      |           |      |  (CVODES)  |      |              |
-  | SBtab (M) +--+-->+   VFGEN   +----->+  ODE code  +--+-->+ ./ode_smmala |
-  |*.{tsv,ods}|  |   |           |      |  model.vf  |  |   |              |
-  +----+------+  |   +-----------+      +------------+  |   +--------------+
+  +-----------+      +---(use)---+      +------------+      +==============+
+  | SBtab (M) |      |           |      |  (CVODES)  |      I              I
+  |           +--+-->+   VFGEN   +----->+  ODE code  +--+-->+ ./ode_smmala I
+  |*.{tsv,ods}|  |   |           |      |  model.vf  |  |   I              I
+  +----+------+  |   +-----------+      +------------+  |   +==========+===+
        |         |                                      |              ^
        |    +----+-----(use)----+                 +-----+-(create)-+   |
        |    | sbtab_to_vfgen()  |                 |[gcc -shared]   |   |
@@ -90,25 +90,28 @@ But, this is also possible:
 
 ```
   User written:          generated          MCMC Sampling
-  +-----------+       +-------------+      +--------------+
-  |           |       |[gcc -shared]|      |              |
-  | model.vf  +---+-->+  ODE code   +----->+ ./ode_smmala |
-  |           |   |   |  model.so   |      |              |
-  +----+------+   |   +-------------+      +--------+-----+
-       |          |                                 ^
-       |    +-----+-(create)------------------+     |
-       |    | vfgen cvodes:func=yes model.vf  |     | 
-       |    +---------------------------------+     |
-       |                                            |
-       |                                            |
-       |        +-----(use)------+         +--------+--+
-       |        |                |         |           |
-       +------->+ ./sbtab_import +-------->+  data.h5  |
-                |                |         |           |
+  +-----------+       +-------------+      +==============+
+  |           |       |[gcc -shared]|      I              I
+  | model.vf  +---+-->+  ODE code   +----->+ ./ode_smmala I
+  |           |   |   |  model.so   |      I              I
+  +-----------+   |   +-------------+      +========+=====+
+                  |                                 ^
+            +-----+-(create)------------------+     |
+            | vfgen cvodes:func=yes model.vf  |     | 
+            +---------------------------------+     |
+                                                    |
+                                                    |
+                +----(use any)---+         +--------+--+
+                | R (hdf5r),     |         |           |
+                | MATLAB,        +-------->+  data.h5  |
+                | h5import       |         |           |
                 +----------------+         +-----------+
 
-```
+``` 
 
+where
+[h5import](https://support.hdfgroup.org/HDF5/doc/RM/Tools.html#Tools-Import) is one of the many 
+[command line tools](https://support.hdfgroup.org/products/hdf5_tools/#cmd) from the HDF5 project.
 
 ## Slightly more Detailed Installation Guide
 
