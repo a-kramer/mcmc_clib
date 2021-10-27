@@ -225,7 +225,7 @@ make
 
 Usage
 =====
-	Examples:
+
 ```
 mpirun -N 12 ./ode_smmala -l ./model.so -d ./data.h5 -s ${sample_size} 
 
