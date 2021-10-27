@@ -6,6 +6,11 @@ Lengevin algorithm (SMMALA) sampling of the parameters of ordinary
 differential euqations. The main purpose is to fit models to data in
 systems biology.
 
+This project is supported by the [Human Brain
+Project](https://www.humanbrainproject.eu/en/) (EU) and
+[EBRAINS](https://ebrains.eu/) (EU), details in
+[ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
+
 The main program relies on the [GNU Scientific
 Library](http://www.gnu.org/software/gsl/doc/html/index.html), and the
 [SUNDIALS solver](https://computation.llnl.gov/projects/sundials)
@@ -19,8 +24,8 @@ them should be automatic as much as possible. If a user already has a
 good way to do that and can create `cvodes` compatible C files and
 headers, then the tools mentioned in this section are not needed.
 
-We have chosen an Sbtab to vfgen workflow for autmoation of source
-creation. We rely on the
+Internally, we have chosen an [SBtab](https://sbtab.net) to vfgen workflow for
+autmoation of source creation. We rely on the
 [vfgen](https://github.com/WarrenWeckesser/vfgen) tool to create C
 code for the model, including a Jacobian and sensitivity
 equations. VFGEN depends [CLN](https://www.ginac.de/CLN/),
@@ -28,8 +33,73 @@ equations. VFGEN depends [CLN](https://www.ginac.de/CLN/),
 [mini-xml](https://github.com/michaelrsweet/mxml)
 (https://www.msweet.org/mxml/).
 
-SBtab is used to write the model down. It's a spreadsheet format and
-allows fairly easy model editing.
+[SBtab](https://sbtab.net) is a format in systems biology and is
+suited for writing/drafting biological models. It is an external
+project and not covered by documentation here and is not mandatory.
+However, our [SBtabVFGEN](https://github.com/a-kramer/SBtabVFGEN)
+repository has some documentation on how to write SBtab files.
+
+Functions in the [SBtabVFGEN](https://github.com/a-kramer/SBtabVFGEN)
+package print vfgen files from source files written using the SBtab
+format.
+
+We don't recommend that you start by writing the model in some
+other environment and then export it. SBtab's role here is only to
+write the model from scratch. It's a spreadsheet format and allows
+fairly easy model editing. 
+
+If you already have a model, e.g. as a
+[COPASI](https://github.com/copasi/COPASI) project, then it may be
+more convenient to create `.vf` files or C code directly from COPASI's
+export functions. 
+
+The workflow could be:
+
+
+```
+  User written:                           generated          MCMC Sampling
+  +-----------+      +---(use)---+      +------------+      +--------------+
+  |           |      |           |      |  (CVODES)  |      |              |
+  | SBtab (M) +--+-->+   VFGEN   +----->+  ODE code  +--+-->+ ./ode_smmala |
+  |*.{tsv,ods}|  |   |           |      |  model.vf  |  |   |              |
+  +----+------+  |   +-----------+      +------------+  |   +--------------+
+       |         |                                      |              ^
+       |    +----+-----(use)----+                 +-----+-(create)-+   |
+       |    | sbtab_to_vfgen()  |                 |[gcc -shared]   |   |
+       |    +-------------------+                 |                |   |
+       |                                          |    model.so    |   |
+       |                                          +----------------+   |
+       |        +-----(use)------+         +-(created)-+               |
+	   |        |                |         |           |               |
+       +------->+ ./sbtab_import +-------->+  data.h5  +---------------+
+	            |                |         |           |
+				+----------------+         +-----------+
+```
+
+
+But, this is also possible:
+
+```
+  User written:          generated          MCMC Sampling
+  +-----------+       +-------------+      +--------------+
+  |           |       |[gcc -shared]|      |              |
+  | model.vf  +---+-->+  ODE code   +----->+ ./ode_smmala |
+  |           |   |   |  model.so   |      |              |
+  +----+------+   |   +-------------+      +--------+-----+
+       |          |                                 ^
+       |    +-----+-(create)------------------+     |
+       |    | vfgen cvodes:func=yes model.vf  |     | 
+       |    +---------------------------------+     |
+       |                                            |
+       |                                            |
+       |        +-----(use)------+         +--------+--+
+	   |        |                |         |           |
+       +------->+ ./sbtab_import +-------->+  data.h5  |
+	            |                |         |           |
+				+----------------+         +-----------+
+
+```
+
 
 ## Parallelization
 
@@ -126,9 +196,7 @@ Dependencies (libraries)
 for example, on ubuntu, you can install the following packages, or similar:
 
     libmxml-dev 
-    libmxml1 
     libatlas-base-dev 
-    libatlas3-base
     libginac-dev 
     libcln-dev
     libsundials-dev
@@ -149,33 +217,64 @@ make
 Usage
 =====
 	Examples:
-	./bin/ode_smmala --help
-			 to get a list of command line options
-			 
-	./ode_smmala -l ./model.so -d ./data.h5 \
-                     -s ${sample_size} > mcmc_run_1.log 2> mcmc_run_1.err
+```bash
+mpirun -N 12 ./ode_smmala -l ./model.so -d ./data.h5 -s ${sample_size} 
 
-	important options
-	-d data.h5
-	      HDF5 file with: data, reference data, inputs, and
-              prior
+-a $ACCEPTANCE_RATE
+			Target acceptance value (all markov chains will be tuned for this acceptance).
 
-	-l model.so
-	      shared library file
+-d, --hdf5 ./data.h5
+			data.h5 is a file that contains the data points and the conditions of measurement in hdf5 format. A suitable h5 file is produced by the hdf5_import program bundled with ode_smmala.
 
-	-s $N
-              sample size
+-g $G
+			This will define how the inverse MCMC temperatures β are chosen: β = (1-rank/R)^G, where R is MPI_Comm_Size.
 
+-i $STEP_SIZE
+			The initial step size of each markov chain, this will usually be tuned later to get the desired acceptance rate $A (-a $A).
 
-The contents of the data file are described in doc/documentation.pdf
+-l ./ode_model.so
+			ode_model.so is a shared library containing the CVODE functions of the model.
+
+-m $M
+			If this number is larger than 1.0, each MPI rank will get a different initial step size s: step_size(rank)=STEP_SIZE*M^(rank).
+
+-o ./output_file.h5
+			Filename for hdf5 output. This file will contain the log-parameter sample and log-posterior values. The samples will have attributes that reflect the markov chain setup.
+
+-p, --prior-start
+			Start the markov chain at the center of the prior. Otherwise it will be started from the DefaultParameters in the vfgen file.
+-r, --resume
+			Resume from last sampled MCMC point. Only the last MCMC position is read from the resume file. Everything else about the problem can be changed.
+-s $N
+			$N sample size. default N=10.
+
+-t,--init-at-t $T_INITIAL
+			Specifies the initial time «t0» of the model integration [initial value problem for the ordinary differential equation in x; x(t0)=x0]
+
+--seed $SEED
+		Set the gsl pseudo random number generator seed to $SEED. (perhaps --seed $RANDOM)
+```
+
+The contents of the data file are described in [documentation.pdf](./doc/documentation.pdf)
 
 Result
 ======
 
-If the run is successful, the result is an hdf5 file containing the
+If the run is successful, the result is an hdf5 file (see `-o` option) containing the
 MCMC sample in log-space (natural logarithm), log-posterior
-probability values with som eannotation saved as hdf5 attributes and
-some description of the contents.
+probability values with some annotation saved as hdf5 attributes.
 
 In [GNU Octave](https://www.gnu.org/software/octave/) the file can be
-loaded as is via `load sample.h5`.
+loaded as is via `load sample.h5`. The `load()` function reads
+everything and disregards all attributes.
+
+In [R](https://www.r-project.org), the file can be loaded using the
+[hdf5r package](https://www.bioconductor.org/packages/release/bioc/html/rhdf5.html),
+which on [ubuntu](https://ubuntu.com/) systems is also available in
+the package manager as `r-bioc-rhdf5` (e.g. `r-bioc-rhdf5/focal,focal
+2.30.1+dfsg-1build1`). The hdf5r package allows fine grained control
+and can import attributes.
+
+MATLAB has import
+[functions](https://www.mathworks.com/help/matlab/ref/h5read.html) for
+hdf5 natively, e.g.: `data = h5read(filename,ds)`.
