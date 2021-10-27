@@ -17,6 +17,15 @@ Library](http://www.gnu.org/software/gsl/doc/html/index.html), and the
 cvodes for initial value problem integration with (forward) sensitiviy
 analysis.
 
+## Target Users
+
+Researchers in the natural sciences studying ordinary differential
+equation models. This software can be used to obtain a parameter
+sample for the model.
+
+We have been specifically motivated by examples in systems
+biology. But, the sampler is not specific to biological models.
+
 ## Models
 
 Systems biology models are often quite large, so handling
@@ -217,42 +226,59 @@ make
 Usage
 =====
 	Examples:
-```bash
+```
 mpirun -N 12 ./ode_smmala -l ./model.so -d ./data.h5 -s ${sample_size} 
 
 -a $ACCEPTANCE_RATE
-			Target acceptance value (all markov chains will be tuned for this acceptance).
+			Target acceptance value (all markov chains will be 
+			tuned for this acceptance).
 
 -d, --hdf5 ./data.h5
-			data.h5 is a file that contains the data points and the conditions of measurement in hdf5 format. A suitable h5 file is produced by the hdf5_import program bundled with ode_smmala.
+			data.h5 is a file that contains the data points and 
+			the conditions of measurement in hdf5 format. A suitable 
+			h5 file is produced by the hdf5_import program 
+			bundled with ode_smmala.
 
 -g $G
-			This will define how the inverse MCMC temperatures β are chosen: β = (1-rank/R)^G, where R is MPI_Comm_Size.
+			This will define how the inverse MCMC temperatures β are chosen: 
+			β = (1-rank/R)^G, 
+			where R is MPI_Comm_Size.
 
 -i $STEP_SIZE
-			The initial step size of each markov chain, this will usually be tuned later to get the desired acceptance rate $A (-a $A).
+			The initial step size of each markov chain, this will 
+			usually be tuned later to get the desired acceptance rate, 
+			see $A (-a $A).
 
 -l ./ode_model.so
-			ode_model.so is a shared library containing the CVODE functions of the model.
+			ode_model.so is a shared library containing the 
+			CVODE functions of the model.
 
 -m $M
-			If this number is larger than 1.0, each MPI rank will get a different initial step size s: step_size(rank)=STEP_SIZE*M^(rank).
+			If this number is larger than 1.0, each MPI rank will get 
+			a different initial step size s: step_size(rank)=STEP_SIZE*M^(rank).
 
 -o ./output_file.h5
-			Filename for hdf5 output. This file will contain the log-parameter sample and log-posterior values. The samples will have attributes that reflect the markov chain setup.
+			Filename for hdf5 output. This file will contain the 
+			log-parameter sample and log-posterior values. The samples 
+			will have attributes that reflect the markov chain setup.
 
 -p, --prior-start
-			Start the markov chain at the center of the prior. Otherwise it will be started from the DefaultParameters in the vfgen file.
+			Start the markov chain at the center of the prior. Otherwise 
+			it will be started from the DefaultParameters in the vfgen file.
 -r, --resume
-			Resume from last sampled MCMC point. Only the last MCMC position is read from the resume file. Everything else about the problem can be changed.
+			Resume from last sampled MCMC point. Only the last MCMC position 
+			is read from the resume file. Everything else about the problem 
+			can be changed.
 -s $N
 			$N sample size. default N=10.
 
 -t,--init-at-t $T_INITIAL
-			Specifies the initial time «t0» of the model integration [initial value problem for the ordinary differential equation in x; x(t0)=x0]
+			Specifies the initial time «t0» of the model integration 
+
 
 --seed $SEED
-		Set the gsl pseudo random number generator seed to $SEED. (perhaps --seed $RANDOM)
+		Set the gsl pseudo random number generator seed to $SEED. 
+		(e.g. --seed $RANDOM)
 ```
 
 The contents of the data file are described in [documentation.pdf](./doc/documentation.pdf)
