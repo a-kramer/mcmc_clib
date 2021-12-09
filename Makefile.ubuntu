@@ -37,6 +37,6 @@ vfgen:
 	$(CC) -shared -fPIC $(CFLAGS) -lm -o $@  $<
 
 bin/sbtab_import: ./src/sb/import.c $(SB_SRC)
-	$(CC) $(CFLAGS)  -o $(BIN)/sbtab_import ./src/sb/import.c $(SB_SRC) $(PKG)
+	$(CC) $(CFLAGS) `pkg-config --cflags gsl glib-2.0 hdf5` -o $(BIN)/sbtab_import ./src/sb/import.c $(SB_SRC) `pkg-config --libs gsl glib-2.0 hdf5 ` -lhdf5_hl
 
 

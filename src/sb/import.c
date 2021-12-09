@@ -25,7 +25,15 @@
 #include "sbtab.h"
 #include "re.h"
 #include "../app/event.h"
-#include "../mcmc/model_parameters_smmala.h"
+//#include "../mcmc/model_parameters_smmala.h"
+// normalisation methods
+#define DATA_IS_ABSOLUTE 0
+#define DATA_NORMALISED_BY_REFERENCE 1
+#define DATA_NORMALISED_BY_TIMEPOINT 2
+#define DATA_NORMALISED_BY_STATE_VAR 3
+#define DATA_NORMALISED_INDIVIDUALLY 4
+
+
 #include "../mcmc/ptype.h"
 #include "event_glib.h"
 /* very few strings have a fixed length: */
