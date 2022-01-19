@@ -55,8 +55,8 @@
 #include "options.h"
 #include "../mcmc/model_parameters_smmala.h"
 // define target block types
-#define INTEGER_BLOCK 1
-#define DOUBLE_BLOCK 2
+//#define INTEGER_BLOCK 1
+//#define DOUBLE_BLOCK 2
 
 #define yes 1
 #define no 0
@@ -319,15 +319,24 @@ h5write_current_chunk
 (hdf5block_t *h5block,/*holds hdf5 properties and ids*/
  gsl_matrix *log_para_chunk, /*log-parameter chunk*/
  gsl_vector *log_post_chunk, /*log-posterior value chunk*/
- size_t chunk_size) /* overrides macro */
+ int chunk_size) /* overrides matrix/vector sizes  */
 {
   herr_t status;
   assert(log_para_chunk);
   assert(log_post_chunk);
   int D=log_para_chunk->size2;
-  
-  h5block->block[0]=chunk_size>0 ? (chunk_size) : (log_para_chunk->size1);
+  chunk_size = chunk_size>0 ? (chunk_size) : (log_para_chunk->size1);
+  h5block->block[0]=chunk_size;
   h5block->block[1]=D;
+  /* in case the chunk size needs to change */
+  h5block->chunk_size[0]=chunk_size;
+  h5block->chunk_size[1]=D;
+  h5block->para_chunk_id=H5Screate_simple(2, h5block->chunk_size, NULL);    
+  
+  h5block->chunk_size[1]=1;
+  h5block->post_chunk_id=H5Screate_simple(2, h5block->chunk_size, NULL);
+  /**/
+  
   status = H5Sselect_hyperslab(h5block->para_dataspace_id, H5S_SELECT_SET, h5block->offset, h5block->stride, h5block->count, h5block->block);
   H5Dwrite(h5block->parameter_set_id, H5T_NATIVE_DOUBLE, h5block->para_chunk_id, h5block->para_dataspace_id, H5P_DEFAULT, log_para_chunk->data);
 
@@ -336,6 +345,7 @@ h5write_current_chunk
   H5Dwrite(h5block->posterior_set_id, H5T_NATIVE_DOUBLE, h5block->post_chunk_id, h5block->post_dataspace_id, H5P_DEFAULT, log_post_chunk->data);
   return status;
 }
+
 /*this executes a sampling loop, without recording the values, it adapts step size to get target acceptance*/
 int /*always returns success*/
 burn_in_foreach
@@ -435,7 +445,7 @@ mcmc_foreach
     /* print sample log and statistics every CHUNK iterations */
     if ( ((it + 1) % CHUNK) == 0 ) {
       acc_rate = ((double) acc_c) / ((double) CHUNK);
-      fprintf(stdout, "# [rank % 2i/% 2i; β=%5f; %3li%% done] (it %5li)\tacc. rate: %3.2f;\t%3i %% swap success\t",rank,R,kernel->beta,(100*it)/SampleSize,it,acc_rate,swaps);
+      fprintf(stdout,"[rank % 2i/% 2i; β=%5f; %3li%% done] (it %5li)\tacc. rate: %3.2f;\t%3i %% swap success\t",rank,R,kernel->beta,(100*it)/SampleSize,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       fflush(stdout);
       acc_c = 0;
@@ -450,35 +460,14 @@ mcmc_foreach
   int Rest=SampleSize % CHUNK;
   printf("[%s] last iteration done %i points remain to write.\n",__func__,Rest);
   if (Rest > 0){
-    h5block->chunk_size[0]=Rest;
-    h5block->chunk_size[1]=D;
-    h5block->para_chunk_id=H5Screate_simple(2, h5block->chunk_size, NULL);    
-    
-    h5block->chunk_size[0]=Rest;
-    h5block->chunk_size[1]=1;
-    h5block->post_chunk_id=H5Screate_simple(2, h5block->chunk_size, NULL);
-    
     printf("[%s] writing the remaining %i sampled parametrisations to file.\n",__func__,Rest);
-    h5block->block[0]=Rest;
-    h5block->block[1]=D;
+    status=h5write_current_chunk(h5block,log_para_chunk,log_post_chunk,Rest);
     display_chunk_properties(h5block);
-    status = H5Sselect_hyperslab(h5block->para_dataspace_id, H5S_SELECT_SET, h5block->offset, h5block->stride, h5block->count, h5block->block);
-    H5Dwrite(h5block->parameter_set_id, H5T_NATIVE_DOUBLE, h5block->para_chunk_id, h5block->para_dataspace_id, H5P_DEFAULT, log_para_chunk->data);
-    
-    h5block->block[1]=1;
-    printf("[%s] writing their %i log-posterior values to file.\n",__func__,Rest);
-    display_chunk_properties(h5block);
-
-    status |= H5Sselect_hyperslab(h5block->post_dataspace_id, H5S_SELECT_SET, h5block->offset, h5block->stride, h5block->count, h5block->block);
-    H5Dwrite(h5block->posterior_set_id, H5T_NATIVE_DOUBLE, h5block->post_chunk_id, h5block->post_dataspace_id, H5P_DEFAULT, log_post_chunk->data);
-    assert(status>=0);
   }
-
-  // annotate written sample with all necessary information
-  //printf("[main] writing some annotation about the sampled points as hdf5 attributes.\n");
+  /* annotate written sample with all necessary information */
   status|=H5LTset_attribute_int(h5block->file_id, "LogParameters", "MPI_RANK", &rank, 1);
   status|=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "SampleSize", &SampleSize, 1);
-  status|=H5LTset_attribute_double(h5block->file_id, "LogParameters", "InverseTemperature_Beta", &beta, 1);
+status|=H5LTset_attribute_double(h5block->file_id, "LogParameters", "InverseTemperature_Beta", &(kernel->beta), 1);
   
   ct=clock()-ct;
   double sampling_time=((double) ct)/((double) CLOCKS_PER_SEC);
@@ -502,35 +491,41 @@ mcmc_foreach
 
 /*writes properties of the current run related to implementation and command line choices*/
 herr_t /*hdf5 error*/
-append_meta_properties(hdf5block_t *h5block,/*hdf5 file ids*/
-		       double *seed,/*random number seed*/
-		       size_t *BurnInSampleSize, /*tuning iterations*/
-		       char *h5file, /*name of hdf5 file containing the experimental data and prior set-up*/
-		       char *lib_base)/*basename of the library file @code .so@ file*/
+append_meta_properties
+(hdf5block_t *h5block,/*hdf5 file ids*/
+ double *seed,/*random number seed*/
+ size_t *BurnInSampleSize, /*tuning iterations*/
+ char *h5file, /*name of hdf5 file containing the experimental data and prior set-up*/
+ char *lib_base)/*basename of the library file @code .so@ file*/
 {
   herr_t status;
-  int omp_n=0,omp_np=0,i=1;
+  int omp_n=0,omp_np=0,n=1;
   status=H5LTset_attribute_double(h5block->file_id, "LogParameters", "seed", seed, 1);
   status|=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "BurnIn", BurnInSampleSize, 1);
   status|=H5LTset_attribute_string(h5block->file_id, "LogParameters", "DataFrom", h5file);
   status|=H5LTmake_dataset_string(h5block->file_id,"Model",lib_base);
-  // here we make a short test to see what the automatic choice of the
-  // number of threads turns out to be.
-#pragma omp parallel firstprivate(omp_n,omp_np) reduction(+:i)
+  
+  /* we want to record the number of threads. But, these
+     omp_get_something functions are kind of garbage and often don't
+     report the right value, so we calculate it here using a parallel
+     block and reduction. Maybe one day, we'll find out why the
+     omp_get functions don't always work. */  
+#pragma omp parallel firstprivate(omp_n,omp_np) reduction(+:n)
   {
-    i=1;
+    n=1;
 #ifdef _OPENMP
     omp_n=omp_get_num_threads();
     omp_np=omp_get_num_procs();
 #endif
   }
-  if (i!=omp_n){
-    fprintf(stderr,"[append_meta_properties] warning: finding out number of threads possibly failed reduction of (n×1: %i) != get_num_threads():%i.\n",i,omp_n);
+  if (n!=omp_n){
+    fprintf(stderr,"finding out number of threads possibly failed: reduction of (n×1: %i) != get_num_threads():%i.\n",n,omp_n);
   } 
   h5block->size[0]=1;
   h5block->size[1]=1;
   status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_THREADS",1,h5block->size,&omp_n);
   status|=H5LTmake_dataset_int(h5block->file_id,"OMP_NUM_PROCS",1,h5block->size,&omp_np);
+  status|=H5LTmake_dataset_int(h5block->file_id,"OMP_PARALLEL_REDUCTION_PLUS_1",1,h5block->size,&n);
   return status;
 }
 
@@ -571,7 +566,8 @@ void print_experiment_information
   fflush(stdout);
 }
 
-/*Kernel init makes a test evakuation of log-posterior pdf; this function prints the results (uses a couple of unicode characters)*/
+/* Kernel init makes a test evaluation of log-posterior pdf; this
+   function prints the results (uses a couple of unicode characters) */
 void display_test_evaluation_results(mcmc_kernel *kernel)/*MCMC kernel struct*/{
   int i;
   assert(kernel);
@@ -587,10 +583,11 @@ void display_test_evaluation_results(mcmc_kernel *kernel)/*MCMC kernel struct*/{
 }
 
 /* Calculates the normalisation constant of the likelihood function:
- * 1/sqrt(2*pi*sigma²)^beta for all data points (product).
- * This is done in log-space
+ * 1/sqrt(2*pi*sigma²)^beta for all data points (product); exception:
+ * infinite sigma values are treated as NA (ignored).  This calculation is done in
+ * log-space.
  */
-int /*error flag*/
+int /* error flag */
 pdf_normalisation_constant(ode_model_parameters *omp)/*pre-allocated storage for simulation results, used in LogLikelihood calculations*/{
   assert(omp && omp->size);
   int c,C=get_number_of_experimental_conditions(omp);

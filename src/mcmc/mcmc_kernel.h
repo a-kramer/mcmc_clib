@@ -24,6 +24,10 @@
 #include <stdio.h>
 #include <gsl/gsl_rng.h>
 
+#define MCMC_SUCCESS 0
+#define MCMC_POSTERIOR_FAILED -1
+#define MCMC_METHOD_FAILED -2
+
 typedef struct mcmc_kernel_struct_ mcmc_kernel;
 int mcmc_sample(mcmc_kernel* kernel, int* acc);
 int mcmc_exchange_information(mcmc_kernel* kernel, const int DEST, void *buffer);

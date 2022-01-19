@@ -137,56 +137,57 @@ int write_resume_state(const char *file_name, int rank, int R, const mcmc_kernel
   assert(file_name);
   assert(kernel);
   hid_t file_id = H5Fcreate(file_name, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-  hsize_t size[i_prior];
+  hsize_t size[2];
   herr_t h5err=0;
   double *buffer;
-  smmala_params *state = kernel->kernel_params;
+  smmala_params *state = kernel->mcmc_specific_params;
   assert(state);
   
-  // beta; the relaxation parameter of parallel tempering
   size[0]=1;
   buffer=&(state->beta);
-  h5err&=H5LTmake_dataset_double(file_id,"beta", 1, size, buffer);
-  // step size;
+  h5err|=H5LTmake_dataset_double(file_id,"beta", 1, size, buffer);
+
   buffer=&(state->stepsize);
-  h5err&=H5LTmake_dataset_double(file_id,"stepsize", 1, size, buffer);
-  // MPI rank
-  h5err&=H5LTmake_dataset_int(file_id,"MPI_Comm_rank", 1, size, &rank);
-  h5err&=H5LTset_attribute_int(file_id,"MPI_Comm_rank", "MPI_Comm_size", &R,1);
-  // posterior value fx
-  // (likelihood, prior)
+  h5err|=H5LTmake_dataset_double(file_id,"stepsize", 1, size, buffer);
+  
+  h5err|=H5LTmake_dataset_int(file_id,"MPI_Comm_rank", 1, size, &rank);
+  h5err|=H5LTset_attribute_int(file_id,"MPI_Comm_rank", "MPI_Comm_size", &R,1);
+  
+  h5err|=H5LTset_dataset_string(file_id,"mcmc method", "SMMALA");
+  
   size[0]=3;
-  buffer=state->fx;
-  h5err&=H5LTmake_dataset_double(file_id,"Posterior", 1, size, buffer);
-  h5err&=H5LTset_attribute_string(file_id,"Posterior", "key", "LogPosterior; LogLikelihood; LogPrior");
-  h5err&=H5LTset_attribute_string(file_id,"Posterior", "info", "LogPosterior=beta*LogLikelihood+LogPrior");
+  buffer=kernel->fx;
+  h5err|=H5LTmake_dataset_double(file_id,"Posterior", 1, size, buffer);
+  h5err|=H5LTset_attribute_string(file_id,"Posterior", "key", "LogPosterior; LogLikelihood; LogPrior");
+  h5err|=H5LTset_attribute_string(file_id,"Posterior", "info", "LogPosterior=beta*LogLikelihood+LogPrior");
   assert(h5err==0);
+
   // state of the Markov chain x
-  size[0]=state->x->size;
-  buffer=gsl_vector_ptr(state->x,0);
-  h5err&=H5LTmake_dataset_double(file_id,"MarkovChainState", 1, size, buffer);
-  // Gradients 
+  size[0]=kernel->x->size;
+  buffer=gsl_vector_ptr(kernel->x,0);
+  h5err|=H5LTmake_dataset_double(file_id,"MarkovChainState", 1, size, buffer);
+  /* gradients */
   size[0]=state->dfx[i_posterior]->size;
   buffer=gsl_vector_ptr(state->dfx[i_posterior],0);
-  h5err&=H5LTmake_dataset_double(file_id,"LogPosteriorGradient", 1, size, buffer);
+  h5err|=H5LTmake_dataset_double(file_id,"LogPosteriorGradient", 1, size, buffer);
   buffer=gsl_vector_ptr(state->dfx[i_likelihood],0);
-  h5err&=H5LTmake_dataset_double(file_id,"LogLikelihoodGradient", 1, size, buffer);
+  h5err|=H5LTmake_dataset_double(file_id,"LogLikelihoodGradient", 1, size, buffer);
   buffer=gsl_vector_ptr(state->dfx[i_prior],0);
-  h5err&=H5LTmake_dataset_double(file_id,"LogPriorGradient", 1, size, buffer);
-  // fisher information matrices
+  h5err|=H5LTmake_dataset_double(file_id,"LogPriorGradient", 1, size, buffer);
+  /* fisher information matrices */
   size[0]=state->Hfx[i_posterior]->size1;
   size[1]=state->Hfx[i_posterior]->size2;
   buffer=gsl_matrix_ptr(state->Hfx[i_posterior],0,0);
-  h5err&=H5LTmake_dataset_double(file_id,"PosteriorFisherInformation", 2, size, buffer);
+  h5err|=H5LTmake_dataset_double(file_id,"PosteriorFisherInformation", 2, size, buffer);
   buffer=gsl_matrix_ptr(state->Hfx[i_likelihood],0,0);
-  h5err&=H5LTmake_dataset_double(file_id,"LikelihoodFisherInformation", 2, size, buffer);
+  h5err|=H5LTmake_dataset_double(file_id,"LikelihoodFisherInformation", 2, size, buffer);
   buffer=gsl_matrix_ptr(state->Hfx[i_prior],0,0);
-  h5err&=H5LTmake_dataset_double(file_id,"PriorFisherInformation", 2, size, buffer);
-  // cholesky factor of the fisher information
+  h5err|=H5LTmake_dataset_double(file_id,"PriorFisherInformation", 2, size, buffer);
+  /* cholesky factor of the fisher information */
   buffer=gsl_matrix_ptr(state->cholH_mat,0,0);
-  h5err&=H5LTmake_dataset_double(file_id,"CholeskyFactorPostFI", 2, size, buffer);
-  // close file
-  h5err&=H5Fclose(file_id);
+  h5err|=H5LTmake_dataset_double(file_id,"CholeskyFactorPostFI", 2, size, buffer);
+
+  h5err|=H5Fclose(file_id);
   assert(h5err==0);
   return EXIT_SUCCESS; 
 }
@@ -202,43 +203,43 @@ int load_resume_state(const char *file_name, int rank, int R, const mcmc_kernel 
   smmala_params *state = (smmala_params*) kernel->kernel_params;
   assert(state);
   // beta; the relaxation parameter of parallel tempering
-  buffer=&(state->beta);
-  h5err&=H5LTread_dataset_double(file_id,"beta",buffer);
+  buffer=&(kernel->beta);
+  h5err|=H5LTread_dataset_double(file_id,"beta",buffer);
   // step size;
   buffer=&(state->stepsize);
-  h5err&=H5LTread_dataset_double(file_id,"stepsize",buffer);
+  h5err|=H5LTread_dataset_double(file_id,"stepsize",buffer);
   // MPI rank
-  h5err&=H5LTread_dataset_int(file_id,"MPI_Comm_rank", &original_rank);
-  h5err&=H5LTget_attribute_int(file_id,"MPI_Comm_rank", "MPI_Comm_size", &original_comm_size);
+  h5err|=H5LTread_dataset_int(file_id,"MPI_Comm_rank", &original_rank);
+  h5err|=H5LTget_attribute_int(file_id,"MPI_Comm_rank", "MPI_Comm_size", &original_comm_size);
   assert(rank==original_rank);
   assert(R==original_comm_size);
   // posterior value fx
   // (likelihood, prior)
   buffer=state->fx;
-  h5err&=H5LTread_dataset_double(file_id,"Posterior",buffer);
+  h5err|=H5LTread_dataset_double(file_id,"Posterior",buffer);
   assert(h5err==0);
   // state of the Markov chain x
   buffer=gsl_vector_ptr(state->x,0);
-  h5err&=H5LTread_dataset_double(file_id,"MarkovChainState",buffer);
+  h5err|=H5LTread_dataset_double(file_id,"MarkovChainState",buffer);
   // Gradients 
   buffer=gsl_vector_ptr(state->dfx[i_posterior],0);
-  h5err&=H5LTread_dataset_double(file_id,"LogPosteriorGradient",buffer);
+  h5err|=H5LTread_dataset_double(file_id,"LogPosteriorGradient",buffer);
   buffer=gsl_vector_ptr(state->dfx[i_likelihood],0);
-  h5err&=H5LTread_dataset_double(file_id,"LogLikelihoodGradient",buffer);
+  h5err|=H5LTread_dataset_double(file_id,"LogLikelihoodGradient",buffer);
   buffer=gsl_vector_ptr(state->dfx[i_prior],0);
-  h5err&=H5LTread_dataset_double(file_id,"LogPriorGradient",buffer);
+  h5err|=H5LTread_dataset_double(file_id,"LogPriorGradient",buffer);
   // fisher information matrices
   buffer=gsl_matrix_ptr(state->Hfx[i_posterior],0,0);
-  h5err&=H5LTread_dataset_double(file_id,"PosteriorFisherInformation",buffer);
+  h5err|=H5LTread_dataset_double(file_id,"PosteriorFisherInformation",buffer);
   buffer=gsl_matrix_ptr(state->Hfx[i_likelihood],0,0);
-  h5err&=H5LTread_dataset_double(file_id,"LikelihoodFisherInformation",buffer);
+  h5err|=H5LTread_dataset_double(file_id,"LikelihoodFisherInformation",buffer);
   buffer=gsl_matrix_ptr(state->Hfx[i_prior],0,0);
-  h5err&=H5LTread_dataset_double(file_id,"PriorFisherInformation",buffer);
+  h5err|=H5LTread_dataset_double(file_id,"PriorFisherInformation",buffer);
   // cholesky factor of the fisher information
   buffer=gsl_matrix_ptr(state->cholH_mat,0,0);
-  h5err&=H5LTread_dataset_double(file_id,"CholeskyFactorPostFI",buffer);
+  h5err|=H5LTread_dataset_double(file_id,"CholeskyFactorPostFI",buffer);
   // close file
-  h5err&=H5Fclose(file_id);
+  h5err|=H5Fclose(file_id);
   assert(h5err==0);
   return EXIT_SUCCESS; 
 }
@@ -246,19 +247,14 @@ int load_resume_state(const char *file_name, int rank, int R, const mcmc_kernel 
 /* There are three components to most values: an overall posterior
  * value, a likelihood contribution to this value and a prior
  * contribution posterior(x) = beta*likelihood(x) + prior(x) fx[0] =
- * beta*fx[1] + fx[2] nc=3
+ * beta*fx[1] + fx[2];
  */
 static smmala_params* smmala_params_alloc(const double beta, const int N, double step_size, const double target_acceptance){
   int overall_error=EXIT_SUCCESS;
   smmala_params* params = (smmala_params*) malloc(sizeof(smmala_params));
   assert(params);
   int i,nc=3;
-  params->beta=beta;
   params->target_acceptance=target_acceptance;
-  params->fx=malloc(nc*sizeof(double));
-  assert(params->fx);
-  
-  params->x = gsl_vector_alloc(N);
   params->dfx = malloc(nc*sizeof(gsl_vector*));
   for (i=0;i<nc;i++) params->dfx[i]=gsl_vector_alloc(N);
 
@@ -274,7 +270,6 @@ static smmala_params* smmala_params_alloc(const double beta, const int N, double
 
   params->mean_vec = gsl_vector_alloc(N);
   params->cholH_mat = gsl_matrix_alloc(N,N);
-  params->fx[0] = 0;
   params->stepsize = step_size;
   return params;
 }
@@ -328,7 +323,6 @@ static int nat_grad_step(const gsl_vector* x, const gsl_matrix* cholPr,  const g
   gsl_linalg_cholesky_solve(cholPr, grad, result);
   gsl_vector_scale(result, 0.5*stepSize);
   gsl_vector_add(result, x);
-  
   return 0;
 }
 
@@ -345,7 +339,7 @@ int mcmc_sample(mcmc_kernel* kernel, int* acc){
   gsl_matrix_memcpy(state->cholH_mat, state->Hfx[0]);
   
   /* Calculate mean vector for random (Gaussian) step, by following the current gradient of posterior */
-  nat_grad_step(state->x, state->Hfx[0], state->dfx[0], state->mean_vec,stepsize);
+  nat_grad_step(kernel->x, state->Hfx[0], state->dfx[0], state->mean_vec, stepsize);
   /* Random vector from multivariate normal with mean mean_vec and precision cholH_mat */
   gsl_matrix_scale(state->cholH_mat,1.0/sqrt(stepsize));
   mnv_norm_rnd_cholPr(rng, state->mean_vec, state->cholH_mat, state->new_x);
@@ -355,7 +349,7 @@ int mcmc_sample(mcmc_kernel* kernel, int* acc){
   /* evaluate model and get new state */
   double new_fx[3];
   int res = model->LogPosterior
-    (state->beta,
+    (kernel->beta,
      state->new_x,
      model->m_params,
      new_fx,
@@ -365,36 +359,38 @@ int mcmc_sample(mcmc_kernel* kernel, int* acc){
   if (res != GSL_SUCCESS){
     fprintf(stderr,"[smmala warning]: Model cannot be evaluated with this argument: Likelihood=0\n");
     *acc = 0;
-  } else {
-    res = gsl_linalg_cholesky_decomp(state->new_Hfx[0]);
-    if (res){
-	fprintf(stderr,"Warning: matrix not positive definite in smmala_sample.\n Calling gsl_matrix_set_identity().\n");
-	gsl_matrix_set_identity(state->new_Hfx[0]);
-    }
-    gsl_matrix_memcpy(state->cholH_mat, state->new_Hfx[0]);	
-    /* Calculate new mean */
-    nat_grad_step(state->new_x, state->cholH_mat, state->new_dfx[0], state->mean_vec, stepsize);
-    
-    /* Calculate propbability of old state given new state */
-    gsl_matrix_scale(state->cholH_mat, 1.0/sqrt(stepsize));
-    double pOgN = log_mv_norm_pdf_cholP(state->x, state->mean_vec, state->cholH_mat);
-    
-    /* Accept/Reject new state */
-    double mh_ratio = new_fx[0] + pOgN - state->fx[0] - pNgO;
-    double rand_dec = log(gsl_rng_uniform(rng));
-    if ( (mh_ratio > 0.0)||(mh_ratio > rand_dec) ) {
-      *acc = 1;
-      gsl_vector_memcpy(state->x,state->new_x);
-      memcpy(state->fx, new_fx,sizeof(double)*3);
-      for (i=0;i<3;i++){
-	gsl_vector_memcpy(state->dfx[i],state->new_dfx[i]);
-	gsl_matrix_memcpy(state->Hfx[i],state->new_Hfx[i]);
-      }
-    }else{
-      *acc = 0;
-    }
+    return MCMC_POSTERIOR_FAILURE;
   }
-  return GSL_SUCCESS;
+  
+  res = gsl_linalg_cholesky_decomp(state->new_Hfx[0]);
+  if (res){
+    fprintf(stderr,"Warning: matrix not positive definite in smmala_sample.\n\
+Calling gsl_matrix_set_identity().\n");
+    gsl_matrix_set_identity(state->new_Hfx[0]);
+  }
+  gsl_matrix_memcpy(state->cholH_mat, state->new_Hfx[0]);	
+  /* Calculate new mean */
+  nat_grad_step(state->new_x, state->cholH_mat, state->new_dfx[0], state->mean_vec, stepsize);
+  
+  /* Calculate propbability of old state given new state */
+  gsl_matrix_scale(state->cholH_mat, 1.0/sqrt(stepsize));
+  double pOgN = log_mv_norm_pdf_cholP(state->x, state->mean_vec, state->cholH_mat);
+  
+  /* Accept/Reject new state */
+  double mh_ratio = new_fx[0] + pOgN - state->fx[0] - pNgO;
+  double rand_dec = log(gsl_rng_uniform(rng));
+  if ((mh_ratio > 0.0) || (mh_ratio > rand_dec)) {
+    *acc = 1;
+    gsl_vector_memcpy(state->x,state->new_x);
+    memcpy(state->fx, new_fx,sizeof(double)*3);
+    for (i=0;i<3;i++){
+      gsl_vector_memcpy(state->dfx[i],state->new_dfx[i]);
+      gsl_matrix_memcpy(state->Hfx[i],state->new_Hfx[i]);
+    }
+  }else{
+    *acc = 0;
+  }
+  return MCMC_SUCCESS;
 }
 
 static void smmala_kernel_adapt(mcmc_kernel* kernel, double acc_rate){
