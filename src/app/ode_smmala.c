@@ -49,7 +49,9 @@
 #include "diagnosis_output.h"
 #include "hdf5.h"
 #include "hdf5_hl.h"
+#ifdef _OPENMP
 #include "omp.h"
+#endif
 #include "options.h"
 #include "../mcmc/model_parameters_smmala.h"
 // define target block types
@@ -126,9 +128,9 @@ h5block_init(char *output_file, /*will create this file for writing*/
   int P=get_number_of_model_parameters(omp);
   int F=get_number_of_model_outputs(omp);
   
-  char *x_names=flatten(x_name, (size_t) N, "; ");
-  char *p_names=flatten(p_name, (size_t) P, "; ");
-  char *f_names=flatten(f_name, (size_t) F, "; ");
+  char *x_names=flatten(x_name, (size_t) N, " ");
+  char *p_names=flatten(p_name, (size_t) P, " ");
+  char *f_names=flatten(f_name, (size_t) F, " ");
 
   herr_t NameWriteError=0;
   NameWriteError|=H5LTmake_dataset_string(file_id,"StateVariableNames",x_names);
@@ -316,13 +318,15 @@ herr_t /*hdf5 error type*/
 h5write_current_chunk
 (hdf5block_t *h5block,/*holds hdf5 properties and ids*/
  gsl_matrix *log_para_chunk, /*log-parameter chunk*/
- gsl_vector *log_post_chunk)/*log-posterior value chunk*/{
+ gsl_vector *log_post_chunk, /*log-posterior value chunk*/
+ size_t chunk_size) /* overrides macro */
+{
   herr_t status;
   assert(log_para_chunk);
   assert(log_post_chunk);
   int D=log_para_chunk->size2;
   
-  h5block->block[0]=CHUNK;
+  h5block->block[0]=chunk_size>0 ? (chunk_size) : (log_para_chunk->size1);
   h5block->block[1]=D;
   status = H5Sselect_hyperslab(h5block->para_dataspace_id, H5S_SELECT_SET, h5block->offset, h5block->stride, h5block->count, h5block->block);
   H5Dwrite(h5block->parameter_set_id, H5T_NATIVE_DOUBLE, h5block->para_chunk_id, h5block->para_dataspace_id, H5P_DEFAULT, log_para_chunk->data);
@@ -341,7 +345,7 @@ burn_in_foreach
  ode_model_parameters *omp, /*ODE problem definition, allocated space*/
  mcmc_kernel *kernel, /*MCMC kernel struct*/
  void *buffer)/*MPI communication buffer, a deep copy of @code kernel@*/{
-  int master=0;
+  int is_sender=0;
   int swaps=0;
   int acc=0, acc_c=0;
   double acc_rate=0.0;
@@ -354,15 +358,14 @@ burn_in_foreach
     mcmc_sample(kernel, &acc);
     acc_c += acc;
     if ((it+1)%3==0){
-      master=(it%2==rank%2); // if iterator is even, then even procs are master
-      if (master){
-	DEST=(rank+1)%R; // this process is the master process for swap decisions
+      is_sender=(it%2==rank%2); // if iterator is even, then even procs are sending swap decisions
+      if (is_sender){
+	DEST=(rank+1)%R; // this process makes swap decisions
       } else {
 	DEST=(R+rank-1)%R; // this process has to accept swap decisions from DEST
       }
       if (R>1){
-	mcmc_exchange_information(kernel,DEST,buffer);
-	swaps+=mcmc_swap_chains(kernel,master,rank,DEST,buffer);
+	swaps+=mcmc_swap_chains(kernel,master,rank,DEST);
       }
     }
     //mcmc_print_sample(kernel, stdout);
@@ -397,54 +400,47 @@ mcmc_foreach
   log_para_chunk=gsl_matrix_alloc(CHUNK,D);
   log_post_chunk=gsl_vector_alloc(CHUNK);
   gsl_vector_view current;
-  gsl_vector_view x_state;
   int swaps = 0; // swap success counter
   int acc=no;    // acceptance flag
   int acc_c=0;   // acceptance counter
   double acc_rate=0.0;
   size_t it;
-  int master=no;
+  int is_sender=no;
   int DEST;
-  double beta=mcmc_get_beta(kernel);
+
   herr_t status;
   int resume_EC;
-  int last_chunk=no, not_written_yet=yes;
+  int last_chunk=no, written=no;
   for (it = 0; it < SampleSize; it++) {
     mcmc_sample(kernel, &acc);
-    last_chunk=SampleSize-it<CHUNK;
-    if (acc && last_chunk && not_written_yet){
-      resume_EC=write_resume_state(option->resume_file, rank, R, kernel);
-      if (resume_EC==EXIT_SUCCESS){
-	not_written_yet=no;
-      }
+    last_chunk=(SampleSize-it)<CHUNK;
+    if (last_chunk && acc && !written){
+      written=(write_resume_state(option->resume_file, rank, R, kernel)==EXIT_SUCCESS);
     }
     acc_c += acc;
-    master=(it%2==rank%2);
-    if (master){
-      DEST=(rank+1)%R; // this process is the master process for swap decisions
+    is_sender=(it%2==rank%2);
+    if (is_sender){
+      DEST=(rank+1)%R; // this process makes swap decisions (and sends them)
     } else {
       DEST=(R+rank-1)%R; // this process has to accept swap decisions from DEST
     }
-    //their_beta=BETA(DEST,R); // the other proc's
     if (R>1){
-      mcmc_exchange_information(kernel,DEST,buffer);
-      swaps+=mcmc_swap_chains(kernel,master,rank,DEST,buffer);
+      swaps+=mcmc_swap_chains(kernel,master,rank,DEST);
     }
     /* save sampled point for writing */
     current=gsl_matrix_row(log_para_chunk,it%CHUNK);
-    x_state=gsl_vector_view_array(kernel->x,D);
-    gsl_vector_memcpy(&(current.vector),&(x_state.vector));
+    gsl_vector_memcpy(&(current.vector),kernel->x));
     gsl_vector_set(log_post_chunk,it%CHUNK,kernel->fx[0]);
-    /* print sample log and statistics every 100 samples */
+
+    /* print sample log and statistics every CHUNK iterations */
     if ( ((it + 1) % CHUNK) == 0 ) {
       acc_rate = ((double) acc_c) / ((double) CHUNK);
-      fprintf(stdout, "# [rank % 2i/% 2i; β=%5f; %3li%% done] (it %5li)\tacc. rate: %3.2f;\t%3i %% swap success\t",rank,R,beta,(100*it)/SampleSize,it,acc_rate,swaps);
+      fprintf(stdout, "# [rank % 2i/% 2i; β=%5f; %3li%% done] (it %5li)\tacc. rate: %3.2f;\t%3i %% swap success\t",rank,R,kernel->beta,(100*it)/SampleSize,it,acc_rate,swaps);
       mcmc_print_stats(kernel, stdout);
       fflush(stdout);
       acc_c = 0;
-      
-      // print chunk to hdf5 file
-      status=h5write_current_chunk(h5block,log_para_chunk,log_post_chunk);
+
+      status=h5write_current_chunk(h5block,log_para_chunk,log_post_chunk,0);
       h5block->offset[0]=it+1;
       swaps=0;
     }
@@ -510,20 +506,23 @@ append_meta_properties(hdf5block_t *h5block,/*hdf5 file ids*/
 		       double *seed,/*random number seed*/
 		       size_t *BurnInSampleSize, /*tuning iterations*/
 		       char *h5file, /*name of hdf5 file containing the experimental data and prior set-up*/
-		       char *lib_base)/*basename of the library file @code .so@ file*/{
+		       char *lib_base)/*basename of the library file @code .so@ file*/
+{
   herr_t status;
-  int omp_n,omp_np,i=1;
+  int omp_n=0,omp_np=0,i=1;
   status=H5LTset_attribute_double(h5block->file_id, "LogParameters", "seed", seed, 1);
   status|=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "BurnIn", BurnInSampleSize, 1);
   status|=H5LTset_attribute_string(h5block->file_id, "LogParameters", "DataFrom", h5file);
   status|=H5LTmake_dataset_string(h5block->file_id,"Model",lib_base);
   // here we make a short test to see what the automatic choice of the
   // number of threads turns out to be.
-#pragma omp parallel private(omp_n,omp_np) reduction(+:i)
+#pragma omp parallel firstprivate(omp_n,omp_np) reduction(+:i)
   {
     i=1;
+#ifdef _OPENMP
     omp_n=omp_get_num_threads();
     omp_np=omp_get_num_procs();
+#endif
   }
   if (i!=omp_n){
     fprintf(stderr,"[append_meta_properties] warning: finding out number of threads possibly failed reduction of (n×1: %i) != get_num_threads():%i.\n",i,omp_n);
@@ -935,7 +934,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   h5block_close(h5block);
 
   /* clear memory */
-  smmala_model_free(model);
+  free(model);
   mcmc_free(kernel);
   ode_model_parameters_free(omp);
   MPI_Finalize();
