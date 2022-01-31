@@ -43,7 +43,6 @@
 #include "flatten.h"
 #include "read_data_hdf5.h"
 #include "normalisation_sd.h"
-#include "../mcmc/smmala.h"
 #include "../ode/ode_model.h"
 #include "../mcmc/smmala_posterior.h"
 #include "diagnosis_output.h"
@@ -625,7 +624,7 @@ pdf_normalisation_constant(ode_model_parameters *omp)/*pre-allocated storage for
  * calls MCMC routines
  * finalizes and frees (most) structs
  */
-int/*always returns success*/
+int /* error code or success */
 main(int argc,/*count*/ char* argv[])/*array of strings*/ {
   int i=0;
   int warm_up=0; // sets the number of burn in points at command line
@@ -688,15 +687,8 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
 
   /* load model from shared library
    */
-  ode_model *odeModel = ode_model_loadFromFile(lib_name);  /* alloc */
-  if (!odeModel) {
-    fprintf(stderr, "[%s] (rank %i) Library %s could not be loaded.\n",__func__,rank,lib_name);
-    exit(1);
-  } else printf( "[%s] (rank %i) Library %s loaded.\n",__func__,rank, lib_name);
-  
-  /* construct an output file from rank, library name, and user
-   * supplied string.
-   */
+  ode_model *odeModel = ode_model_loadFromFile(lib_name);  /* alloc, must succeed or abort */
+
   char *dot;
   char *lib_base;
   lib_base=basename(lib_name);

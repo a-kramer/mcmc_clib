@@ -17,8 +17,8 @@
  *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __MCMC_KERNEL_H__
-#define __MCMC_KERNEL_H__
+#ifndef _MCMC_KERNEL_H
+#define _MCMC_KERNEL_H
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -35,6 +35,7 @@ buffer);
 int mcmc_swap_chains(mcmc_kernel* kernel, const int master, const int rank, const int DEST, void *buffer);
 int mcmc_init(mcmc_kernel* kernel, const double* x);
 int mcmc_init_rand(mcmc_kernel* kernel);	
+mcmc_kernel* mcmc_alloc(const double beta, const int N, double step_size, statistical_model* smod, const unsigned long int seed, const double target_acceptance);
 void mcmc_free(mcmc_kernel* kernel);
 void mcmc_adapt(mcmc_kernel* kernel, double acc_rate);
 void mcmc_print_stats(mcmc_kernel* kernel, FILE* s);
