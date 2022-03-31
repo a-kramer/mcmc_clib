@@ -7,18 +7,18 @@
 
 /* collects all ids and arrays the hdf5 needs
  */
-typedef struct {  
-  hid_t file_id;
-  hid_t group_id;
-  hid_t dataset_id;
-  hid_t chunk_id;
-  hid_t dataspace_id;
-  hsize_t *size;
-  hsize_t *chunk_size;
-  hsize_t *offset;
-  hsize_t *stride;
-  hsize_t *count;
-  hsize_t *block;
+typedef struct {
+	hid_t file_id;
+	hid_t group_id;
+	hid_t dataset_id;
+	hid_t chunk_id;
+	hid_t dataspace_id;
+	hsize_t *size;
+	hsize_t *chunk_size;
+	hsize_t *offset;
+	hsize_t *stride;
+	hsize_t *count;
+	hsize_t *block;
 } h5block_t;
 
 h5block_t* h5block_alloc(hsize_t rank);
