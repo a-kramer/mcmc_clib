@@ -25,7 +25,7 @@ typedef struct {
   gsl_matrix *value;
   gsl_matrix **val_before_t;  // subvectors of value
   gsl_vector **time_before_t; // sub_vectors of time
-  gsl_matrix_view *value_sub; // "views" for the above two 
+  gsl_matrix_view *value_sub; // "views" for the above two
   gsl_vector_view *time_sub;  //
 } event_t;
 
@@ -75,10 +75,10 @@ void event_apply(event_row_t *e, gsl_vector *y, gsl_vector *p, gsl_matrix *S);
 int event_find_target(char *target_name, const char **list_of_names,  size_t num);
 gsl_vector_int* /* the index set of `target_name` (negative non failure to find)*/
 event_find_targets
-(effect_t *effect, 
- char *target_names, 
- size_t num_targets, 
- const char **list_of_p_names, 
+(effect_t *effect,
+ char *target_names,
+ size_t num_targets,
+ const char **list_of_p_names,
  size_t num_p,
  const char **list_of_x_names,
  size_t num_x);

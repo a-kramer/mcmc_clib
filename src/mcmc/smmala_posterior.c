@@ -20,128 +20,27 @@
 
 int LogLikelihood(ode_model_parameters *mp, double *l, gsl_vector *dl, gsl_matrix *FI);
 
-int approximate_sens(ode_solver *solver, double tout, gsl_vector *y, gsl_vector *fy, gsl_matrix *yS, gsl_matrix *fyS, sensitivity_approximation *a){
-	gsl_vector_view eJt_diag;
-	gsl_vector_view jacp_row;
-	int status;
-	assert(yS);
-	int P=yS->size1;
-	int i;
-	assert(a && a->jacobian_y && a->jacobian_p && a->tau && a->x && a->r);
-	assert(y && fy && yS && fyS);
 
-	/* CVODE stores matrices column wise, but gsl stores them row wise */
-	/* so copying values from CVODE to gsl transposes a matrix */
-	ode_solver_get_jac(solver,tout,y->data,fy->data,a->jacobian_y->data);
-	ode_solver_get_jacp(solver,tout,y->data,fy->data,a->jacobian_p->data);
-
-	gsl_matrix_transpose(a->jacobian_y); // now jacobian_y(i,j)=df[i]/dy[j];
-	gsl_matrix_memcpy(a->Jt,a->jacobian_y);
-	gsl_matrix_scale(a->Jt,tout-(a->t0));				// this is now Jacobian*t
-	status=gsl_linalg_QR_decomp(a->jacobian_y,a->tau);
-	if (status!= GSL_SUCCESS){
-		fprintf(stderr,"[%s] QR decomposition failed. %s\n",__func__,gsl_strerror(status));
-	}
-	fflush(stdout);
-	for (i=0;i<P;i++){
-		jacp_row=gsl_matrix_row(a->jacobian_p,i);
-		// solve in place; jac_p will contain the solution: jac_y\jac_p
-		status=gsl_linalg_QR_svx(a->jacobian_y, a->tau, &jacp_row.vector);
-		if (status!=GSL_SUCCESS) {
-			fprintf(stderr,"[%s] QR solution of linear equations failed: %s. Using minimum Norm solution.\n",__func__,gsl_strerror(status));
-			if (gsl_linalg_QR_lssolve(a->jacobian_y, a->tau, &jacp_row.vector, a->x, a->r)!=GSL_SUCCESS) {
-	fprintf(stderr,"[%s] QR lssolve also failed. exiting.\n",__func__);
-	abort();
-			} else {
-	gsl_vector_memcpy(&jacp_row.vector,a->x);
-			}
-		}
-	}
-	gsl_matrix *L=a->jacobian_p;					 /* jac_y\jac_p in matlab syntax */
-	//gsl_matrix *R=gsl_matrix_alloc(s1,s2); 
-	gsl_matrix_memcpy(a->R,L);
-	gsl_matrix_add(a->R,yS);
-	status=gsl_linalg_exponential_ss(a->Jt,a->eJt,GSL_PREC_SINGLE);
-	if (status!=GSL_SUCCESS){
-		// this is not yet considered stable by GSL :/
-		fprintf(stderr,"[%s] matrix exponential failed. %s\n",__func__,gsl_strerror(status));
-		return GSL_FAILURE;
-	}
-	eJt_diag=gsl_matrix_diagonal(a->eJt);
-	gsl_matrix_memcpy(yS,L);
-	gsl_vector_add_constant(&eJt_diag.vector,-1.0);
-	if (gsl_blas_dgemm(CblasNoTrans, CblasTrans,1.0,a->R,a->eJt,-1.0,yS)!=GSL_SUCCESS){
-		fprintf(stderr,"[%s] general double precision	Matrix·Matrix failed.\n",__func__);
-		return GSL_FAILURE;
-	}
-	return GSL_SUCCESS;
-}
-
-
-
-int ode_solver_process_sens(ode_solver *solver, double tout,
-					gsl_vector *y, gsl_vector* fy,
-					gsl_matrix *yS, gsl_matrix *fyS,
-					sensitivity_approximation *a){
-	ode_model *model;
-	model=solver->odeModel;
-	
-	if (ode_model_has_sens(model)){
-		ode_solver_get_sens(solver, tout, yS->data);
-	} else {
-		approximate_sens(solver,tout,y,fy,yS,fyS,a);
-	}	
-	if (ode_model_has_funcs_sens(model)){
-		ode_solver_get_func_sens(solver, tout, y->data, yS->data, fyS->data);
-	}
-	return GSL_SUCCESS;
-}
-
-int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy, gsl_matrix *yS, gsl_matrix *fyS, sensitivity_approximation *a){
-	double tout;
-	ode_model *model;
-	assert(solver);
-	model=solver->odeModel;
-	assert(model);
-	assert(y->data);
-	assert(fy->data);
-
-	int CVerror =	ode_solver_solve(solver, t, y->data, &tout);
-
-	fflush(stdout);
-	if (CVerror!=CV_SUCCESS) {
-		fprintf(stderr, "ODE solver failed with ERROR = %i.\n",CVerror);
-		return GSL_EDOM;
-	}
-	if (ode_model_has_funcs(model)) {
-		ode_solver_get_func(solver, tout, y->data, fy->data);
-	} else {
-		fprintf(stderr,"ode model has no output functions");
-		exit(-1);
-	}
-	ode_solver_process_sens(solver, tout, y, fy, yS, fyS, a);
-	a->t0=tout; /* previous time for the next iteration */
-	return GSL_SUCCESS;
-}
 
 /* Normalisation information: quantities are normalised in place:
  * NORMALISATION_TYPE: fy_i ← normalisation_function(fy_i,fy_j)
  * DATA_NORMALISED_BY_REFERENCE: fy_i(t_j,k,u)←fy_i(t_j,k,u)/fy_i(t_j,k,reference_u)
  * DATA_NORMALISED_BY_TIMEPOINT: fy_i(t_j,k,u)←fy_i(t_j,k,u)/fy_i(t_l,k,u) given l
  * DATA_NORMALISED_BY_STATE_VAR: fy_i(t_j,k,u)←fy_i(t_j,k,u)/fy_j(t_l,k,u),
- *															 given i, j and l
- * DATA_NORMALISED_INDIVIDUALLY: the model/data structure contains normalisation 
- *															 information in each experiment struct, so each 
- *															 experiment can be normalised in a different way. 
- *															 This is meant to supercede the other normalisation 
- *															 types.
+ *                               given i, j and l
+ * DATA_NORMALISED_INDIVIDUALLY: the model/data structure contains normalisation
+ *                               information in each experiment struct, so each
+ *                               experiment can be normalised in a different way.
+ *                               This is meant to supercede the other normalisation
+ *                               types.
  *
  *"reference" is not meant as in C/code jargon (pass by reference), it's more literal.
  * Note that all returned values/arrays from CVODES are with respect to
  * the model's parameters k=exp(x), while we require sensitivities
- * with respect to x, the mcmc variables. Therefore, chain rule factors appear in the 
+ * with respect to x, the mcmc variables. Therefore, chain rule factors appear in the
  * below calculations: dk(x)/dx = k(x); df(k(x))/d(x) = df/dk dk/dx = df/dk * k
  */
+
 /* this function finds the right normalisation vector and copies it
  * into the normalisation sub-structure of experiment E
  */

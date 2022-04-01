@@ -14,9 +14,12 @@
 
 typedef struct solver_specific_ode_model ode_model;
 
-typedef struct{
+enum tf_type = {tf_matrix_vector, tf_vector_vector, tf_vector_scalar, tf_scalar_scalar};
+
+typedef struct {
 	void *driver;
 	ode_model *odeModel;
+	double t0;
 	gsl_vector *y;
 	gsl_matrix *yS;
 	gsl_vector *fy;
@@ -25,6 +28,27 @@ typedef struct{
 	gsl_matrix *jacp;
 	gsl_vector *params;
 } ode_solver;
+
+struct tf {
+	tf_type type;
+	union {
+		gsl_matrix *A;
+		gsl_vector *a;
+		long s_a;
+	};
+	union {
+		gsl_vector *b;
+		long s_b;
+	};
+	gsl_vector *result;
+};
+
+struct scheduled_event {
+	double t;
+	struct tf *state;
+	struct tf *params;
+	struct scheduled_event *next;
+};
 
 /* Loads shared library with user defined functions and ode model data */
 ode_model* ode_model_loadFromFile(const char *filename);
