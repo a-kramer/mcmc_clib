@@ -16,6 +16,8 @@ typedef struct solver_specific_ode_model ode_model;
 
 enum tf_type = {tf_matrix_vector, tf_vector_vector, tf_vector_scalar, tf_scalar_scalar};
 
+typedef struct sens_approx sensitivity_approximation;
+
 typedef struct {
 	void *driver;
 	ode_model *odeModel;
@@ -27,6 +29,7 @@ typedef struct {
 	gsl_matrix *jac;
 	gsl_matrix *jacp;
 	gsl_vector *params;
+	sensitivity_approximation *sapprox;
 } ode_solver;
 
 struct tf {
@@ -34,11 +37,11 @@ struct tf {
 	union {
 		gsl_matrix *A;
 		gsl_vector *a;
-		long s_a;
+		double s_a;
 	};
 	union {
 		gsl_vector *b;
-		long s_b;
+		double s_b;
 	};
 	gsl_vector *result;
 };

@@ -13,6 +13,19 @@ struct solver_specific_ode_model {
 	out_f *func;
 };
 
+/* also known as sensitivity_approximation */
+struct sens_approx {
+  gsl_matrix *temp_ny_ny;
+  gsl_matrix *temp_ny_np;
+  double t0;
+  gsl_matrix *R;
+  gsl_matrix *eJt;
+  gsl_matrix *Jt;
+  gsl_vector *tau;
+  gsl_vector *x;
+  gsl_vector *r;
+};
+
 void *load_or_abort(void *lib, char *sym)
 {
 	fprintf(stderr,"[%s] loading «%s»",__func__,sym);
@@ -101,46 +114,121 @@ void ode_solver_init(ode_solver *s, const double t0, gsl_vector *y0, gsl_vector 
 	s->driver=drv;
 }
 
-int ode_solver_transform(ode_solver *a, gsl_vector *v, struct tf *tfm)
-{
-	switch (tfm->type){
-	case tf_matrix_vector:
-		gsl_vector_set_zero(tfm->result);
-		gsl_blas_dgemv(CblasNoTrans, 1.0, tfm->A, v, 1.0, a->y);
-		break;
-	case tf_vector_vector:
-		break;
-	case tf_vector_scalar:
-		break;
-	case tf_scalar_scalar:
-		break;
+
+static int approximate_sens(ode_solver *solver, double tout, gsl_vector *y, gsl_vector *fy, gsl_matrix *yS, gsl_matrix *fyS, sensitivity_approximation *a){
+	gsl_vector_view eJt_diag;
+	gsl_vector_view jacp_row;
+	int status;
+	assert(yS);
+	int P=yS->size1;
+	int i;
+	assert(a && a->jacobian_y && a->jacobian_p && a->tau && a->x && a->r);
+	assert(y && fy && yS && fyS);
+
+	/* CVODE stores matrices column wise, but gsl stores them row wise */
+	/* so copying values from CVODE to gsl transposes a matrix */
+	ode_solver_get_jac(solver,tout,y->data,fy->data,a->jacobian_y->data);
+	ode_solver_get_jacp(solver,tout,y->data,fy->data,a->jacobian_p->data);
+
+	//gsl_matrix_transpose(a->jacobian_y); // now jacobian_y(i,j)=df[i]/dy[j];
+	gsl_matrix_memcpy(a->Jt,a->jacobian_y);
+	gsl_matrix_scale(a->Jt,tout-(a->t0));				// this is now Jacobian*t
+	status=gsl_linalg_QR_decomp(a->jacobian_y,a->tau);
+	if (status!= GSL_SUCCESS){
+		fprintf(stderr,"[%s] QR decomposition failed. %s\n",__func__,gsl_strerror(status));
 	}
+	fflush(stdout);
+	for (i=0;i<P;i++){
+		jacp_row=gsl_matrix_row(a->jacobian_p,i);
+		// solve in place; jac_p will contain the solution: jac_y\jac_p
+		status=gsl_linalg_QR_svx(a->jacobian_y, a->tau, &jacp_row.vector);
+		if (status!=GSL_SUCCESS) {
+			fprintf(stderr,"[%s] QR solution of linear equations failed: %s. Using minimum Norm solution.\n",__func__,gsl_strerror(status));
+			if (gsl_linalg_QR_lssolve(a->jacobian_y, a->tau, &jacp_row.vector, a->x, a->r)!=GSL_SUCCESS) {
+				fprintf(stderr,"[%s] QR lssolve also failed. exiting.\n",__func__);
+				abort();
+			} else {
+				gsl_vector_memcpy(&jacp_row.vector,a->x);
+			}
+		}
+	}
+	gsl_matrix *L=a->jacobian_p; /* jac_y\jac_p in matlab syntax */
+	//gsl_matrix *R=gsl_matrix_alloc(s1,s2);
+	gsl_matrix_memcpy(a->R,L);
+	gsl_matrix_add(a->R,yS);
+	status=gsl_linalg_exponential_ss(a->Jt,a->eJt,GSL_PREC_SINGLE);
+	if (status!=GSL_SUCCESS){
+		// this is not yet considered stable by GSL :/
+		fprintf(stderr,"[%s] matrix exponential failed. %s\n",__func__,gsl_strerror(status));
+		return GSL_FAILURE;
+	}
+	eJt_diag=gsl_matrix_diagonal(a->eJt);
+	gsl_matrix_memcpy(yS,L);
+	gsl_vector_add_constant(&eJt_diag.vector,-1.0);
+	if (gsl_blas_dgemm(CblasNoTrans, CblasTrans,1.0,a->R,a->eJt,-1.0,yS)!=GSL_SUCCESS){
+		fprintf(stderr,"[%s] general double precision	Matrix·Matrix failed.\n",__func__);
+		return GSL_FAILURE;
+	}
+	return GSL_SUCCESS;
+}
+
+static int transform(ode_vector *a, struct tf *tfm)
+{
+	if (tfm && a){
+		switch (tfm->type){
+		case tf_matrix_vector:
+			gsl_vector_memcpy(tfm->result,tfm->b);
+			gsl_blas_dgemv(CblasNoTrans, 1.0, tfm->A, a, 1.0, tfm->result);
+			gsl_vector_memcpy(a,tfm->result);
+			break;
+		case tf_vector_vector:
+			gsl_vector_mul(a,tfm->a);
+			gsl_vector_add(a,tfm->b);
+			break;
+		case tf_vector_scalar:
+			gsl_vector_mul(a,tfm->a);
+			gsl_vector_add_constant(a,tfm->s_b)
+			break;
+		case tf_scalar_scalar:
+			gsl_vector_scale(a,tfm->s_a);
+			gsl_vector_add_constant(a,tfm->s_b);
+			break;
+		}
+	}
+	return GSL_SUCCESS;
 }
 
 /* this functions solves the initial value problem and model in s,
 	 using the driver struct in s; the result is returned in y and fy; the
 	 solver contains pre-allocated memory to store the model state
 	 during integration */
-int ode_solver_apply(ode_solver *s, gsl_vector *t, gsl_vector **y, gsl_vector **fy, struct scheduled_event *e)
+int ode_solver_apply(ode_solver *s, gsl_vector *t, gsl_vector **y, gsl_vector **fy, gsl_matrix **yS, gsl_matrix **fyS, struct scheduled_event **e)
 {
 	int j;
 	double ti=s->t0; /* initial */
 	double tf;       /* final */
 	int status;
+	struct scheduled_evemt *ej;
 	gsl_odeiv2_driver_reset(s->driver);
 	for (j=0; j<t->size; j++){
+		ej=e[j];
 		tf=gsl_vector_get(t,j);
 		/* loop over events prior to tf */
-		while (e && e->t < tf){
-			status=gsl_odeiv2_driver_apply(s->driver, &ti, e->t, s->y->data);
-			
+		while (ej && ej->t < tf){
+			status=gsl_odeiv2_driver_apply(s->driver, &ti, ej->t, s->y->data);
+			transform(s->y,ej->state);
+			transform(s->params,ej->state);
 			assert(status==GSL_SUCCESS);
 		}
+		/* now advance to the next save worthy time point */
 		status=gsl_odeiv2_driver_apply(s->driver, &ti, tf, s->y->data);
 		switch (status){
 		case GSL_SUCCESS:
 			gsl_vector_memcpy(y[j],s->y);
 			if (fy && fy[j]) s->odeModel->func(tf,y[j]->data,fy[j]->data,s->sys->params);
+			if (yS) {
+				approximate_sens(s, ti, a);
+			}
 			break;
 		default:
 			fprintf(stderr,"[%s] integration error: %i\n",__func__,status);
@@ -170,84 +258,3 @@ int ode_solver_process_sens(
 	return GSL_SUCCESS;
 }
 
-int ode_solver_step(ode_solver *solver, double t, gsl_vector *y, gsl_vector* fy, gsl_matrix *yS, gsl_matrix *fyS, sensitivity_approximation *a){
-	double tout;
-	ode_model *model;
-	assert(solver);
-	model=solver->odeModel;
-	assert(model);
-	assert(y->data);
-	assert(fy->data);
-	int CVerror = ode_solver_solve(solver, t, y->data, &tout);
-	fflush(stdout);
-	if (CVerror!=CV_SUCCESS) {
-		fprintf(stderr, "ODE solver failed with ERROR = %i.\n",CVerror);
-		return GSL_EDOM;
-	}
-	if (ode_model_has_funcs(model)) {
-		ode_solver_get_func(solver, tout, y->data, fy->data);
-	} else {
-		fprintf(stderr,"ode model has no output functions");
-		exit(-1);
-	}
-	ode_solver_process_sens(solver, tout, y, fy, yS, fyS, a);
-	a->t0=tout; /* previous time for the next iteration */
-	return GSL_SUCCESS;
-}
-
-int approximate_sens(ode_solver *solver, double tout, gsl_vector *y, gsl_vector *fy, gsl_matrix *yS, gsl_matrix *fyS, sensitivity_approximation *a){
-	gsl_vector_view eJt_diag;
-	gsl_vector_view jacp_row;
-	int status;
-	assert(yS);
-	int P=yS->size1;
-	int i;
-	assert(a && a->jacobian_y && a->jacobian_p && a->tau && a->x && a->r);
-	assert(y && fy && yS && fyS);
-
-	/* CVODE stores matrices column wise, but gsl stores them row wise */
-	/* so copying values from CVODE to gsl transposes a matrix */
-	ode_solver_get_jac(solver,tout,y->data,fy->data,a->jacobian_y->data);
-	ode_solver_get_jacp(solver,tout,y->data,fy->data,a->jacobian_p->data);
-
-	gsl_matrix_transpose(a->jacobian_y); // now jacobian_y(i,j)=df[i]/dy[j];
-	gsl_matrix_memcpy(a->Jt,a->jacobian_y);
-	gsl_matrix_scale(a->Jt,tout-(a->t0));				// this is now Jacobian*t
-	status=gsl_linalg_QR_decomp(a->jacobian_y,a->tau);
-	if (status!= GSL_SUCCESS){
-		fprintf(stderr,"[%s] QR decomposition failed. %s\n",__func__,gsl_strerror(status));
-	}
-	fflush(stdout);
-	for (i=0;i<P;i++){
-		jacp_row=gsl_matrix_row(a->jacobian_p,i);
-		// solve in place; jac_p will contain the solution: jac_y\jac_p
-		status=gsl_linalg_QR_svx(a->jacobian_y, a->tau, &jacp_row.vector);
-		if (status!=GSL_SUCCESS) {
-			fprintf(stderr,"[%s] QR solution of linear equations failed: %s. Using minimum Norm solution.\n",__func__,gsl_strerror(status));
-			if (gsl_linalg_QR_lssolve(a->jacobian_y, a->tau, &jacp_row.vector, a->x, a->r)!=GSL_SUCCESS) {
-	fprintf(stderr,"[%s] QR lssolve also failed. exiting.\n",__func__);
-	abort();
-			} else {
-	gsl_vector_memcpy(&jacp_row.vector,a->x);
-			}
-		}
-	}
-	gsl_matrix *L=a->jacobian_p; /* jac_y\jac_p in matlab syntax */
-	//gsl_matrix *R=gsl_matrix_alloc(s1,s2);
-	gsl_matrix_memcpy(a->R,L);
-	gsl_matrix_add(a->R,yS);
-	status=gsl_linalg_exponential_ss(a->Jt,a->eJt,GSL_PREC_SINGLE);
-	if (status!=GSL_SUCCESS){
-		// this is not yet considered stable by GSL :/
-		fprintf(stderr,"[%s] matrix exponential failed. %s\n",__func__,gsl_strerror(status));
-		return GSL_FAILURE;
-	}
-	eJt_diag=gsl_matrix_diagonal(a->eJt);
-	gsl_matrix_memcpy(yS,L);
-	gsl_vector_add_constant(&eJt_diag.vector,-1.0);
-	if (gsl_blas_dgemm(CblasNoTrans, CblasTrans,1.0,a->R,a->eJt,-1.0,yS)!=GSL_SUCCESS){
-		fprintf(stderr,"[%s] general double precision	Matrix·Matrix failed.\n",__func__);
-		return GSL_FAILURE;
-	}
-	return GSL_SUCCESS;
-}
