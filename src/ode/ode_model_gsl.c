@@ -101,14 +101,39 @@ void ode_ivp_init(ode_ivp *s, const double t0, gsl_vector *y0, gsl_vector *p)
 	s->driver=drv;
 }
 
+/* solve A*X=B, all matrices */
+int solve_linear_system(gsl_matrix *A, gsl_matrix *X, gsl_matrix *B){
+	double *C;
+	assert(A && X && B);
+	size_t n=B->size1, m=B->size2;
+	gsl_matrix_view x,b;
+	gsl_matrix *T=gsl_matrix_alloc(n,n);
+
+	int status=GSL_SUCCESS;
+	if (A->size2 == X->size1){
+		// C=alloca(sizeof(double)*n*m);
+		// qr=gsl_matrix_view_array(C,n,m);
+		status=gsl_linalg_QR_decomp_r(A,T);
+		if (status!= GSL_SUCCESS){
+			fprintf(stderr,"[%s] QR decomposition failed. %s\n",__func__,gsl_strerror(status));
+		}
+		for (i=0;i<m;i++){
+			b=gsl_matrix_column(B,i);
+			x=gsl_matrix_column(X,i);
+			status|=gsl_linalg_QR_solve_r(A, T, &(b.vector), &(x.vector));
+		}
+	}
+	gsl_matrix_free(T);
+	return status;
+}
 
 static int approximate_sens(ode_model *m, double ti, gsl_vector *y_i, double tf, gsl_vector *y_f, gsl_matrix *yS){
 	assert(yS);
 	size_t ny=yS->size1;
 	size_t np=yS->size2;
 	assert(m->sys->dimesnion == ny);
-	double A=alloca(sizeof(double)*ny*ny);
-	double B=alloca(sizeof(double)*ny*np);
+	gsl_matrix *A=gsl_matrix_alloc(ny,ny);
+	gsl_matrix *B=gsl_matrix_alloc(ny,np);
 	double dfdt[ny];
   gsl_matrix_view Ayy=gsl_matrix_view_array(A,ny,ny);
   gsl_matrix_view Byp=gsl_matrix_view_array(A,ny,np);
@@ -130,33 +155,15 @@ static int approximate_sens(ode_model *m, double ti, gsl_vector *y_i, double tf,
 	m->jacp(tf,y_f->data,B,dfdt,m->sys->params);
 
 	//gsl_matrix_transpose(a->jacobian_y); // now jacobian_y(i,j)=df[i]/dy[j];
-	gsl_matrix_memcpy(Jt,&(Ayy.matrix));
+	gsl_matrix_memcpy(Jt,A);
 	gsl_matrix_scale(Jt,tf-ti);
-	
-	status=gsl_linalg_QR_decomp(&(Ayy.matrix),tau);
-	if (status!= GSL_SUCCESS){
-		fprintf(stderr,"[%s] QR decomposition failed. %s\n",__func__,gsl_strerror(status));
-	}
-	for (i=0;i<np;i++){
-		jacp_row=gsl_matrix_row(&(Byp.matrix),i);
-		// solve in place; jac_p will contain the solution: jac_y\jac_p
-		status=gsl_linalg_QR_svx(&(Ayy.matrix), tau, &(jacp_row.vector));
-		if (status!=GSL_SUCCESS) {
-			fprintf(stderr,"[%s] QR solution of linear equations failed: %s.\
- Using minimum Norm solution.\n",__func__,gsl_strerror(status));
-			if (gsl_linalg_QR_lssolve(&(Ayy.matrix), tau, &(jacp_row.vector), a->x, a->r)!=GSL_SUCCESS) {
-				fprintf(stderr,"[%s] QR lssolve also failed. exiting.\n",__func__);
-				abort();
-			} else {
-				gsl_vector_memcpy(&(jacp_row.vector),a->x);
-			}
-		}
-	}
-	gsl_matrix *L=&(Byp.matrix); /* jac_y\jac_p in matlab syntax */
-	//gsl_matrix *R=gsl_matrix_alloc(s1,s2);
-	gsl_matrix_memcpy(a->R,L);
-	gsl_matrix_add(a->R,yS);
-	status=gsl_linalg_exponential_ss(a->Jt,a->eJt,GSL_PREC_SINGLE);
+	gsl_matrix *L=gsl_matrix_alloc(ny,np); /* jac_y\jac_p in matlab syntax */
+  solve_linear_system(A,L,B);
+
+	gsl_matrix *R=gsl_matrix_alloc(n,m);
+	gsl_matrix_memcpy(R,L);
+	gsl_matrix_add(R,yS);
+	status=gsl_linalg_exponential_ss(Jt,eJt,GSL_PREC_SINGLE);
 	if (status!=GSL_SUCCESS){
 		// this is not yet considered stable by GSL :/
 		fprintf(stderr,"[%s] matrix exponential failed. %s\n",__func__,gsl_strerror(status));
