@@ -6,13 +6,13 @@
  *  Copyright 2011 Computing Science. All rights reserved.
  *
  */
-#ifndef _ODE_MODEL_H
-#define _ODE_MODEL_H
+#ifndef ODE_MODEL_H
+#define ODE_MODEL_H
 #include <stdlib.h>
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
 
-typedef struct solver_specific_ode_model ode_model;
+typedef struct ivp_specific_ode_model ode_model;
 
 enum tf_type = {tf_matrix_vector, tf_vector_vector, tf_vector_scalar, tf_scalar_scalar};
 
@@ -30,7 +30,7 @@ typedef struct {
 	gsl_matrix *jacp;
 	gsl_vector *params;
 	sensitivity_approximation *sapprox;
-} ode_solver;
+} ode_ivp;
 
 struct tf {
 	tf_type type;
@@ -55,13 +55,12 @@ struct scheduled_event {
 
 /* Loads shared library with user defined functions and ode model data */
 ode_model* ode_model_loadFromFile(const char *filename);
-/* Creates a new ode_solver for the given model */
-ode_solver* ode_solver_alloc(ode_model* model);
-/* Initialises the ode solver. y0, yS0 and p can be NULL. */
-void ode_solver_init(ode_solver* solver, const double t0, gsl_vector *y0, gsl_vector *p);
-/* Re-initialises the ode solver. y0, yS0 and p can be NULL in which case the default values are used.*/
-void ode_solver_reinit(ode_solver* solver, const double t0,  double* y0, int lenY, const double* p, int lenP );
-int ode_solver_solve(ode_solver* solver, double *t, double tf);
-/* Returns sensitivities for the current solution at t. This function must be called only after ode_solver_solve. */
-void ode_solver_free(ode_solver* solver);
+/* Creates a new ode_ivp for the given model */
+ode_ivp* ode_ivp_alloc(ode_model* model);
+/* Initialises the ode ivp. y0, yS0 and p can be NULL. */
+void ode_ivp_init(ode_ivp* ivp, const double t0, gsl_vector *y0, gsl_vector *p);
+/* Re-initialises the ode ivp. y0, yS0 and p can be NULL in which case the default values are used.*/
+int ode_ivp_advance(ode_ivp *s, gsl_vector *t, gsl_vector **y, gsl_vector **fy, gsl_matrix **yS, gsl_matrix **fyS, struct scheduled_event **e);
+/* Returns sensitivities for the current solution at t. This function must be called only after ode_ivp_solve. */
+void ode_ivp_free(ode_ivp* ivp);
 #endif
