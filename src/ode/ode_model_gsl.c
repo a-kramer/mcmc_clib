@@ -4,13 +4,17 @@
 /* gsl_odeiv2_step_type *gsl_odeiv2_step_msadams */
 
 typedef int (*dfdp) (double t, const double y[], double * dfdy, double dfdt[], void * params);
-typedef int (*out_f) (double t, const double y[], double * yf, void * params);
+typedef int (*out_f) (double t, const double y[], double * F, void * params);
+typedef int (*out_f_dy) (double t, const double y[], double * dFdy, void * params);
+typedef int (*out_f_dp) (double t, const double y[], double * dFdp, void * params);
 
 /* also known as "ode_model" */
 struct solver_specific_ode_model {
 	gsl_odeiv2_system sys;
 	dfdp *jacp;
 	out_f *func;
+	out_f_dy *func_jac;
+	out_f_dp *func_jacp;
 };
 
 void *load_or_abort(void *lib, char *sym)
@@ -135,31 +139,31 @@ static int approximate_sens(ode_model *m, double ti, gsl_vector *y_i, double tf,
 	gsl_matrix *A=gsl_matrix_alloc(ny,ny);
 	gsl_matrix *B=gsl_matrix_alloc(ny,np);
 	double dfdt[ny];
-	gsl_matrix *L=gsl_matrix_alloc(ny,np);
-  gsl_matrix *R=gsl_matrix_alloc(ny,np);
-  gsl_matrix *eJt=gsl_matrix_alloc(ny,ny);
-  gsl_matrix *Jt=gsl_matrix_alloc(ny,ny);
+	gsl_matrix *C=gsl_matrix_alloc(ny,np);
+	gsl_matrix *R=gsl_matrix_alloc(ny,np);
+	gsl_matrix *eJt=gsl_matrix_alloc(ny,ny);
+	gsl_matrix *Jt=gsl_matrix_alloc(ny,ny);
 	int status=GSL_SUCCESS;
 	int i;
-	m->sys->jacobian(tf,y_f->data,A->data,dfdt,m->sys->params);
-	m->jacp(tf,y_f->data,B->data,dfdt,m->sys->params);
+	m->sys->jacobian(tf,y_f->data,A->data,dfdt,m->sys->params); /* A is df/dy (the jacobian) */
+	m->jacp(tf,y_f->data,B->data,dfdt,m->sys->params);          /* B is df/dp (the parameter jacobian) */
 	gsl_matrix_memcpy(Jt,A);
 	gsl_matrix_scale(Jt,tf-ti);
-  solve_linear_system(A,L,B); /* L = jac\jacp */
-	gsl_matrix_memcpy(R,L);
+	solve_linear_system(A,C,B); /* C = A\B */
+	gsl_matrix_memcpy(R,C);
 	gsl_matrix_add(R,yS);
 	status|=gsl_linalg_exponential_ss(Jt,eJt,GSL_PREC_SINGLE);
 	if (status!=GSL_SUCCESS){
 		fprintf(stderr,"[%s] matrix exponential failed. %s\n",__func__,gsl_strerror(status));
 	}
-	/* this is according to the formula:
-     yS0=yS(t0); 
-     yS(t) = exp(J*(t-t0))*(yS0 + J\P) - J\P
-     eJt = exp(J*(t-t0))
-     L = J\P
-     R = yS0 + L
-     yS = eJt*R - L   
-*/
+	/* this is according to this approximation:
+	yS0=yS(t0);
+	yS(t) = exp(A*(t-t0))*(yS0 + A\B) - A\B
+	eJt = exp(A*(t-t0))
+	C = A\B
+	R = yS0 + C
+	yS = eJt*R - C
+	*/
 	gsl_matrix_memcpy(yS,L);
 	status|=gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,1.0,R,eJt,-1.0,yS);
 	if (status!=GSL_SUCCESS){
@@ -231,9 +235,13 @@ int ode_ivp_advance(ode_ivp *s, gsl_vector *t, gsl_vector **y, gsl_vector **fy, 
 		switch (status){
 		case GSL_SUCCESS:
 			gsl_vector_memcpy(y[j],s->y);
+			//			s->odeModel->sys->jacobian(tf,y_f->data,s->jac->data,dfdt,m->sys->params); /* yJ is df/dy (the jacobian) */
+			//			s->odeModel->jacp(tf,y_f->data,s->jacp->data,dfdt,m->sys->params);         /* yP is df/dp (the parameter jacobian) */
 			if (fy && fy[j]) s->odeModel->func(tf,y[j]->data,fy[j]->data,s->sys->params);
-			if (yS) {
-				approximate_sens(s->odeModel, ti, yi, tf, s->y, s->yS);
+			if (yS) approximate_sens(s->odeModel, ti, yi, tf, s->y, s->yS);
+			if (yS && fyS && s->out_f_dy && s->out_f_dp) {
+				s->func_jac(tf,y[j]->data,s->fyJ->data,s->sys->params);
+				s->func_jacp(tf,y[j]->data,s->fyP->data,s->sys->params);
 			}
 			break;
 		default:

@@ -28,6 +28,8 @@ typedef struct {
 	gsl_matrix *fyS;
 	gsl_matrix *jac;
 	gsl_matrix *jacp;
+	gsl_matrix *fyJ;
+	gsl_matrix *fyP;
 	gsl_vector *params;
 	sensitivity_approximation *sapprox;
 } ode_ivp;
