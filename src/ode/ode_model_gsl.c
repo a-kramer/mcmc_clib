@@ -135,48 +135,43 @@ static int approximate_sens(ode_model *m, double ti, gsl_vector *y_i, double tf,
 	gsl_matrix *A=gsl_matrix_alloc(ny,ny);
 	gsl_matrix *B=gsl_matrix_alloc(ny,np);
 	double dfdt[ny];
-  gsl_matrix_view Ayy=gsl_matrix_view_array(A,ny,ny);
-  gsl_matrix_view Byp=gsl_matrix_view_array(A,ny,np);
-
-  gsl_matrix *R;
-  gsl_matrix *eJt;
+	gsl_matrix *L=gsl_matrix_alloc(ny,np);
+  gsl_matrix *R=gsl_matrix_alloc(ny,np);
+  gsl_matrix *eJt=gsl_matrix_alloc(ny,ny);
   gsl_matrix *Jt=gsl_matrix_alloc(ny,ny);
-  gsl_vector *tau=gsl_vector_alloc(ny);
-  gsl_vector *x=gsl_vector_alloc(np);
-  gsl_vector *r=gsl_vector_alloc(np);
-	/**/
-	gsl_vector_view eJt_diag;
-	gsl_vector_view jacp_row;
-	int status;
-
+	int status=GSL_SUCCESS;
 	int i;
-
-	m->sys->jacobian(tf,y_f->data,A,dfdt,m->sys->params);
-	m->jacp(tf,y_f->data,B,dfdt,m->sys->params);
-
-	//gsl_matrix_transpose(a->jacobian_y); // now jacobian_y(i,j)=df[i]/dy[j];
+	m->sys->jacobian(tf,y_f->data,A->data,dfdt,m->sys->params);
+	m->jacp(tf,y_f->data,B->data,dfdt,m->sys->params);
 	gsl_matrix_memcpy(Jt,A);
 	gsl_matrix_scale(Jt,tf-ti);
-	gsl_matrix *L=gsl_matrix_alloc(ny,np); /* jac_y\jac_p in matlab syntax */
-  solve_linear_system(A,L,B);
-
-	gsl_matrix *R=gsl_matrix_alloc(n,m);
+  solve_linear_system(A,L,B); /* L = jac\jacp */
 	gsl_matrix_memcpy(R,L);
 	gsl_matrix_add(R,yS);
-	status=gsl_linalg_exponential_ss(Jt,eJt,GSL_PREC_SINGLE);
+	status|=gsl_linalg_exponential_ss(Jt,eJt,GSL_PREC_SINGLE);
 	if (status!=GSL_SUCCESS){
-		// this is not yet considered stable by GSL :/
 		fprintf(stderr,"[%s] matrix exponential failed. %s\n",__func__,gsl_strerror(status));
-		return GSL_FAILURE;
 	}
-	eJt_diag=gsl_matrix_diagonal(a->eJt);
+	/* this is according to the formula:
+     yS0=yS(t0); 
+     yS(t) = exp(J*(t-t0))*(yS0 + J\P) - J\P
+     eJt = exp(J*(t-t0))
+     L = J\P
+     R = yS0 + L
+     yS = eJt*R - L   
+*/
 	gsl_matrix_memcpy(yS,L);
-	gsl_vector_add_constant(&eJt_diag.vector,-1.0);
-	if (gsl_blas_dgemm(CblasNoTrans, CblasTrans,1.0,a->R,a->eJt,-1.0,yS)!=GSL_SUCCESS){
-		fprintf(stderr,"[%s] general double precision	Matrix·Matrix failed.\n",__func__);
-		return GSL_FAILURE;
+	status|=gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,1.0,R,eJt,-1.0,yS);
+	if (status!=GSL_SUCCESS){
+		fprintf(stderr,"[%s] Matrix product (dgemm) failed. %s\n",__func__,gsl_strerror(status));
 	}
-	return GSL_SUCCESS;
+	gsl_matrix_free(A);
+	gsl_matrix_free(B);
+	gsl_matrix_free(Jt);
+	gsl_matrix_free(eJt);
+	gsl_matrix_free(R);
+	gsl_matrix_free(L);
+	return status;
 }
 
 static int transform(ode_vector *v, struct tf *tfm)
@@ -211,19 +206,24 @@ static int transform(ode_vector *v, struct tf *tfm)
 	 during integration */
 int ode_ivp_advance(ode_ivp *s, gsl_vector *t, gsl_vector **y, gsl_vector **fy, gsl_matrix **yS, gsl_matrix **fyS, struct scheduled_event **e)
 {
+	assert(s);
 	int j;
 	double ti=s->t0; /* initial */
 	double tf;       /* final */
 	int status;
 	struct scheduled_evemt *ej;
+	assert(s->t0==gsl_vector_get(t,0));
+	gsl_vector_memcpy(y[0],s->y);
+	gsl_matrix_memcpy(yS[0],s->yS);
 	gsl_odeiv2_driver_reset(s->driver);
-	for (j=0; j<t->size; j++){
+	for (j=1; j<t->size; j++){
 		tf=gsl_vector_get(t,j);
 		/* loop over events prior to t[j] */
 		while (e && e[j] && e[j]->t < tf){
 			status=gsl_odeiv2_driver_apply(s->driver, &ti, e[j]->t, s->y->data);
 			transform(s->y,e[j]->state);
 			transform(s->params,e[j]->params);
+			gsl_odeiv2_driver_reset(s->driver);
 			assert(status==GSL_SUCCESS);
 		}
 		/* now advance to the next save worthy time point */
@@ -233,7 +233,7 @@ int ode_ivp_advance(ode_ivp *s, gsl_vector *t, gsl_vector **y, gsl_vector **fy, 
 			gsl_vector_memcpy(y[j],s->y);
 			if (fy && fy[j]) s->odeModel->func(tf,y[j]->data,fy[j]->data,s->sys->params);
 			if (yS) {
-				approximate_sens(s, ti, a);
+				approximate_sens(s->odeModel, ti, yi, tf, s->y, s->yS);
 			}
 			break;
 		default:
