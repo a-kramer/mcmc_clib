@@ -131,6 +131,14 @@ int solve_linear_system(gsl_matrix *A, gsl_matrix *X, gsl_matrix *B){
 	return status;
 }
 
+	/* this is according to this approximation:
+	yS0=yS(t0);
+	yS(t) = exp(A*(t-t0))*(yS0 + A\B) - A\B
+	eJt = exp(A*(t-t0))
+	C = A\B
+	R = yS0 + C
+	yS = eJt*R - C
+	*/
 static int approximate_sens(ode_model *m, double ti, gsl_vector *y_i, double tf, gsl_vector *y_f, gsl_matrix *yS){
 	assert(yS);
 	size_t ny=yS->size1;
@@ -143,30 +151,20 @@ static int approximate_sens(ode_model *m, double ti, gsl_vector *y_i, double tf,
 	gsl_matrix *R=gsl_matrix_alloc(ny,np);
 	gsl_matrix *eJt=gsl_matrix_alloc(ny,ny);
 	gsl_matrix *Jt=gsl_matrix_alloc(ny,ny);
-	int status=GSL_SUCCESS;
 	int i;
+	int status;
 	m->sys->jacobian(tf,y_f->data,A->data,dfdt,m->sys->params); /* A is df/dy (the jacobian) */
 	m->jacp(tf,y_f->data,B->data,dfdt,m->sys->params);          /* B is df/dp (the parameter jacobian) */
 	gsl_matrix_memcpy(Jt,A);
 	gsl_matrix_scale(Jt,tf-ti);
-	solve_linear_system(A,C,B); /* C = A\B */
+	solve_linear_system(A,C,B); /* solve A*C=B, or equivalently C = A\B */
 	gsl_matrix_memcpy(R,C);
 	gsl_matrix_add(R,yS);
-	status|=gsl_linalg_exponential_ss(Jt,eJt,GSL_PREC_SINGLE);
-	if (status!=GSL_SUCCESS){
+	if ((status=gsl_linalg_exponential_ss(Jt,eJt,GSL_PREC_SINGLE))!=GSL_SUCCESS){
 		fprintf(stderr,"[%s] matrix exponential failed. %s\n",__func__,gsl_strerror(status));
 	}
-	/* this is according to this approximation:
-	yS0=yS(t0);
-	yS(t) = exp(A*(t-t0))*(yS0 + A\B) - A\B
-	eJt = exp(A*(t-t0))
-	C = A\B
-	R = yS0 + C
-	yS = eJt*R - C
-	*/
 	gsl_matrix_memcpy(yS,L);
-	status|=gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,1.0,R,eJt,-1.0,yS);
-	if (status!=GSL_SUCCESS){
+	if ((status=gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,1.0,R,eJt,-1.0,yS))!=GSL_SUCCESS){
 		fprintf(stderr,"[%s] Matrix product (dgemm) failed. %s\n",__func__,gsl_strerror(status));
 	}
 	gsl_matrix_free(A);
@@ -174,7 +172,7 @@ static int approximate_sens(ode_model *m, double ti, gsl_vector *y_i, double tf,
 	gsl_matrix_free(Jt);
 	gsl_matrix_free(eJt);
 	gsl_matrix_free(R);
-	gsl_matrix_free(L);
+	gsl_matrix_free(C);
 	return status;
 }
 
