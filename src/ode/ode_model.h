@@ -12,7 +12,7 @@
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
 
-typedef struct ivp_specific_ode_model ode_model;
+typedef struct solver_specific_ode_model ode_model;
 
 enum tf_type = {tf_matrix_vector, tf_vector_vector, tf_vector_scalar, tf_scalar_scalar};
 
@@ -31,7 +31,6 @@ typedef struct {
 	gsl_matrix *fyJ;
 	gsl_matrix *fyP;
 	gsl_vector *params;
-	sensitivity_approximation *sapprox;
 } ode_ivp;
 
 struct tf {
@@ -56,13 +55,13 @@ struct scheduled_event {
 };
 
 /* Loads shared library with user defined functions and ode model data */
-ode_model* ode_model_loadFromFile(const char *filename);
+ode_model* ode_model_load_from_file(const char *filename);
 /* Creates a new ode_ivp for the given model */
 ode_ivp* ode_ivp_alloc(ode_model* model);
 /* Initialises the ode ivp. y0, yS0 and p can be NULL. */
 void ode_ivp_init(ode_ivp* ivp, const double t0, gsl_vector *y0, gsl_vector *p);
 /* Re-initialises the ode ivp. y0, yS0 and p can be NULL in which case the default values are used.*/
-int ode_ivp_advance(ode_ivp *s, gsl_vector *t, gsl_vector **y, gsl_vector **fy, gsl_matrix **yS, gsl_matrix **fyS, struct scheduled_event **e);
+int ode_ivp_solve(ode_ivp *s, gsl_vector *t, gsl_vector **y, gsl_vector **fy, gsl_matrix **yS, gsl_matrix **fyS, struct scheduled_event **e);
 /* Returns sensitivities for the current solution at t. This function must be called only after ode_ivp_solve. */
 void ode_ivp_free(ode_ivp* ivp);
 #endif

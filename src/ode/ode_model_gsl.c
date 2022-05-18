@@ -7,10 +7,14 @@ typedef int (*dfdp) (double t, const double y[], double * dfdy, double dfdt[], v
 typedef int (*out_f) (double t, const double y[], double * F, void * params);
 typedef int (*out_f_dy) (double t, const double y[], double * dFdy, void * params);
 typedef int (*out_f_dp) (double t, const double y[], double * dFdp, void * params);
+typedef int (*f_default_parameters) (double t, void * params);
+typedef int (*f_initial_condition) (double t, double *y, void * params);
 
 /* also known as "ode_model" */
 struct solver_specific_ode_model {
 	gsl_odeiv2_system sys;
+	f_default_parameters *param_default;
+	f_initial_condition *init;
 	dfdp *jacp;
 	out_f *func;
 	out_f_dy *func_jac;
@@ -25,15 +29,23 @@ void *load_or_abort(void *lib, char *sym)
 	return s;
 }
 
+void *load_optional(void *lib, char *sym)
+{
+	fprintf(stderr,"[%s] loading «%s»",__func__,sym);
+	void *s=dlsym(L,sym);
+	return s;
+}
+
+
 /* loads functions from shared library, all functions are necessary, returned struct can be freed by free() */
-ode_model* ode_model_loadFromFile(const char *filename)
+ode_model* ode_model_load_from_file(const char *filename)
 {
 	void* L=dlopen(filename,RTLD_LAZY|RTLD_LOCAL);
 	char *name=basename(filename);
 	char *dot=strchr(name,'.');
 	size_t n=dot?dot-name:0;
 	int d;
-	char *sym=alloca(n+12);
+	char *sym=alloca(n+32);
 	// char *suffix[]={"_vf", "_jac", "_jacp", "_out"};
 	// int n=sizeof(suffix)/sizeof(char*);
 	assert(sym);
@@ -55,6 +67,8 @@ ode_model* ode_model_loadFromFile(const char *filename)
 		model->jacp=load_or_abort(L,strcpy(sym+n,"_jacp"));
 		/* user defined output functions */
 		model->func=load_or_abort(L,strcpy(sym+n,"_out"));
+		model->param_default=load_optional(L,strcpy(sym+n,"_default"));
+		model->init=load_optional(L,strcpy(sym+n,"_init"));
 	} else {
 		fprintf(stderr, "Library %s could not be loaded.\n",filename);
 		char *err = dlerror();
@@ -96,11 +110,34 @@ void ode_ivp_free(ode_ivp *solver_for_gsl)
 	free(solver_for_gsl);
 }
 
+/* initializes the ode_ivp struct with values taken from t0, y0, and
+	 p. The memory of y0 and p may be freed afterwards. if y0 is NULL
+	 this function will use the model's defaults (_init function). If
+	 the parameters p are NULL the models _default function will be used
+	 to set default parameters.  Thus, `ode_ivp_init(s,0.0,NULL,NULL)`
+	 is a valid call. In cases where the _default or _init function is
+	 missing from the model, all values are set to 1.0 instead.
+*/
 void ode_ivp_init(ode_ivp *s, const double t0, gsl_vector *y0, gsl_vector *p)
 {
-	gsl_vector_memcpy(s->params,p);
-	s->sys.params=s->params->data;
 	s->t0=t0;
+	if (p){
+		gsl_vector_memcpy(s->params,p);
+	} else if (s->odeModel->param_default != NULL){
+		s->odeModel->param_default(t0,s->params);
+	} else {
+		gsl_vector_set_all(s->params,1.0);
+	}
+	s->sys.params=s->params->data; /* gsl_odeiv2 solvers will use this pointer */
+	if (y0) {
+		gsl_vector_memcpy(s->y,y0);
+	} else if (s->odeModel->init != NULL){
+		s->odeModel->init(t0,s->y->data,s->params->data);
+	} else {
+		gsl_vector_set_all(s->y,1.0);
+	}
+	gsl_matrix_set_zero(s->yS);
+	gsl_matrix_set_zero(s->fyS);
 	gsl_odeiv2_driver *drv=gsl_odeiv2_driver_alloc_y_new(s->odeModel->sys, gsl_odeiv2_step_msbdf, 1e-5, 1e-7, 1e-7);
 	s->driver=drv;
 }
@@ -206,7 +243,7 @@ static int transform(ode_vector *v, struct tf *tfm)
 	 using the driver struct in s; the result is returned in y and fy; the
 	 solver contains pre-allocated memory to store the model state
 	 during integration */
-int ode_ivp_advance(ode_ivp *s, gsl_vector *t, gsl_vector **y, gsl_vector **fy, gsl_matrix **yS, gsl_matrix **fyS, struct scheduled_event **e)
+int ode_ivp_solve(ode_ivp *s, gsl_vector *t, gsl_vector **y, gsl_vector **fy, gsl_matrix **yS, gsl_matrix **fyS, struct scheduled_event **e)
 {
 	assert(s);
 	int j;
