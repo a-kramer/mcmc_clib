@@ -284,7 +284,7 @@ void print_chunk_graph(gsl_matrix *X,/*sub-sample of CHUNK rows*/ gsl_vector *lP
 	  for (k=0;k<5;k++){
 			nc=q[k]-tmp;
 			for (j=0;j<nc;j++) {
-	printf("%c",s[k]);
+				printf("%c",s[k]);
 			}
 			tmp=q[k];
 			printf("%c",c[k]);
@@ -353,7 +353,8 @@ burn_in_foreach
  size_t BurnInSampleSize, /*number of iterations for tuning*/
  ode_model_parameters *omp, /*ODE problem definition, allocated space*/
  mcmc_kernel *kernel, /*MCMC kernel struct*/
- void *buffer)/*MPI communication buffer, a deep copy of @code kernel@*/{
+ void *buffer)/*MPI communication buffer, a deep copy of @code kernel@*/
+{
 	int is_sender=0;
 	int swaps=0;
 	int acc=0, acc_c=0;
@@ -369,12 +370,12 @@ burn_in_foreach
 		if ((it+1)%3==0){
 			is_sender=(it%2==rank%2); // if iterator is even, then even procs are sending swap decisions
 			if (is_sender){
-	DEST=(rank+1)%R; // this process makes swap decisions
+				DEST=(rank+1)%R; // this process makes swap decisions
 			} else {
-	DEST=(R+rank-1)%R; // this process has to accept swap decisions from DEST
+				DEST=(R+rank-1)%R; // this process has to accept swap decisions from DEST
 			}
 			if (R>1){
-	swaps+=mcmc_swap_chains(kernel,master,rank,DEST);
+				swaps+=mcmc_swap_chains(kernel,master,rank,DEST);
 			}
 		}
 		//mcmc_print_sample(kernel, stdout);
@@ -401,7 +402,8 @@ mcmc_foreach
  mcmc_kernel *kernel, /* MCMC kernel sturct, holds MCMC-algorithm's parameters*/
  hdf5block_t *h5block, /*defines the hdf5 file to write into, holds ids and sizes*/
  void *buffer, /* for MPI communication, similar to kernel*/
- main_options *option)/*options from defaults, files and command line*/{
+ main_options *option)/*options from defaults, files and command line*/
+{
 	clock_t ct=clock();
 	gsl_matrix *log_para_chunk;
 	gsl_vector *log_post_chunk;
@@ -466,7 +468,7 @@ mcmc_foreach
 	/* annotate written sample with all necessary information */
 	status|=H5LTset_attribute_int(h5block->file_id, "LogParameters", "MPI_RANK", &rank, 1);
 	status|=H5LTset_attribute_ulong(h5block->file_id, "LogParameters", "SampleSize", &SampleSize, 1);
-status|=H5LTset_attribute_double(h5block->file_id, "LogParameters", "InverseTemperature_Beta", &(kernel->beta), 1);
+	status|=H5LTset_attribute_double(h5block->file_id, "LogParameters", "InverseTemperature_Beta", &(kernel->beta), 1);
 
 	ct=clock()-ct;
 	double sampling_time=((double) ct)/((double) CLOCKS_PER_SEC);
@@ -764,11 +766,7 @@ main(int argc,/*count*/ char* argv[])/*array of strings*/ {
 	ode_model_parameters_link(omp);
 	/* necessity of normalisation will be checked and noted for later: */
 	data_normalisation(omp);
-	//printf("[%s] data normalization done.\n",__func__);
-	//for (c=0;c<C;c++){
-	//	printf("[%s] E%i needs normalization: %i\n",__func__,c,NEEDS_NORMALISATION(omp->E[c]));
-	//}
-	fflush(stdout);
+
 	/* get default parameters from the model file
 	 */
 	double p[P];
