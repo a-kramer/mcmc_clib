@@ -14,7 +14,7 @@
 
 typedef struct solver_specific_ode_model ode_model;
 
-enum tf_type = {tf_matrix_vector, tf_vector_vector, tf_vector_scalar, tf_scalar_scalar};
+enum tf_type {tf_matrix_vector, tf_vector_vector, tf_vector_scalar, tf_scalar_scalar};
 
 typedef struct sens_approx sensitivity_approximation;
 
@@ -34,7 +34,7 @@ typedef struct {
 } ode_ivp;
 
 struct tf {
-	tf_type type;
+	enum tf_type type;
 	union {
 		gsl_matrix *A;
 		gsl_vector *a;
@@ -55,7 +55,7 @@ struct scheduled_event {
 };
 
 /* Loads shared library with user defined functions and ode model data */
-ode_model* ode_model_load_from_file(const char *filename);
+ode_model* ode_model_load_from_file(char *filename);
 /* Creates a new ode_ivp for the given model */
 ode_ivp* ode_ivp_alloc(ode_model* model);
 /* Initialises the ode ivp. y0, yS0 and p can be NULL. */

@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
+#include <gsl/gsl_odeiv2.h>
 #include "../ode/ode_model.h"
 
 gsl_vector* linspace(double a, double b, size_t n){
@@ -62,7 +64,7 @@ void gsl_matrices_write(gsl_matrix **m, size_t n, const char *f){
 		fwrite(&dim,sizeof(int),rank,F);
 	}
 	for (i=0;i<n && m[i]!=NULL;i++){
-		fwrite(m[i]->data,sizeof(double),m[i]->size,F);
+		fwrite(m[i]->data,sizeof(double),(m[i]->size1)*(m[i]->size2),F);
 	}
 	fclose(F);
 }
@@ -86,7 +88,7 @@ int main(int argc, char *argv[])
 	assert(argc>1);
 	int l=strlen(argv[1]);
 	char *modelf=malloc(l+64);
-	*(memcpy(modelf,argv[1],l+1)+l)='\0';
+	*((char*) memcpy(modelf,argv[1],l+1)+l)='\0';
 	ode_model *M=ode_model_load_from_file(modelf);
 	assert(M);
 	double t0=0.0;
@@ -99,8 +101,8 @@ int main(int argc, char *argv[])
 	gsl_vector *t=linspace(t0,10,nt);
 	gsl_vector **y=gsl_vectors_alloc(ny,nt);
 	gsl_vector **fy=gsl_vectors_alloc(nfy,nt);
-	gsl_matrix **yS=gsl_vectors_alloc(ny,np,nt);
-	gsl_matrix **fyS=gsl_vectors_alloc(nfy,np,nt);
+	gsl_matrix **yS=gsl_matrices_alloc(ny,np,nt);
+	gsl_matrix **fyS=gsl_matrices_alloc(nfy,np,nt);
 
 	int status;
 
@@ -108,15 +110,15 @@ int main(int argc, char *argv[])
 	if (!dot) dot=modelf+l;
 	*dot='\0';
 
-	assert((status=ode_ivp_solve(ivp, t, y, fy, yS, fyS, NULL))=GSL_SUCCESS);
+	assert((status=ode_ivp_solve(ivp, t, y, fy, yS, fyS, NULL))==GSL_SUCCESS);
 	/* print on screen or write to a file */
 	strcpy(dot,"_y.double");
 	gsl_vectors_write(y,t->size,modelf);
 	strcpy(dot,"_fy.double");
 	gsl_vectors_write(fy,t->size,modelf);
 	strcpy(dot,"_yS.double");
-	gsl_vectors_write(yS,t->size,modelf);
+	gsl_matrices_write(yS,t->size,modelf);
 	strcpy(dot,"_fyS.double");
-	gsl_vectors_write(fyS,t->size,modelf);
+	gsl_matrices_write(fyS,t->size,modelf);
 	return EXIT_SUCCESS;
 }

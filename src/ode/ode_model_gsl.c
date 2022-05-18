@@ -1,5 +1,10 @@
 #include "ode_model.h"
-
+#include <gsl/gsl_odeiv2.h>
+#include <gsl/gsl_linalg.h>
+#include <dlfcn.h>
+#include <assert.h>
+#include <string.h>
+#include <libgen.h>
 /* gsl_odeiv2_step_type *gsl_odeiv2_step_msbdf */
 /* gsl_odeiv2_step_type *gsl_odeiv2_step_msadams */
 
@@ -13,18 +18,18 @@ typedef int (*f_initial_condition) (double t, double *y, void * params);
 /* also known as "ode_model" */
 struct solver_specific_ode_model {
 	gsl_odeiv2_system sys;
-	f_default_parameters *param_default;
-	f_initial_condition *init;
-	dfdp *jacp;
-	out_f *func;
-	out_f_dy *func_jac;
-	out_f_dp *func_jacp;
+	f_default_parameters param_default;
+	f_initial_condition init;
+	dfdp jacp;
+	out_f func;
+	out_f_dy func_jac;
+	out_f_dp func_jacp;
 };
 
 void *load_or_abort(void *lib, char *sym)
 {
 	fprintf(stderr,"[%s] loading «%s»",__func__,sym);
-	void *s=dlsym(L,sym);
+	void *s=dlsym(lib,sym);
 	assert(s);
 	return s;
 }
@@ -32,13 +37,13 @@ void *load_or_abort(void *lib, char *sym)
 void *load_optional(void *lib, char *sym)
 {
 	fprintf(stderr,"[%s] loading «%s»",__func__,sym);
-	void *s=dlsym(L,sym);
+	void *s=dlsym(lib,sym);
 	return s;
 }
 
 
 /* loads functions from shared library, all functions are necessary, returned struct can be freed by free() */
-ode_model* ode_model_load_from_file(const char *filename)
+ode_model* ode_model_load_from_file(char *filename)
 {
 	void* L=dlopen(filename,RTLD_LAZY|RTLD_LOCAL);
 	char *name=basename(filename);
@@ -54,7 +59,6 @@ ode_model* ode_model_load_from_file(const char *filename)
 	memcpy(sym,name,n);
 	if (L) {
 		/* ode right-hand-side function f (a vector field) */
-		model->sys=malloc(sizeof(gsl_odeiv2_system));
 		model->sys.function=load_or_abort(L,strcpy(sym+n,"_vf"));
 		/* try evaluation, vf must accept NULL pointers and return y-size */
 		d=model->sys.function(0.0,NULL,NULL,NULL);
@@ -84,7 +88,7 @@ ode_ivp* ode_ivp_alloc(ode_model *M)
 	ode_ivp *solver_for_gsl=malloc(sizeof(ode_ivp));
 	int ny=M->sys.dimension;
 	int nfy=M->func(0.0,NULL,NULL,NULL);
-	int npar=M->dfdp(0.0,NULL,NULL,NULL)/ny;
+	int npar=M->jacp(0.0,NULL,NULL,NULL,NULL)/ny;
 	solver_for_gsl->odeModel=M;
 	solver_for_gsl->y=gsl_vector_alloc(ny);
 	solver_for_gsl->fy=gsl_vector_alloc(nfy);
@@ -128,7 +132,7 @@ void ode_ivp_init(ode_ivp *s, const double t0, gsl_vector *y0, gsl_vector *p)
 	} else {
 		gsl_vector_set_all(s->params,1.0);
 	}
-	s->sys.params=s->params->data; /* gsl_odeiv2 solvers will use this pointer */
+	s->odeModel->sys.params=s->params->data; /* gsl_odeiv2 solvers will use this pointer */
 	if (y0) {
 		gsl_vector_memcpy(s->y,y0);
 	} else if (s->odeModel->init != NULL){
@@ -138,7 +142,7 @@ void ode_ivp_init(ode_ivp *s, const double t0, gsl_vector *y0, gsl_vector *p)
 	}
 	gsl_matrix_set_zero(s->yS);
 	gsl_matrix_set_zero(s->fyS);
-	gsl_odeiv2_driver *drv=gsl_odeiv2_driver_alloc_y_new(s->odeModel->sys, gsl_odeiv2_step_msbdf, 1e-5, 1e-7, 1e-7);
+	gsl_odeiv2_driver *drv=gsl_odeiv2_driver_alloc_y_new(&(s->odeModel->sys), gsl_odeiv2_step_msbdf, 1e-5, 1e-7, 1e-7);
 	s->driver=drv;
 }
 
@@ -146,8 +150,9 @@ void ode_ivp_init(ode_ivp *s, const double t0, gsl_vector *y0, gsl_vector *p)
 int solve_linear_system(gsl_matrix *A, gsl_matrix *X, gsl_matrix *B){
 	double *C;
 	assert(A && X && B);
+	int i;
 	size_t n=B->size1, m=B->size2;
-	gsl_matrix_view x,b;
+	gsl_vector_view x,b;
 	gsl_matrix *T=gsl_matrix_alloc(n,n);
 
 	int status=GSL_SUCCESS;
@@ -180,7 +185,7 @@ static int approximate_sens(ode_model *m, double ti, gsl_vector *y_i, double tf,
 	assert(yS);
 	size_t ny=yS->size1;
 	size_t np=yS->size2;
-	assert(m->sys->dimesnion == ny);
+	assert(m->sys.dimension == ny);
 	gsl_matrix *A=gsl_matrix_alloc(ny,ny);
 	gsl_matrix *B=gsl_matrix_alloc(ny,np);
 	double dfdt[ny];
@@ -190,8 +195,8 @@ static int approximate_sens(ode_model *m, double ti, gsl_vector *y_i, double tf,
 	gsl_matrix *Jt=gsl_matrix_alloc(ny,ny);
 	int i;
 	int status;
-	m->sys->jacobian(tf,y_f->data,A->data,dfdt,m->sys->params); /* A is df/dy (the jacobian) */
-	m->jacp(tf,y_f->data,B->data,dfdt,m->sys->params);          /* B is df/dp (the parameter jacobian) */
+	m->sys.jacobian(tf,y_f->data,A->data,dfdt,m->sys.params); /* A is df/dy (the jacobian) */
+	m->jacp(tf,y_f->data,B->data,dfdt,m->sys.params);          /* B is df/dp (the parameter jacobian) */
 	gsl_matrix_memcpy(Jt,A);
 	gsl_matrix_scale(Jt,tf-ti);
 	solve_linear_system(A,C,B); /* solve A*C=B, or equivalently C = A\B */
@@ -200,7 +205,7 @@ static int approximate_sens(ode_model *m, double ti, gsl_vector *y_i, double tf,
 	if ((status=gsl_linalg_exponential_ss(Jt,eJt,GSL_PREC_SINGLE))!=GSL_SUCCESS){
 		fprintf(stderr,"[%s] matrix exponential failed. %s\n",__func__,gsl_strerror(status));
 	}
-	gsl_matrix_memcpy(yS,L);
+	gsl_matrix_memcpy(yS,C);
 	if ((status=gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,1.0,R,eJt,-1.0,yS))!=GSL_SUCCESS){
 		fprintf(stderr,"[%s] Matrix product (dgemm) failed. %s\n",__func__,gsl_strerror(status));
 	}
@@ -213,9 +218,9 @@ static int approximate_sens(ode_model *m, double ti, gsl_vector *y_i, double tf,
 	return status;
 }
 
-static int transform(ode_vector *v, struct tf *tfm)
+static int transform(gsl_vector *v, struct tf *tfm)
 {
-	if (tfm && a){
+	if (tfm){
 		switch (tfm->type){
 		case tf_matrix_vector:
 			gsl_vector_memcpy(tfm->result,tfm->b);
@@ -228,7 +233,7 @@ static int transform(ode_vector *v, struct tf *tfm)
 			break;
 		case tf_vector_scalar:
 			gsl_vector_mul(v,tfm->a);
-			gsl_vector_add_constant(v,tfm->s_b)
+			gsl_vector_add_constant(v,tfm->s_b);
 			break;
 		case tf_scalar_scalar:
 			gsl_vector_scale(v,tfm->s_a);
@@ -272,11 +277,11 @@ int ode_ivp_solve(ode_ivp *s, gsl_vector *t, gsl_vector **y, gsl_vector **fy, gs
 			gsl_vector_memcpy(y[j],s->y);
 			//			s->odeModel->sys->jacobian(tf,y_f->data,s->jac->data,dfdt,m->sys->params); /* yJ is df/dy (the jacobian) */
 			//			s->odeModel->jacp(tf,y_f->data,s->jacp->data,dfdt,m->sys->params);         /* yP is df/dp (the parameter jacobian) */
-			if (fy && fy[j]) s->odeModel->func(tf,y[j]->data,fy[j]->data,s->sys->params);
+			if (fy && fy[j]) s->odeModel->func(tf,y[j]->data,fy[j]->data,s->odeModel->sys.params);
 			if (yS) approximate_sens(s->odeModel, ti, yi, tf, s->y, s->yS);
 			if (yS && fyS && s->out_f_dy && s->out_f_dp) {
-				s->func_jac(tf,y[j]->data,s->fyJ->data,s->sys->params);
-				s->func_jacp(tf,y[j]->data,s->fyP->data,s->sys->params);
+				s->func_jac(tf,y[j]->data,s->fyJ->data,s->odeModel->sys.params);
+				s->func_jacp(tf,y[j]->data,s->fyP->data,s->odeModel->sys.params);
 			}
 			break;
 		default:
